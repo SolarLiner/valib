@@ -2,9 +2,10 @@
 //! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
 //! All references in this module, unless specified otherwise, are taken from this book.
 
-use std::marker::PhantomData;
 use dasp_sample::FloatSample;
 use num_traits::{Float, FloatConst};
+use numeric_literals::replace_float_literals;
+use std::marker::PhantomData;
 
 pub trait Scalar: Float + FloatConst + FloatSample {}
 
@@ -31,8 +32,8 @@ impl<T: Scalar> DSP<1, 1> for Integrator<T> {
 
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let in0 = x[0] + self.0;
-        self.0 += in0;
-        self.0
+        self.0 = self.0 + in0;
+        [self.0]
     }
 }
 
@@ -45,7 +46,7 @@ pub struct P1<T> {
     s: T,
 }
 
-impl<T: Scalar, P> P1<T> {
+impl<T: Scalar> P1<T> {
     pub fn new(samplerate: T, fc: T) -> Self {
         Self {
             w_step: T::PI() / samplerate,
@@ -63,6 +64,7 @@ impl<T: Scalar> DSP<1, 3> for P1<T> {
     type Sample = T;
 
     #[inline(always)]
+    #[replace_float_literals(T::from(literal).unwrap())]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
         // One-sample feedback trick over a transposed integrator, implementation following
         // eq (3.32), page 77
@@ -73,7 +75,60 @@ impl<T: Scalar> DSP<1, 3> for P1<T> {
         self.s = lp + v;
 
         let hp = x[0] - lp;
-        let ap = 2.*lp - x[0];
+        let ap = 2. * lp - x[0];
         [lp, hp, ap]
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct Clean;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct Driven;
+
+#[derive(Debug, Copy, Clone)]
+pub struct Svf<T, Mode = Clean> {
+    i: [T; 2],
+    r: T,
+    __mode: PhantomData<Mode>,
+}
+
+impl<T: Scalar> DSP<1, 3> for Svf<T, Clean> {
+    type Sample = T;
+
+    #[inline(always)]
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
+        let in1 = self.i[0] * 2. * self.r + self.i[1];
+        let hp = x[0] + in1;
+        let bp = self.i[0];
+        let lp = self.i[1];
+        self.i = [hp, bp];
+        [lp, bp, hp]
+    }
+}
+
+impl<T: Scalar> DSP<1, 3> for Svf<T, Driven> {
+    type Sample = T;
+
+    #[inline(always)]
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
+        let in1 = self.i[0].tanh() * 2. * self.r + self.i[1].tanh();
+        let hp = x[0] + in1;
+        let bp = self.i[0].tanh();
+        let lp = self.i[1].tanh();
+        self.i = [hp, bp];
+        [lp, bp, hp]
+    }
+}
+
+impl<T: Scalar, C> Svf<T, C> {
+    pub fn new(r: T) -> Self {
+        Self {
+            i: [T::EQUILIBRIUM; 2],
+            r,
+            __mode: PhantomData,
+        }
     }
 }
