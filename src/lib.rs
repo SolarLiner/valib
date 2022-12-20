@@ -3,6 +3,7 @@
 //! All references in this module, unless specified otherwise, are taken from this book.
 
 use dasp_sample::FloatSample;
+use nalgebra::{clamp, Complex, ComplexField, RealField};
 use num_traits::{Float, FloatConst};
 use numeric_literals::replace_float_literals;
 use std::marker::PhantomData;
@@ -15,6 +16,17 @@ pub trait DSP<const I: usize, const O: usize> {
     type Sample: Scalar;
 
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O];
+}
+
+pub trait DspAnalysis<const I: usize, const O: usize>: DSP<I, O> {
+    fn h_z(&self, z: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O];
+    fn freq_response(&self, jw: [Self::Sample; I]) -> [Complex<Self::Sample>; O]
+    where
+        Self::Sample: RealField,
+    {
+        let z = jw.map(|jw| Complex::exp(Complex::i() * jw));
+        self.h_z(z)
+    }
 }
 
 /// Freestanding integrator, discretized with TPT
@@ -37,6 +49,13 @@ impl<T: Scalar> DSP<1, 1> for Integrator<T> {
     }
 }
 
+impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
+    #[replace_float_literals(Complex::from(T::from(literal).unwrap()))]
+    fn h_z(&self, z: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 1] {
+        [1. / 2. * (z[0] + 1.) / (z[0] - 1.)]
+    }
+}
+
 /// 6 dB/oct one-pole filter using the "one-sample trick" (fig. 3.31, eq. 3.32).
 /// Outputs modes as follows: [LP, HP, AP].
 #[derive(Debug, Copy, Clone)]
@@ -53,6 +72,14 @@ impl<T: Scalar> P1<T> {
             fc,
             s: T::EQUILIBRIUM,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.s = T::EQUILIBRIUM;
+    }
+
+    pub fn set_samplerate(&mut self, samplerate: T) {
+        self.w_step = T::PI() / samplerate
     }
 
     pub fn set_fc(&mut self, fc: T) {
@@ -88,8 +115,13 @@ pub struct Driven;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Svf<T, Mode = Clean> {
-    i: [T; 2],
+    s: [T; 2],
     r: T,
+    fc: T,
+    g: T,
+    g1: T,
+    d: T,
+    w_step: T,
     __mode: PhantomData<Mode>,
 }
 
@@ -99,11 +131,19 @@ impl<T: Scalar> DSP<1, 3> for Svf<T, Clean> {
     #[inline(always)]
     #[replace_float_literals(T::from(literal).unwrap())]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
-        let in1 = self.i[0] * 2. * self.r + self.i[1];
-        let hp = x[0] + in1;
-        let bp = self.i[0];
-        let lp = self.i[1];
-        self.i = [hp, bp];
+        let [s1, s2] = self.s;
+
+        let hp = (x[0] - self.g1 * s1 - s2) * self.d;
+
+        let v1 = self.g * hp;
+        let bp = v1 + s1;
+        let s1 = bp + v1;
+
+        let v2 = self.g * hp;
+        let lp = v2 + s2;
+        let s2 = lp + v2;
+
+        self.s = [s1, s2];
         [lp, bp, hp]
     }
 }
@@ -114,21 +154,65 @@ impl<T: Scalar> DSP<1, 3> for Svf<T, Driven> {
     #[inline(always)]
     #[replace_float_literals(T::from(literal).unwrap())]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
-        let in1 = self.i[0].tanh() * 2. * self.r + self.i[1].tanh();
-        let hp = x[0] + in1;
-        let bp = self.i[0].tanh();
-        let lp = self.i[1].tanh();
-        self.i = [hp, bp];
+        let [s1, s2] = self.s;
+
+        let hp = (x[0] - self.g1 * s1 - s2) * self.d;
+
+        let v1 = self.g * hp;
+        let bp = v1 + s1;
+        let s1 = bp + v1;
+
+        let v2 = self.g * bp;
+        let lp = v2 + s2;
+        let s2 = lp + v2;
+
+        self.s = [s1.tanh(), s2.tanh()];
         [lp, bp, hp]
     }
 }
 
 impl<T: Scalar, C> Svf<T, C> {
-    pub fn new(r: T) -> Self {
-        Self {
-            i: [T::EQUILIBRIUM; 2],
+    #[replace_float_literals(T::from(literal).unwrap())]
+    pub fn new(samplerate: T, fc: T, r: T) -> Self {
+        let mut this = Self {
+            s: [T::EQUILIBRIUM; 2],
             r,
+            fc,
+            g: T::zero(),
+            g1: T::zero(),
+            d: T::zero(),
+            w_step: T::zero(),
             __mode: PhantomData,
-        }
+        };
+        this.set_samplerate(samplerate);
+        this
+    }
+
+    pub fn reset(&mut self) {
+        self.s.fill(T::EQUILIBRIUM);
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    pub fn set_samplerate(&mut self, samplerate: T) {
+        self.w_step = 0.5 * T::PI() / samplerate;
+        self.update_coefficients();
+    }
+
+    pub fn set_fc(&mut self, fc: T) {
+        self.fc = fc;
+        self.update_coefficients();
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    pub fn set_r(&mut self, r: T) {
+        self.r = 2. * r;
+        self.update_coefficients();
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn update_coefficients(&mut self) {
+        self.g = self.w_step * self.fc;
+        self.g1 = 2. * self.r + self.g;
+        self.d = (1. + 2. * self.r * self.g + self.g * self.g).recip();
     }
 }
