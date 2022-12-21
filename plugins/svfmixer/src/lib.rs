@@ -1,6 +1,6 @@
 use nih_plug::prelude::*;
 use std::sync::Arc;
-use valib::{Clean, Driven, Svf, DSP, P1};
+use valib::{Tanh, Svf, DSP};
 
 #[derive(Debug, Params)]
 struct PluginParams {
@@ -31,7 +31,7 @@ impl Default for PluginParams {
             .with_value_to_string(formatters::v2s_f32_hz_then_khz_with_note_name(2, false))
             .with_string_to_value(formatters::s2v_f32_hz_then_khz())
             .with_smoother(SmoothingStyle::Exponential(10.)),
-            q: FloatParam::new("Q", 0.5, FloatRange::Linear { min: 0., max: 1. })
+            q: FloatParam::new("Q", 0.5, FloatRange::Linear { min: 0., max: 1.25 })
                 .with_smoother(SmoothingStyle::Exponential(50.)),
             lp_gain: FloatParam::new(
                 "LP Gain",
@@ -82,7 +82,7 @@ impl Default for PluginParams {
 #[derive(Debug)]
 struct Plugin {
     params: Arc<PluginParams>,
-    svf: [Svf<f32, Driven>; 2],
+    svf: [Svf<f32, Tanh>; 2],
 }
 
 impl Default for Plugin {

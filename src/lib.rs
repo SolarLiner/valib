@@ -107,14 +107,32 @@ impl<T: Scalar> DSP<1, 3> for P1<T> {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Clean;
+pub trait Saturator<S: Scalar> {
+    fn saturate(x: S) -> S;
+}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Driven;
+pub struct Linear;
+
+impl<S: Scalar> Saturator<S> for Linear {
+    #[inline(always)]
+    fn saturate(x: S) -> S {
+        x
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct Tanh;
+
+impl<S: Scalar> Saturator<S> for Tanh {
+    #[inline(always)]
+    fn saturate(x: S) -> S {
+        x.tanh()
+    }
+}
 
 #[derive(Debug, Copy, Clone)]
-pub struct Svf<T, Mode = Clean> {
+pub struct Svf<T, Mode = Linear> {
     s: [T; 2],
     r: T,
     fc: T,
@@ -125,30 +143,7 @@ pub struct Svf<T, Mode = Clean> {
     __mode: PhantomData<Mode>,
 }
 
-impl<T: Scalar> DSP<1, 3> for Svf<T, Clean> {
-    type Sample = T;
-
-    #[inline(always)]
-    #[replace_float_literals(T::from(literal).unwrap())]
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
-        let [s1, s2] = self.s;
-
-        let hp = (x[0] - self.g1 * s1 - s2) * self.d;
-
-        let v1 = self.g * hp;
-        let bp = v1 + s1;
-        let s1 = bp + v1;
-
-        let v2 = self.g * hp;
-        let lp = v2 + s2;
-        let s2 = lp + v2;
-
-        self.s = [s1, s2];
-        [lp, bp, hp]
-    }
-}
-
-impl<T: Scalar> DSP<1, 3> for Svf<T, Driven> {
+impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
     type Sample = T;
 
     #[inline(always)]
@@ -166,7 +161,7 @@ impl<T: Scalar> DSP<1, 3> for Svf<T, Driven> {
         let lp = v2 + s2;
         let s2 = lp + v2;
 
-        self.s = [s1.tanh(), s2.tanh()];
+        self.s = [S::saturate(s1), S::saturate(s2)];
         [lp, bp, hp]
     }
 }
