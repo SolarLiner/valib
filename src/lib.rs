@@ -3,10 +3,12 @@
 //! All references in this module, unless specified otherwise, are taken from this book.
 
 use dasp_sample::FloatSample;
-use nalgebra::{clamp, Complex, ComplexField, RealField};
+use nalgebra::{Complex, ComplexField, RealField};
 use num_traits::{Float, FloatConst};
 use numeric_literals::replace_float_literals;
-use std::marker::PhantomData;
+
+mod saturators;
+mod svf;
 
 pub trait Scalar: Float + FloatConst + FloatSample {}
 
@@ -107,107 +109,37 @@ impl<T: Scalar> DSP<1, 3> for P1<T> {
     }
 }
 
-pub trait Saturator<S: Scalar> {
-    fn saturate(x: S) -> S;
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Linear;
-
-impl<S: Scalar> Saturator<S> for Linear {
-    #[inline(always)]
-    fn saturate(x: S) -> S {
-        x
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct Tanh;
-
-impl<S: Scalar> Saturator<S> for Tanh {
-    #[inline(always)]
-    fn saturate(x: S) -> S {
-        x.tanh()
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct Svf<T, Mode = Linear> {
-    s: [T; 2],
-    r: T,
-    fc: T,
-    g: T,
-    g1: T,
-    d: T,
-    w_step: T,
-    __mode: PhantomData<Mode>,
-}
-
-impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
-    type Sample = T;
+impl<P: DSP<N, N>, const A: usize, const N: usize> DSP<N, N> for [P; A] {
+    type Sample = P::Sample;
 
     #[inline(always)]
-    #[replace_float_literals(T::from(literal).unwrap())]
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
-        let [s1, s2] = self.s;
-
-        let hp = (x[0] - self.g1 * s1 - s2) * self.d;
-
-        let v1 = self.g * hp;
-        let bp = v1 + s1;
-        let s1 = bp + v1;
-
-        let v2 = self.g * bp;
-        let lp = v2 + s2;
-        let s2 = lp + v2;
-
-        self.s = [S::saturate(s1), S::saturate(s2)];
-        [lp, bp, hp]
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        self.iter_mut().fold(x, |x, f| f.process(x))
     }
 }
 
-impl<T: Scalar, C> Svf<T, C> {
-    #[replace_float_literals(T::from(literal).unwrap())]
-    pub fn new(samplerate: T, fc: T, r: T) -> Self {
-        let mut this = Self {
-            s: [T::EQUILIBRIUM; 2],
-            r,
-            fc,
-            g: T::zero(),
-            g1: T::zero(),
-            d: T::zero(),
-            w_step: T::zero(),
-            __mode: PhantomData,
-        };
-        this.set_samplerate(samplerate);
-        this
-    }
+macro_rules! series_tuple {
+    ($($p:ident),*) => {
+        impl<__Sample: Scalar, $($p: DSP<N, N, Sample = __Sample>),*, const N: usize> DSP<N, N> for ($($p),*) {
+            type Sample = __Sample;
 
-    pub fn reset(&mut self) {
-        self.s.fill(T::EQUILIBRIUM);
-    }
-
-    #[replace_float_literals(T::from(literal).unwrap())]
-    pub fn set_samplerate(&mut self, samplerate: T) {
-        self.w_step = 0.5 * T::PI() / samplerate;
-        self.update_coefficients();
-    }
-
-    pub fn set_fc(&mut self, fc: T) {
-        self.fc = fc;
-        self.update_coefficients();
-    }
-
-    #[replace_float_literals(T::from(literal).unwrap())]
-    pub fn set_r(&mut self, r: T) {
-        self.r = 2. * r;
-        self.update_coefficients();
-    }
-
-    #[replace_float_literals(T::from(literal).unwrap())]
-    fn update_coefficients(&mut self) {
-        self.g = self.w_step * self.fc;
-        self.g1 = 2. * self.r + self.g;
-        self.d = (1. + 2. * self.r * self.g + self.g * self.g).recip();
-    }
+            #[allow(non_snake_case)]
+            #[inline(always)]
+            fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+                let ($($p),*) = self;
+                $(
+                let x = $p.process(x);
+                )*
+                x
+            }
+        }
+    };
 }
+
+series_tuple!(A, B);
+series_tuple!(A, B, C);
+series_tuple!(A, B, C, D);
+series_tuple!(A, B, C, D, E);
+series_tuple!(A, B, C, D, E, F);
+series_tuple!(A, B, C, D, E, F, G);
+series_tuple!(A, B, C, D, E, F, G, H);

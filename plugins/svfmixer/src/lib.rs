@@ -1,6 +1,8 @@
 use nih_plug::prelude::*;
 use std::sync::Arc;
-use valib::{Tanh, Svf, DSP};
+use valib::DSP;
+use valib::saturators::Tanh;
+use valib::svf::Svf;
 
 #[derive(Debug, Params)]
 struct PluginParams {
