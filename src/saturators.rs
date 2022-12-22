@@ -23,3 +23,12 @@ impl<S: Scalar> Saturator<S> for Tanh {
         x.tanh()
     }
 }
+
+pub struct Clipper;
+
+impl<S: Scalar> Saturator<S> for Clipper {
+    #[inline(always)]
+    fn saturate(x: S) -> S {
+        x.min(S::one()).max(S::zero())
+    }
+}

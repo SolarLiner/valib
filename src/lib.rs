@@ -6,9 +6,11 @@ use dasp_sample::FloatSample;
 use nalgebra::{Complex, ComplexField, RealField};
 use num_traits::{Float, FloatConst};
 use numeric_literals::replace_float_literals;
+use std::marker::PhantomData;
 
-mod saturators;
-mod svf;
+pub mod ladder;
+pub mod saturators;
+pub mod svf;
 
 pub trait Scalar: Float + FloatConst + FloatSample {}
 
@@ -28,6 +30,17 @@ pub trait DspAnalysis<const I: usize, const O: usize>: DSP<I, O> {
     {
         let z = jw.map(|jw| Complex::exp(Complex::i() * jw));
         self.h_z(z)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Default)]
+pub struct Bypass<S>(PhantomData<S>);
+
+impl<S: Scalar, const N: usize> DSP<N, N> for Bypass<S> {
+    type Sample = S;
+
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        x
     }
 }
 
