@@ -1,2 +1,5 @@
 [svfmixer]
 name = "SVF Mixer"
+
+[dirty-biquad]
+name = "Dirty Biquad"

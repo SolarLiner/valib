@@ -1,3 +1,7 @@
+//! Implementation of various blocks of DSP code from the VA Filter Design book.
+//! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
+//! All references in this module, unless specified otherwise, are taken from this book.
+
 use crate::{
     saturators::{Linear, Saturator},
     Scalar,
@@ -15,7 +19,7 @@ pub struct Svf<T, Mode = Linear> {
     g1: T,
     d: T,
     w_step: T,
-    __mode: PhantomData<Mode>,
+    sats: [Mode; 2],
 }
 
 impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
@@ -36,12 +40,12 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
         let lp = v2 + s2;
         let s2 = lp + v2;
 
-        self.s = [S::saturate(s1), S::saturate(s2)];
+        self.s = [self.sats[0].saturate(s1), self.sats[1].saturate(s2)];
         [lp, bp, hp]
     }
 }
 
-impl<T: Scalar, C> Svf<T, C> {
+impl<T: Scalar, C: Default> Svf<T, C> {
     #[replace_float_literals(T::from(literal).unwrap())]
     pub fn new(samplerate: T, fc: T, r: T) -> Self {
         let mut this = Self {
@@ -52,7 +56,7 @@ impl<T: Scalar, C> Svf<T, C> {
             g1: T::zero(),
             d: T::zero(),
             w_step: T::zero(),
-            __mode: PhantomData,
+            sats: Default::default(),
         };
         this.set_samplerate(samplerate);
         this

@@ -1,14 +1,12 @@
-//! Implementation of various blocks of DSP code from the VA Filter Design book.
-//! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
-//! All references in this module, unless specified otherwise, are taken from this book.
-
 use dasp_sample::FloatSample;
 use nalgebra::{Complex, ComplexField, RealField};
 use num_traits::{Float, FloatConst};
 use numeric_literals::replace_float_literals;
 use std::marker::PhantomData;
 
-pub mod ladder;
+// pub mod ladder;
+// pub mod sallenkey;
+pub mod biquad;
 pub mod saturators;
 pub mod svf;
 
