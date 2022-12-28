@@ -1,6 +1,6 @@
 use crate::{filter::FilterParams, spectrum::Spectrum};
 use atomic_float::AtomicF32;
-use nih_plug::{params, prelude::*};
+use nih_plug::{prelude::*};
 use nih_plug_vizia::vizia::{cache::BoundingBox, prelude::*, vg};
 use std::sync::{atomic::Ordering, Arc, Mutex};
 use triple_buffer::Output;
@@ -53,7 +53,7 @@ impl SpectrumAnalyzer {
             let freq_norm = bin_idx as f32 / spectrum.data.len() as f32;
             let frequency = freq_norm * nyquist;
             let x = self.frequency_range.normalize(frequency);
-            if x < 0.0 || x >= 1.0 {
+            if !(0.0..1.0).contains(&x) {
                 continue;
             }
             let slope = 4.5;

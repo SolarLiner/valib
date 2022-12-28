@@ -93,7 +93,7 @@ impl Default for Plugin {
         let fc = params.fc.default_plain_value();
         let q = params.q.default_plain_value();
         Self {
-            params: params.clone(),
+            params,
             svf: std::array::from_fn(move |_| Svf::new(1., fc, 1. - q)),
         }
     }

@@ -4,7 +4,7 @@ use nih_plug::prelude::*;
 use std::default::default;
 use std::sync::Arc;
 use valib::saturators::Dynamic;
-use valib::{biquad::Biquad, saturators::Tanh, DSP};
+use valib::{biquad::Biquad, DSP};
 
 #[derive(Debug, Enum, Eq, PartialEq)]
 enum FilterType {

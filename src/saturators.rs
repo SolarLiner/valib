@@ -1,7 +1,7 @@
 use crate::Scalar;
-use num_traits::{Float, NumAssign};
+use num_traits::{Float};
 use numeric_literals::replace_float_literals;
-use std::marker::PhantomData;
+
 
 pub trait Saturator<T: Scalar>: Default {
     /// Saturate an input with a frozen state.
@@ -9,7 +9,7 @@ pub trait Saturator<T: Scalar>: Default {
 
     /// Update the state given an input.
     #[inline(always)]
-    fn update_state(&mut self, x: T) {}
+    fn update_state(&mut self, _x: T) {}
 
     #[inline(always)]
     #[replace_float_literals(T::from(literal).unwrap())]
