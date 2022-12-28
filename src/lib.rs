@@ -1,6 +1,6 @@
 use dasp_sample::FloatSample;
 use nalgebra::{Complex, ComplexField, RealField};
-use num_traits::{Float, FloatConst};
+use num_traits::{Float, FloatConst, Zero};
 use numeric_literals::replace_float_literals;
 use std::marker::PhantomData;
 
@@ -28,6 +28,23 @@ pub trait DspAnalysis<const I: usize, const O: usize>: DSP<I, O> {
     {
         let z = jw.map(|jw| Complex::exp(Complex::i() * jw));
         self.h_z(z)
+    }
+}
+
+pub trait DspAnalog<const I: usize, const O: usize>: DSP<I, O> {
+    fn h_s(&self, s: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O];
+}
+
+impl<const I: usize, const O: usize, D: DspAnalog<I, O>> DspAnalysis<I, O> for D {
+    #[replace_float_literals(Complex::from(<D::Sample as num_traits::NumCast>::from(literal).unwrap()))]
+    #[inline(always)]
+    fn h_z(&self, z: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O] {
+        self.h_s(z.map(|z| 2. * (z - 1.) / (z + 1.)))
+    }
+
+    #[inline(always)]
+    fn freq_response(&self, jw: [Self::Sample; I]) -> [Complex<Self::Sample>; O] where Self::Sample: RealField {
+        self.h_s(jw.map(|jw| Complex::new(D::Sample::zero(), jw)))
     }
 }
 

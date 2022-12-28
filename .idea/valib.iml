@@ -5,6 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/plugins/svfmixer/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/xtask/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/plugins/abrasive/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/plugins/dirty-biquad/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>

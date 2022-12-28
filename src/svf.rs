@@ -2,13 +2,13 @@
 //! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
 //! All references in this module, unless specified otherwise, are taken from this book.
 
+use nalgebra::{Complex, ComplexField, RealField};
+use numeric_literals::replace_float_literals;
+
 use crate::{
     saturators::{Linear, Saturator},
-    Scalar,
-    DSP
+    DspAnalog, Scalar, DSP,
 };
-use numeric_literals::replace_float_literals;
-use std::marker::PhantomData;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Svf<T, Mode = Linear> {
@@ -26,7 +26,7 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
     type Sample = T;
 
     #[inline(always)]
-    #[replace_float_literals(T::from(literal).unwrap())]
+    // #[replace_float_literals(T::from(literal).unwrap())]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
         let [s1, s2] = self.s;
 
@@ -41,6 +41,23 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
         let s2 = lp + v2;
 
         self.s = [self.sats[0].saturate(s1), self.sats[1].saturate(s2)];
+        self.sats[0].update_state(s1);
+        self.sats[1].update_state(s2);
+        [lp, bp, hp]
+    }
+}
+
+impl<T: Scalar + RealField, S: Saturator<T>> DspAnalog<1, 3> for Svf<T, S> {
+    #[replace_float_literals(Complex::new(T::from(literal).unwrap(), T::zero()))]
+    fn h_s(&self, s: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 3] {
+        let s = s[0];
+        let wc = 2. * T::PI() * self.freq_cutoff();
+        let s2 = s.powi(2);
+        let wc2 = wc.powi(2);
+        let denom = s2 + 2. * self.r * wc * s + wc2;
+        let hp = s2 / denom;
+        let bp = 2. * self.r * wc * s / denom;
+        let lp = wc2 / denom;
         [lp, bp, hp]
     }
 }
@@ -68,12 +85,12 @@ impl<T: Scalar, C: Default> Svf<T, C> {
 
     #[replace_float_literals(T::from(literal).unwrap())]
     pub fn set_samplerate(&mut self, samplerate: T) {
-        self.w_step = 0.5 * T::PI() / samplerate;
+        self.w_step = T::PI() / samplerate;
         self.update_coefficients();
     }
 
-    pub fn set_fc(&mut self, fc: T) {
-        self.fc = fc;
+    pub fn set_cutoff(&mut self, freq: T) {
+        self.fc = freq;
         self.update_coefficients();
     }
 
@@ -88,5 +105,20 @@ impl<T: Scalar, C: Default> Svf<T, C> {
         self.g = self.w_step * self.fc;
         self.g1 = 2. * self.r + self.g;
         self.d = (1. + 2. * self.r * self.g + self.g * self.g).recip();
+    }
+
+    fn freq_cutoff(&self) -> T {
+        self.g / self.w_step
+    }
+}
+
+impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
+    pub fn set_saturators(&mut self, s1: S, s2: S) {
+        self.sats = [s1, s2];
+    }
+
+    pub fn with_saturators(mut self, s1: S, s2: S) -> Self {
+        self.set_saturators(s1, s2);
+        self
     }
 }

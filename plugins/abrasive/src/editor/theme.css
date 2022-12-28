@@ -1,0 +1,22 @@
+#ui {
+    background-color: #111;
+    color: #FFF;
+}
+
+spectrum.input {
+    color: #4d5899;
+}
+
+spectrum.output {
+    color: #AFE;
+}
+
+#side-panel {
+    background-color: #232;
+    width: 0;
+    transition: width 300ms ease-out;
+}
+
+#side-panel.visible {
+    width: 200px;
+}

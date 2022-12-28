@@ -1,0 +1,18 @@
+[package]
+name = "abrasive"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+atomic_float = "0.1.0"
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git", folder = "nih_plug_vizia" }
+realfft = "3.2.0"
+triple_buffer = "6.2.0"
+valib = { path = "../.." }
+
+[profile.dev]
+opt-level = 1

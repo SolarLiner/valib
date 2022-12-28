@@ -1,13 +1,11 @@
-//! Transposed Direct Form II Biquad implementation - nonlinearities based on https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-4-nonlinear-biquad-filters-ae6b3f23cb0e
+//! Transposed Direct Form II Biquad implementation - nonlinearities based on https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-5-nonlinear-feedback-filters-115e65fc0402
 
-use crate::saturators::{Dynamic, Saturator};
-use crate::DSP;
-use crate::{DspAnalysis, Scalar};
+use crate::{
+    saturators::{Dynamic, Saturator},
+    DspAnalysis, Scalar, DSP,
+};
 use nalgebra::Complex;
-use num_traits::real::Real;
 use numeric_literals::replace_float_literals;
-use std::marker::PhantomData;
-use std::ops::Neg;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Biquad<T, S> {
@@ -18,8 +16,13 @@ pub struct Biquad<T, S> {
 }
 
 impl<T> Biquad<T, Dynamic> {
+    pub fn with_saturators(mut self, a: Dynamic, b: Dynamic) -> Biquad<T, Dynamic> {
+        self.set_saturators(a, b);
+        self
+    }
+
     pub fn set_saturators(&mut self, a: Dynamic, b: Dynamic) {
-        self.sats = [a,b];
+        self.sats = [a, b];
     }
 }
 
@@ -53,15 +56,15 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         let a1 = -2. * cw0;
         let a2 = 1. - alpha;
 
-        Self::new([b0, b1, b2], [a1, a2].map(|a| a / a0))
+        Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
     #[replace_float_literals(T::from(literal).unwrap())]
     pub fn highpass(fc: T, q: T) -> Self {
         let w0 = T::TAU() * fc;
         let (sw0, cw0) = w0.sin_cos();
-        let b0 = 1. + cw0;
         let b1 = -(1. + cw0);
+        let b0 = -b1 / 2.;
         let b2 = b0;
 
         let alpha = sw0 / (2. * q);
@@ -69,7 +72,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         let a1 = -2. * cw0;
         let a2 = 1. - alpha;
 
-        Self::new([b0, b1, b2], [a1, a2].map(|a| a / a0))
+        Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
     #[replace_float_literals(T::from(literal).unwrap())]
@@ -85,6 +88,96 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         let a0 = 1. + alpha;
         let a1 = -2. * cw0;
         let a2 = 1. - alpha;
+
+        Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    pub fn notch(fc: T, q: T) -> Self {
+        let w0 = T::TAU() * fc;
+        let (sw0, cw0) = w0.sin_cos();
+        let alpha = sw0 / (2. * q);
+
+        let b0 = 1.;
+        let b1 = -2. * cw0;
+        let b2 = 1.;
+
+        let a0 = 1. + alpha;
+        let a1 = -2. * cw0;
+        let a2 = 1. - alpha;
+
+        Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    pub fn allpass(fc: T, q: T) -> Self {
+        let w0 = T::TAU() * fc;
+        let (sw0, cw0) = w0.sin_cos();
+        let alpha = sw0 / (2. * q);
+
+        let b0 = 1. - alpha;
+        let b1 = -2. * cw0;
+        let b2 = 1. + alpha;
+
+        let a0 = b2;
+        let a1 = b1;
+        let a2 = b0;
+
+        Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    pub fn peaking(fc: T, q: T, amp: T) -> Self {
+        let w0 = T::TAU() * fc;
+        let (sw0, cw0) = w0.sin_cos();
+        let alpha = sw0 / (2. * q);
+
+        let b0 = 1. + alpha * amp;
+        let b1 = -2. * cw0;
+        let b2 = 1. - alpha * amp;
+
+        let a0 = 1. + alpha / amp;
+        let a1 = b1;
+        let a2 = 1. - alpha / amp;
+
+        Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    pub fn lowshelf(fc: T, q: T, amp: T) -> Self {
+        let w0 = T::TAU() * fc;
+        let (sw0, cw0) = w0.sin_cos();
+        let alpha = sw0 / (2. * q);
+
+        let t = (amp + 1.) - (amp - 1.) * cw0;
+        let tp = (amp - 1.) - (amp + 1.) * cw0;
+        let u = 2. * amp.sqrt() * alpha;
+
+        let b0 = amp * (t + u);
+        let b1 = 2. * amp * (tp);
+        let b2 = amp * (t - u);
+
+        let t = (amp + 1.) + (amp - 1.) * cw0;
+        let a0 = t + u;
+        let a1 = -2. * ((amp - 1.) + (amp + 1.) * cw0);
+        let a2 = t - u;
+
+        Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    pub fn highshelf(fc: T, q: T, amp: T) -> Self {
+        let w0 = T::TAU() * fc;
+        let (sw0, cw0) = w0.sin_cos();
+        let alpha = sw0 / (2. * q);
+
+        let b0 = amp * ((amp + 1.) + (amp - 1.) * cw0 + 2. * amp.sqrt() * alpha);
+        let b1 = -2. * amp * ((amp + 1.) + (amp - 1.) * cw0);
+        let b2 = amp * ((amp + 1.) + (amp - 1.) * cw0 - (2. * amp.sqrt() * alpha));
+
+        let a0 = (amp + 1.) - (amp - 1.) * cw0 + 2. * amp.sqrt() * alpha;
+        let a1 = 2. * ((amp - 1.) - (amp + 1.) * cw0);
+        let a2 = ((amp + 1.) - (amp - 1.) * cw0) - 2. * amp.sqrt() * alpha;
 
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }

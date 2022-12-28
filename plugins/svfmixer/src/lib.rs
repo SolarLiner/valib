@@ -146,7 +146,7 @@ impl nih_plug::prelude::Plugin for Plugin {
             let bp_gain = self.params.bp_gain.smoothed.next();
             let hp_gain = self.params.hp_gain.smoothed.next();
             for (ch, f) in samples.into_iter().zip(&mut self.svf) {
-                f.set_fc(fc);
+                f.set_cutoff(fc);
                 f.set_r(1. - q);
                 let [lp, bp, hp] = f.process([*ch]);
                 *ch = lp * lp_gain + bp * bp_gain + hp * hp_gain;
