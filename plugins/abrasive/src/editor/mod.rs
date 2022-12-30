@@ -70,35 +70,10 @@ pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Edito
 fn analyzer(cx: &mut Context) -> Handle<impl View> {
     nih_log!("Creating analyzer");
     ZStack::new(cx, |cx| {
-        /*        HStack::new(cx, |cx| {
-                    Button::new(
-                        cx,
-                        |cx| {
-                            nih_log!("Clicked 'select'");
-                            cx.emit(DataEvent::Select(0));
-                        },
-                        |cx| Label::new(cx, "Select"),
-                    );
-                    Button::new(
-                        cx,
-                        |cx| {
-                            nih_log!("Clicked 'deselect'");
-                            cx.emit(DataEvent::Deselect);
-                        },
-                        |cx| Label::new(cx, "Deselect"),
-                    );
-                    Label::new(cx, Data::selected.map(|s| format!("{:?}", s)))
-                        .color("black")
-                        .background_color("white");
-                })
-                .col_between(Pixels(10.))
-                .width(Pixels(200.))
-                .height(Pixels(50.));
-        */
         SpectrumAnalyzer::new(cx, Data::spectrum_in.get(cx), Data::samplerate.get(cx))
             .class("input");
         SpectrumAnalyzer::new(cx, Data::spectrum_out.get(cx), Data::samplerate.get(cx))
             .class("output");
-        eq::build(cx, Data::samplerate, Data::params);
+        eq::build(cx, Data::samplerate, Data::params).id("eq");
     })
 }

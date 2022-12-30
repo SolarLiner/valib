@@ -8,6 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 atomic_float = "0.1.0"
+morphorm = "*"
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git", folder = "nih_plug_vizia" }
 realfft = "3.2.0"
