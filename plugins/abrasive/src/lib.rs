@@ -45,12 +45,12 @@ impl<const N: usize> Default for AbrasiveParams<N> {
             scale: FloatParam::new("Scale", 1., FloatRange::Linear { min: -1., max: 1. })
                 .with_string_to_value(formatters::s2v_f32_percentage())
                 .with_value_to_string(formatters::v2s_f32_percentage(2))
-                .with_smoother(SmoothingStyle::Linear(100.))
+                .with_smoother(SmoothingStyle::Exponential(100.))
                 .with_unit("%"),
             params: std::array::from_fn(|_| Default::default()),
             analyzer_smooth: FloatParam::new(
                 "UI Analyzer smoothing",
-                150.,
+                2500.,
                 FloatRange::Skewed {
                     min: 1.,
                     max: 10e3,

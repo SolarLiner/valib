@@ -46,12 +46,13 @@ impl<const N: usize> View for EqData<N> {
             })
         };
         let bounds = cx.bounds();
-        let paint = vg::Paint::color(cx.font_color().copied().unwrap_or(Color::white()).into()).with_line_width(
-            // FIXME: Using border width as stroke-width is not currently accessible
-            cx.border_width()
-                .map(|u| u.value_or(bounds.h, 1.))
-                .unwrap_or(1.),
-        );
+        let paint = vg::Paint::color(cx.font_color().copied().unwrap_or(Color::white()).into())
+            .with_line_width(
+                // FIXME: Using border width as stroke-width is not currently accessible
+                cx.border_width()
+                    .map(|u| u.value_or(bounds.h, 1.))
+                    .unwrap_or(1.),
+            );
         let mut path = vg::Path::new();
 
         for i in 0..bounds.w as usize {
@@ -64,11 +65,15 @@ impl<const N: usize> View for EqData<N> {
                     ftype.freq_response(
                         &filters[i],
                         if self.modulated {
-                            self.params.scale.smoothed.previous_value()
-                                * self.params.params[i].amp.smoothed.previous_value()
+                            util::db_to_gain(
+                                self.params.scale.smoothed.previous_value()
+                                    * util::gain_to_db(
+                                        self.params.params[i].amp.smoothed.previous_value(),
+                                    ),
+                            )
                         } else {
-                            self.params.scale.unmodulated_plain_value()
-                                * self.params.params[i].amp.unmodulated_plain_value()
+                            util::db_to_gain(self.params.scale.unmodulated_plain_value()
+                                * util::gain_to_db(self.params.params[i].amp.unmodulated_plain_value()))
                         },
                         jw,
                     )
