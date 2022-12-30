@@ -1,34 +1,48 @@
-use nih_plug::prelude::*;
-use realfft::num_complex::Complex32;
-use realfft::{RealFftPlanner, RealToComplex};
-use std::fmt::{self, Formatter};
-use std::sync::Arc;
-use nih_plug::util::window::multiply_with_window;
+use std::{
+    cell::Cell,
+    fmt::{self, Formatter},
+    marker::Destruct,
+    sync::{atomic::Ordering::Relaxed, Arc},
+};
+
+use atomic_float::AtomicF32;
+use nih_plug::{
+    prelude::*,
+    util::{window::multiply_with_window, StftHelper},
+};
+use realfft::{num_complex::Complex32, num_traits::Zero, RealFftPlanner, RealToComplex};
 use triple_buffer::{Input, Output, TripleBuffer};
 
-#[derive(Clone)]
 pub struct Spectrum {
     pub window_size: usize,
+    pub samplerate: f32,
     pub data: Box<[f32]>,
 }
 
-impl Spectrum {
-    fn new(window_size: usize) -> Spectrum {
-        Self {
-            window_size,
-            data: vec![0.; window_size/2+1].into_boxed_slice(),
-        }
+impl Clone for Spectrum {
+    fn clone(&self) -> Self {
+        let mut this = Self::new(self.window_size, self.samplerate);
+        this.data.copy_from_slice(&self.data);
+        this
+    }
+
+    fn clone_from(&mut self, source: &Self)
+    where
+        Self: ~const Destruct,
+    {
+        self.window_size = source.window_size;
+        self.samplerate = source.samplerate;
+        self.data.copy_from_slice(&source.data);
     }
 }
 
 impl Spectrum {
-    pub fn updating(mut self, f: impl FnOnce(usize, &mut [f32])) -> Self {
-        self.update(f);
-        self
-    }
-
-    pub fn update(&mut self, f: impl FnOnce(usize, &mut [f32]) + Sized) {
-        f(self.window_size, &mut self.data);
+    fn new(window_size: usize, samplerate: f32) -> Spectrum {
+        Self {
+            window_size,
+            samplerate,
+            data: vec![0.; window_size / 2 + 1].into_boxed_slice(),
+        }
     }
 }
 
@@ -40,67 +54,90 @@ impl fmt::Debug for Spectrum {
     }
 }
 
-pub struct SpectrumInput {
-    stft: util::StftHelper,
-    channels: usize,
+pub struct Analyzer {
+    stft: StftHelper,
     input: Input<Spectrum>,
-    spectrum_scratch: Spectrum,
-    smoothing_weight: f32,
+    scratch: Spectrum,
+    samplerate: Arc<AtomicF32>,
     plan: Arc<dyn RealToComplex<f32>>,
-    window: Vec<f32>,
     fft_buffer: Vec<Complex32>,
-    window_size: usize,
+    window: Vec<f32>,
+    decay: Cell<f32>,
 }
 
-const STFT_OVERLAP: usize = 2;
-
-impl SpectrumInput {
-    pub fn new(channels: usize, window_size: usize) -> (SpectrumInput, Output<Spectrum>) {
-        let (buf_in, buf_out) = TripleBuffer::new(&Spectrum {
-            window_size,
-            data: vec![0.; window_size / 2 + 1].into_boxed_slice(),
-        })
-        .split();
-        let input = Self {
-            stft: util::StftHelper::new(channels, window_size, 0),
-            channels,
-            smoothing_weight: 0.,
-            spectrum_scratch: Spectrum::new(window_size),
-            input: buf_in,
+impl Analyzer {
+    pub fn new(
+        samplerate: f32,
+        num_channels: usize,
+        window_size: usize,
+    ) -> (Self, Output<Spectrum>) {
+        let scratch = Spectrum::new(window_size, samplerate);
+        let (input, output) = TripleBuffer::new(&scratch).split();
+        let this = Self {
+            stft: StftHelper::new(num_channels, window_size, 0),
+            input,
+            scratch,
+            samplerate: Arc::new(AtomicF32::new(samplerate)),
             plan: RealFftPlanner::new().plan_fft_forward(window_size),
+            fft_buffer: vec![Complex32::zero(); window_size / 2 + 1],
             window: util::window::hann(window_size)
                 .into_iter()
                 .map(|x| x / window_size as f32)
                 .collect(),
-            fft_buffer: vec![Complex32::default(); window_size / 2 + 1],
-            window_size,
+            decay: Cell::new(100e-3),
         };
-
-        (input, buf_out)
+        (this, output)
     }
 
-    pub fn update_smoothing(&mut self, samplerate: f32, ms: f32) {
-        let actual_sr = samplerate / self.window_size as f32 * STFT_OVERLAP as f32 * self.channels as f32;
-        let decay = (ms / 1e3 * actual_sr) as f64;
-        self.smoothing_weight = 0.25f64.powf(decay.recip()) as f32;
+    pub fn set_samplerate(&self, samplerate: f32) {
+        self.samplerate.store(samplerate, Relaxed);
     }
 
-    pub fn next_block(&mut self, buffer: &Buffer) {
-        self.stft.process_analyze_only(buffer, STFT_OVERLAP, |_, buffer| {
+    pub fn set_window_size(&mut self, window_size: usize) {
+        self.stft.set_block_size(window_size);
+        self.plan = RealFftPlanner::new().plan_fft_forward(window_size);
+        self.fft_buffer
+            .resize(window_size / 2 + 1, Complex32::zero());
+        self.window = util::window::hann(window_size)
+            .into_iter()
+            .map(|x| x / window_size as f32)
+            .collect();
+    }
+
+    pub fn set_decay(&self, ms: f32) {
+        self.decay.set(ms * 1e-3);
+    }
+
+    pub fn process_buffer(&mut self, buffer: &Buffer) {
+        self.scratch.samplerate = self.samplerate.load(Relaxed);
+        self.stft.process_analyze_only(buffer, 2, |_, buffer| {
             multiply_with_window(buffer, &self.window);
-            self.plan.process_with_scratch(buffer, &mut self.fft_buffer, &mut []).unwrap();
-            for (bin, result) in self.fft_buffer.iter().zip(&mut *self.spectrum_scratch.data) {
-                let r = bin.norm();
-                if r > *result {
-                    *result = r;
-                } else {
-                    *result = *result * self.smoothing_weight + r * (1. - self.smoothing_weight);
-                }
-                // *result = result.max(*result * self.smoothing_weight + r * (1. - self.smoothing_weight));
+            if let Err(_) = self
+                .plan
+                .process_with_scratch(buffer, &mut self.fft_buffer, &mut [])
+            {
+                self.fft_buffer.fill(Complex32::zero());
+            }
+            for (scratch, fft) in self
+                .scratch
+                .data
+                .iter_mut()
+                .zip(self.fft_buffer.iter_mut().map(|c| c.norm()))
+            {
+                // let mix = 1.
+                //     - f32::exp(
+                //         -self.scratch.samplerate / self.window.len() as f32 / 2. * self.decay.get(),
+                //     );
+                let decay = f32::ln(1e-3) / self.decay.get();
+                let mix= f32::exp(decay * 1024. / self.scratch.samplerate);
+                *scratch = lerp(mix, fft, *scratch).max(fft);
             }
         });
-
-        self.input.input_buffer().data.copy_from_slice(&self.spectrum_scratch.data);
+        self.input.input_buffer().clone_from(&self.scratch);
         self.input.publish();
     }
+}
+
+fn lerp(t: f32, a: f32, b: f32) -> f32 {
+    a + (b - a) * t
 }

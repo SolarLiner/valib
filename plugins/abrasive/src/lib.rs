@@ -1,7 +1,10 @@
 #![feature(array_methods)]
+#![feature(const_trait_impl)]
+
+extern crate core;
 
 use crate::filter::{Filter, FilterParams};
-use crate::spectrum::SpectrumInput;
+use crate::spectrum::Analyzer;
 use atomic_float::AtomicF32;
 use nih_plug::params::persist::PersistentField;
 use nih_plug::prelude::*;
@@ -50,7 +53,7 @@ impl<const N: usize> Default for AbrasiveParams<N> {
                 150.,
                 FloatRange::Skewed {
                     min: 1.,
-                    max: 1e3,
+                    max: 10e3,
                     factor: FloatRange::skew_factor(-1.5),
                 },
             ).with_unit("ms"),
@@ -62,9 +65,9 @@ struct Abrasive<const CHANNELS: usize, const N: usize> {
     params: Arc<AbrasiveParams<N>>,
     filters: [Filter<CHANNELS>; N],
     samplerate: Arc<AtomicF32>,
-    analyzer_in: SpectrumInput,
+    analyzer_in: Analyzer,
     analyzer_input: editor::SpectrumUI,
-    analyzer_out: SpectrumInput,
+    analyzer_out: Analyzer,
     analyzer_output: editor::SpectrumUI,
 }
 
@@ -75,9 +78,9 @@ impl<const CHANNELS: usize, const N: usize> Default for Abrasive<CHANNELS, N> {
             .params
             .each_ref()
             .map(|p| Filter::new(44.1e3, p.clone()));
-        let (analyzer_in, spectrum_in) = spectrum::SpectrumInput::new(CHANNELS, 2048);
+        let (analyzer_in, spectrum_in) = spectrum::Analyzer::new(44.1e3, CHANNELS, 2048);
         let analyzer_input = Arc::new(Mutex::new(spectrum_in));
-        let (analyzer_out, spectrum_out) = spectrum::SpectrumInput::new(CHANNELS, 2048);
+        let (analyzer_out, spectrum_out) = spectrum::Analyzer::new(44.1e3, CHANNELS, 2048);
         let analyzer_output = Arc::new(Mutex::new(spectrum_out));
         let samplerate = Arc::new(AtomicF32::new(44.1e3));
         Self {
@@ -125,13 +128,13 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, 2> {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        for filter in self.filters.iter_mut() {
-            let sr = buffer_config.sample_rate;
-            self.analyzer_in.update_smoothing(sr, self.params.analyzer_smooth.value());
-            self.analyzer_out.update_smoothing(sr, self.params.analyzer_smooth.value());
-            self.samplerate.set(sr);
-            filter.reset(sr);
-        }
+        let sr = buffer_config.sample_rate;
+        self.samplerate.set(sr);
+        self.analyzer_in.set_samplerate(sr);
+        self.analyzer_out.set_samplerate(sr);
+        self.analyzer_in.set_decay(self.params.analyzer_smooth.value());
+        self.analyzer_out.set_decay(self.params.analyzer_smooth.value());
+        self.set_filterbank_samplerate(sr);
         true
     }
 
@@ -139,28 +142,43 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, 2> {
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        context: &mut impl ProcessContext<Self>,
+        _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let sr = context.transport().sample_rate;
-        self.analyzer_in.update_smoothing(sr, self.params.analyzer_smooth.value());
-        self.analyzer_in.next_block(buffer);
+        self.analyzer_in.set_decay(self.params.analyzer_smooth.value());
+        self.analyzer_out.set_decay(self.params.analyzer_smooth.value());
+        self.analyzer_in.process_buffer(buffer);
+        self.process_filter_bank::<256>(buffer);
+        self.analyzer_out.process_buffer(buffer);
+        ProcessStatus::Normal
+    }
+}
 
-        for (_, mut block) in buffer.iter_blocks(256) {
-            for samples in block.iter_samples() {
-                let drive = self.params.drive.smoothed.next();
-                for sample in samples {
+impl<const CHANNELS: usize> Abrasive<CHANNELS, 2> {
+    fn set_filterbank_samplerate(&mut self, sr: f32) {
+        for filter in self.filters.iter_mut() {
+            filter.reset(sr);
+        }
+    }
+
+    fn process_filter_bank<const BLOCK_SIZE: usize>(&mut self, buffer: &mut Buffer) {
+        let mut drive = [0.; BLOCK_SIZE];
+        let mut scale = drive;
+
+        self.params.drive.smoothed.next_block_exact(&mut drive);
+        self.params.scale.smoothed.next_block_exact(&mut scale);
+
+        for (_, mut block) in buffer.iter_blocks(BLOCK_SIZE) {
+            for (samples, drive) in block.iter_samples().zip(drive) {
+                for sample in samples.into_iter() {
                     *sample *= drive;
                 }
             }
 
-            let scale = self.params.scale.smoothed.next();
             for filt in &mut self.filters {
-                filt.process_block(&mut block, scale);
+                filt.process_block::<BLOCK_SIZE>(&mut block, scale);
             }
-            for samples in block.iter_samples() {
-                let drive = self.params.drive.smoothed.next();
+            for (samples, drive) in block.iter_samples().zip(drive) {
                 for sample in samples {
-                    #[cfg(debug_assertions)]
                     if !sample.is_finite() {
                         // Set sample to zero on infinities
                         *sample = 0.;
@@ -169,10 +187,6 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, 2> {
                 }
             }
         }
-
-        self.analyzer_out.update_smoothing(sr, self.params.analyzer_smooth.value());
-        self.analyzer_out.next_block(buffer);
-        ProcessStatus::Normal
     }
 }
 

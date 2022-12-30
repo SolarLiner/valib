@@ -1,40 +1,29 @@
-use crate::{filter::FilterParams, spectrum::Spectrum};
-use atomic_float::AtomicF32;
-use nih_plug::{prelude::*};
-use nih_plug_vizia::vizia::{cache::BoundingBox, prelude::*, vg};
-use std::sync::{atomic::Ordering, Arc, Mutex};
-use triple_buffer::Output;
+use std::sync::{atomic::Ordering, Arc};
 
-/// A very abstract spectrum analyzer. This draws the magnitude spectrum's bins as vertical lines
-/// with the same distirubtion as the filter frequency parmaeter..
+use atomic_float::AtomicF32;
+use nih_plug::prelude::*;
+use nih_plug_vizia::vizia::{cache::BoundingBox, prelude::*, vg};
+
+use crate::filter::FilterParams;
+
 pub struct SpectrumAnalyzer {
     spectrum: super::SpectrumUI,
-    sample_rate: Arc<atomic_float::AtomicF32>,
-    frequency_range: FloatRange,
+    samplerate: Arc<AtomicF32>,
+    frange: FloatRange,
 }
 
 impl SpectrumAnalyzer {
-    /// Creates a new [`SpectrumAnalyzer`]. The uses custom drawing.
-    pub fn new<LSpectrum, LRate>(
+    pub fn new(
         cx: &mut Context,
-        spectrum: LSpectrum,
-        sample_rate: LRate,
-    ) -> Handle<Self>
-    where
-        LSpectrum: Lens<Target = Arc<Mutex<Output<Spectrum>>>>,
-        LRate: Lens<Target = Arc<AtomicF32>>,
-    {
+        spectrum: super::SpectrumUI,
+        sample_rate: Arc<AtomicF32>,
+    ) -> Handle<Self> {
         Self {
-            spectrum: spectrum.get(cx),
-            sample_rate: sample_rate.get(cx),
-
-            frequency_range: FilterParams::cutoff_range(),
+            spectrum: spectrum,
+            samplerate: sample_rate,
+            frange: FilterParams::cutoff_range(),
         }
-        .build(
-            cx,
-            // This is an otherwise empty element only used for custom drawing
-            |_cx| (),
-        )
+        .build(cx, |_cx| ())
     }
 
     fn draw_analyzer(&self, cx: &mut DrawContext, canvas: &mut Canvas, bounds: BoundingBox) {
@@ -44,21 +33,23 @@ impl SpectrumAnalyzer {
                 .with_line_width(line_width);
 
         let mut path = vg::Path::new();
-        path.move_to(bounds.x, bounds.y + bounds.h);
 
         let mut spectrum = self.spectrum.lock().unwrap();
         let spectrum = spectrum.read();
-        let nyquist = self.sample_rate.load(Ordering::Relaxed) / 2.0;
-        for (bin_idx, y) in spectrum.data.iter().copied().enumerate() {
-            let freq_norm = bin_idx as f32 / spectrum.data.len() as f32;
-            let frequency = freq_norm * nyquist;
-            let x = self.frequency_range.normalize(frequency);
-            if !(0.0..1.0).contains(&x) {
+        let nyquist = self.samplerate.load(Ordering::Relaxed) / 2.0;
+        for (i, y) in spectrum.data.iter().copied().enumerate() {
+            if i == 0 {
+                path.move_to(bounds.x - 100., bounds.y + bounds.h);
                 continue;
             }
-            let slope = 4.5;
-            let octavegain = util::db_to_gain(slope) * f32::log2(bin_idx as f32 + 1.) / 20.;
-            let h = (util::gain_to_db(y * octavegain) + 80.) / 80.;
+
+            let freq_norm = i as f32 / spectrum.data.len() as f32;
+            let frequency = freq_norm * nyquist;
+            let x = self.frange.normalize(frequency);
+            let slope = 3.;
+            let octavediff = frequency.log2() - 1000f32.log2();
+            let octavegain = slope * octavediff;
+            let h = (octavegain + util::gain_to_db(y) + 80.) / 80.;
 
             path.line_to(bounds.x + bounds.w * x, bounds.y + bounds.h * (1. - h));
         }

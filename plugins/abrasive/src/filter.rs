@@ -202,23 +202,31 @@ impl<const N: usize> Filter<N> {
     }
 
     #[inline(always)]
-    pub fn process_block(&mut self, block: &mut Block, scale: f32) {
-        for samples in block.iter_samples() {
-            self.update_coefficients_sample();
-            let equal_loudness = self.params.fdirty.value().equal_loudness();
-            // for (sample, filt) in samples.into_iter().zip(&mut self.filters) {
-            //     *sample = filt.process([*sample * equal_loudness])[0] / equal_loudness;
-            // }
-            let amps = self.params.amp.smoothed.next() * scale;
-            for (sample, filt) in samples.into_iter().zip(&mut self.svf) {
-                *sample *= equal_loudness;
-                *sample = self
-                    .params
-                    .ftype
-                    .value()
-                    .mix(amps, *sample, filt.process([*sample]))
-                    / equal_loudness;
-            }
+    pub fn process_block<const SIZE: usize>(&mut self, block: &mut Block, scale: [f32; SIZE]) {
+        for (samples, scale) in block.iter_samples().zip(scale) {
+            self.process_sample(samples, scale);
+        }
+    }
+
+    pub fn process_sample<'a>(
+        &mut self,
+        samples: impl IntoIterator<Item = &'a mut f32>,
+        scale: f32,
+    ) {
+        self.update_coefficients_sample();
+        let equal_loudness = self.params.fdirty.value().equal_loudness();
+        // for (sample, filt) in samples.into_iter().zip(&mut self.filters) {
+        //     *sample = filt.process([*sample * equal_loudness])[0] / equal_loudness;
+        // }
+        let amps = self.params.amp.smoothed.next() * scale;
+        for (sample, filt) in samples.into_iter().zip(&mut self.svf) {
+            *sample *= equal_loudness;
+            *sample = self
+                .params
+                .ftype
+                .value()
+                .mix(amps, *sample, filt.process([*sample]))
+                / equal_loudness;
         }
     }
 }
