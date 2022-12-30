@@ -215,9 +215,6 @@ impl<const N: usize> Filter<N> {
     ) {
         self.update_coefficients_sample();
         let equal_loudness = self.params.fdirty.value().equal_loudness();
-        // for (sample, filt) in samples.into_iter().zip(&mut self.filters) {
-        //     *sample = filt.process([*sample * equal_loudness])[0] / equal_loudness;
-        // }
         let amps = util::db_to_gain(util::gain_to_db(self.params.amp.smoothed.next()) * scale);
         for (sample, filt) in samples.into_iter().zip(&mut self.svf) {
             *sample *= equal_loudness;
