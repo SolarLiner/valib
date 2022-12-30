@@ -65,7 +65,7 @@ impl FilterType {
 
 impl Default for FilterType {
     fn default() -> Self {
-        Self::PeakSharp
+        Self::PeakShelf
     }
 }
 
@@ -77,7 +77,7 @@ pub enum DirtyType {
 
 impl Default for DirtyType {
     fn default() -> Self {
-        Self::Linear
+        Self::Tanh
     }
 }
 
