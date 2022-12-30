@@ -17,6 +17,7 @@ struct EqData<const N: usize> {
     params: Arc<AbrasiveParams<N>>,
     frequency_range: FloatRange,
     gain_range: FloatRange,
+    modulated: bool,
 }
 
 impl<const N: usize> View for EqData<N> {
@@ -26,17 +27,33 @@ impl<const N: usize> View for EqData<N> {
 
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
         let samplerate = self.samplerate.load(Ordering::Relaxed);
-        let filters = self.params.params.each_ref().map(|p| {
-            Svf::<f32, Linear>::new(
-                samplerate,
-                p.cutoff.smoothed.previous_value(),
-                (1. - p.q.smoothed.previous_value()).max(1e-3),
-            )
-        });
+
+        let filters = if self.modulated {
+            self.params.params.each_ref().map(|p| {
+                Svf::<f32, Linear>::new(
+                    samplerate,
+                    p.cutoff.smoothed.previous_value(),
+                    (1. - p.q.smoothed.previous_value()).max(1e-3),
+                )
+            })
+        } else {
+            self.params.params.each_ref().map(|p| {
+                Svf::<f32, Linear>::new(
+                    samplerate,
+                    p.cutoff.unmodulated_plain_value(),
+                    (1. - p.q.unmodulated_plain_value()).max(1e-3),
+                )
+            })
+        };
         let bounds = cx.bounds();
-        let mut path = vg::Path::new();
         let paint = vg::Paint::color(cx.font_color().copied().unwrap_or(Color::white()).into())
-            .with_line_width(3.);
+            .with_line_width(
+                // FIXME: Using border width as stroke-width is not currently accessible
+                cx.border_width()
+                    .map(|u| u.value_or(bounds.h, 1.))
+                    .unwrap_or(1.),
+            );
+        let mut path = vg::Path::new();
 
         for i in 0..bounds.w as usize {
             let x = i as f32 / bounds.w;
@@ -47,8 +64,17 @@ impl<const N: usize> View for EqData<N> {
                     let ftype = self.params.params[i].ftype.value();
                     ftype.freq_response(
                         &filters[i],
-                        self.params.scale.smoothed.previous_value()
-                            * self.params.params[i].amp.smoothed.previous_value(),
+                        if self.modulated {
+                            util::db_to_gain(
+                                self.params.scale.smoothed.previous_value()
+                                    * util::gain_to_db(
+                                        self.params.params[i].amp.smoothed.previous_value(),
+                                    ),
+                            )
+                        } else {
+                            util::db_to_gain(self.params.scale.unmodulated_plain_value()
+                                * util::gain_to_db(self.params.params[i].amp.unmodulated_plain_value()))
+                        },
                         jw,
                     )
                 })
@@ -67,7 +93,11 @@ impl<const N: usize> View for EqData<N> {
 }
 
 impl<const N: usize> EqData<N> {
-    pub fn new(samplerate: Arc<AtomicF32>, params: Arc<AbrasiveParams<N>>) -> Self {
+    pub fn new(
+        samplerate: Arc<AtomicF32>,
+        params: Arc<AbrasiveParams<N>>,
+        modulated: bool,
+    ) -> Self {
         Self {
             samplerate,
             params,
@@ -77,6 +107,7 @@ impl<const N: usize> EqData<N> {
                 max: util::db_to_gain(24.),
                 factor: FloatRange::gain_skew_factor(-24., 24.),
             },
+            modulated,
         }
     }
 }
@@ -89,5 +120,12 @@ pub(crate) fn build<const N: usize>(
     let samplerate = samplerate.get_val(cx);
     let params = params.get_val(cx);
 
-    EqData::new(samplerate, params).build(cx, |_| ())
+    ZStack::new(cx, |cx| {
+        EqData::new(samplerate.clone(), params.clone(), true)
+            .build(cx, |_| ())
+            .class("modulated");
+        EqData::new(samplerate, params, false)
+            .build(cx, |_| ())
+            .class("unmodulated");
+    })
 }

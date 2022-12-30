@@ -65,7 +65,7 @@ impl FilterType {
 
 impl Default for FilterType {
     fn default() -> Self {
-        Self::PeakSharp
+        Self::PeakShelf
     }
 }
 
@@ -77,7 +77,7 @@ pub enum DirtyType {
 
 impl Default for DirtyType {
     fn default() -> Self {
-        Self::Linear
+        Self::Tanh
     }
 }
 
@@ -117,7 +117,7 @@ impl Default for FilterParams {
             cutoff: FloatParam::new("Filter Cutoff", 300., Self::cutoff_range())
                 .with_value_to_string(formatters::v2s_f32_hz_then_khz_with_note_name(2, false))
                 .with_string_to_value(formatters::s2v_f32_hz_then_khz())
-                .with_smoother(SmoothingStyle::Exponential(10.)),
+                .with_smoother(SmoothingStyle::Exponential(50.)),
             q: FloatParam::new(
                 "Q",
                 0.5,
@@ -150,7 +150,7 @@ impl Default for FilterParams {
 impl FilterParams {
     pub fn cutoff_range() -> FloatRange {
         FloatRange::Skewed {
-            min: 5.,
+            min: 20.,
             max: 20e3,
             factor: FloatRange::skew_factor(-2.0),
         }
@@ -174,7 +174,7 @@ impl<const N: usize> Filter<N> {
     }
 
     pub fn reset(&mut self, samplerate: f32) {
-        let fc = self.params.cutoff.smoothed.next() /* / samplerate */;
+        let fc = self.params.cutoff.smoothed.next();
         let q = self.params.q.value();
         let nl = self.params.fdirty.value().as_dynamic_type();
         for f in &mut self.svf {
@@ -215,10 +215,7 @@ impl<const N: usize> Filter<N> {
     ) {
         self.update_coefficients_sample();
         let equal_loudness = self.params.fdirty.value().equal_loudness();
-        // for (sample, filt) in samples.into_iter().zip(&mut self.filters) {
-        //     *sample = filt.process([*sample * equal_loudness])[0] / equal_loudness;
-        // }
-        let amps = self.params.amp.smoothed.next() * scale;
+        let amps = util::db_to_gain(util::gain_to_db(self.params.amp.smoothed.next()) * scale);
         for (sample, filt) in samples.into_iter().zip(&mut self.svf) {
             *sample *= equal_loudness;
             *sample = self

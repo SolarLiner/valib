@@ -3,12 +3,16 @@
     color: #FFF;
 }
 
+spectrum {
+    stroke-width: 1px;
+}
+
 spectrum.input {
-    color: #4d5899;
+    color: #333b66;
 }
 
 spectrum.output {
-    color: #AFE;
+    color: #558077;
 }
 
 #side-panel {
@@ -19,4 +23,15 @@ spectrum.output {
 
 #side-panel.visible {
     width: 200px;
+}
+
+/* FIXME: These use border-width as stroke-width is not accessible within the code */
+eq.unmodulated {
+    color: #d9fff7;
+    border-width: 2px;
+}
+
+eq.modulated {
+    color: #0F7;
+    border-width: 1.5px;
 }

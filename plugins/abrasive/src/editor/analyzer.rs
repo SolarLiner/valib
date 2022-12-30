@@ -16,11 +16,11 @@ impl SpectrumAnalyzer {
     pub fn new(
         cx: &mut Context,
         spectrum: super::SpectrumUI,
-        sample_rate: Arc<AtomicF32>,
+        samplerate: Arc<AtomicF32>,
     ) -> Handle<Self> {
         Self {
-            spectrum: spectrum,
-            samplerate: sample_rate,
+            spectrum,
+            samplerate,
             frange: FilterParams::cutoff_range(),
         }
         .build(cx, |_cx| ())
