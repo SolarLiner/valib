@@ -1,9 +1,8 @@
-use std::sync::Arc;
-
 use nih_plug::prelude::*;
-use nih_plug_vizia::{vizia::modifiers::StyleModifiers, vizia::prelude::*};
-use nih_plug_vizia::widgets::GenericUi;
-use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
+use nih_plug_vizia::{
+    vizia::{modifiers::StyleModifiers, prelude::*},
+    widgets::GenericUi,
+};
 
 use crate::editor::Data;
 
