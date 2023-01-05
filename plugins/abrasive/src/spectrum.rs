@@ -112,9 +112,9 @@ impl Analyzer {
         self.scratch.samplerate = self.samplerate.load(Relaxed);
         self.stft.process_analyze_only(buffer, 2, |_, buffer| {
             multiply_with_window(buffer, &self.window);
-            if let Err(_) = self
+            if self
                 .plan
-                .process_with_scratch(buffer, &mut self.fft_buffer, &mut [])
+                .process_with_scratch(buffer, &mut self.fft_buffer, &mut []).is_err()
             {
                 self.fft_buffer.fill(Complex32::zero());
             }

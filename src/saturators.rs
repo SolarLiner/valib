@@ -1,4 +1,4 @@
-use num_traits::{Float, NumCast};
+use num_traits::NumCast;
 use numeric_literals::replace_float_literals;
 
 use crate::Scalar;

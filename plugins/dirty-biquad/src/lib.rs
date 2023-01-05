@@ -21,7 +21,7 @@ enum NLType {
 }
 
 impl NLType {
-    pub fn as_dynamic_saturator(&self) -> Dynamic {
+    pub fn as_dynamic_saturator(&self) -> Dynamic<f32> {
         match self {
             Self::Linear => Dynamic::Linear,
             Self::Clipped => Dynamic::HardClipper,
@@ -75,7 +75,7 @@ impl Default for PluginParams {
 #[derive(Debug)]
 struct Plugin {
     params: Arc<PluginParams>,
-    biquad: [Biquad<f32, Dynamic>; 2],
+    biquad: [Biquad<f32, Dynamic<f32>>; 2],
 }
 
 impl Plugin {

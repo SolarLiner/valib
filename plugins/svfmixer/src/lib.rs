@@ -1,6 +1,6 @@
 use nih_plug::prelude::*;
 use std::sync::Arc;
-use valib::saturators::{DiodeClipper, Tanh};
+use valib::saturators::{DiodeClipper};
 use valib::svf::Svf;
 use valib::DSP;
 
