@@ -15,13 +15,13 @@ pub struct Biquad<T, S> {
     sats: [S; 2],
 }
 
-impl<T> Biquad<T, Dynamic> {
-    pub fn with_saturators(mut self, a: Dynamic, b: Dynamic) -> Biquad<T, Dynamic> {
+impl<T> Biquad<T, Dynamic<T>> {
+    pub fn with_saturators(mut self, a: Dynamic<T>, b: Dynamic<T>) -> Biquad<T, Dynamic<T>> {
         self.set_saturators(a, b);
         self
     }
 
-    pub fn set_saturators(&mut self, a: Dynamic, b: Dynamic) {
+    pub fn set_saturators(&mut self, a: Dynamic<T>, b: Dynamic<T>) {
         self.sats = [a, b];
     }
 }

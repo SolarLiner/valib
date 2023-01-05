@@ -1,8 +1,8 @@
 use nih_plug::prelude::*;
 use std::sync::Arc;
-use valib::DSP;
-use valib::saturators::Tanh;
+use valib::saturators::{DiodeClipper, Tanh};
 use valib::svf::Svf;
+use valib::DSP;
 
 #[derive(Debug, Params)]
 struct PluginParams {
@@ -84,7 +84,7 @@ impl Default for PluginParams {
 #[derive(Debug)]
 struct Plugin {
     params: Arc<PluginParams>,
-    svf: [Svf<f32, Tanh>; 2],
+    svf: [Svf<f32, DiodeClipper<f32>>; 2],
 }
 
 impl Default for Plugin {

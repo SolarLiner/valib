@@ -24,7 +24,7 @@ impl NLType {
     pub fn as_dynamic_saturator(&self) -> Dynamic {
         match self {
             Self::Linear => Dynamic::Linear,
-            Self::Clipped => Dynamic::Clipper,
+            Self::Clipped => Dynamic::HardClipper,
             Self::Tanh => Dynamic::Tanh,
         }
     }

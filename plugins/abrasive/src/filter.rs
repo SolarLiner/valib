@@ -4,7 +4,7 @@ use nih_plug::buffer::Block;
 use nih_plug::prelude::*;
 use realfft::num_complex::Complex;
 
-use valib::saturators::{Dynamic, Saturator};
+use valib::saturators::{Blend, DiodeClipper, Dynamic, Saturator};
 use valib::svf::Svf;
 use valib::{DspAnalysis, DSP};
 
@@ -70,29 +70,33 @@ impl Default for FilterType {
 }
 
 #[derive(Debug, Copy, Clone, Enum, Eq, PartialEq)]
-pub enum DirtyType {
-    Linear,
-    Tanh,
+pub enum ResonanceClip {
+    None,
+    Diode,
+    Buffer,
 }
 
-impl Default for DirtyType {
+impl Default for ResonanceClip {
     fn default() -> Self {
-        Self::Tanh
+        Self::Diode
     }
 }
 
-impl DirtyType {
-    pub fn as_dynamic_type(&self) -> Dynamic {
+impl ResonanceClip {
+    pub fn as_dynamic_type(&self) -> Dynamic<f32> {
         match self {
-            Self::Linear => Dynamic::Linear,
-            Self::Tanh => Dynamic::Tanh,
+            Self::None => Dynamic::Linear,
+            Self::Diode => Dynamic::DiodeClipper(DiodeClipper::default()),
+            Self::Buffer => Dynamic::SoftClipper(Blend::default()),
         }
     }
 
+    #[inline(always)]
     pub fn equal_loudness(&self) -> f32 {
         match self {
-            Self::Linear => 1.,
-            Self::Tanh => util::db_to_gain(-40.),
+            Self::None => 1.,
+            Self::Diode => util::db_to_gain(-40.),
+            Self::Buffer => util::db_to_gain(-20.),
         }
     }
 }
@@ -107,8 +111,8 @@ pub struct FilterParams {
     pub(crate) amp: FloatParam,
     #[id = "type"]
     pub(crate) ftype: EnumParam<FilterType>,
-    #[id = "dirty"]
-    pub(crate) fdirty: EnumParam<DirtyType>,
+    #[id = "rclip"]
+    pub(crate) resclip: EnumParam<ResonanceClip>,
 }
 
 impl Default for FilterParams {
@@ -124,10 +128,13 @@ impl Default for FilterParams {
                 FloatRange::Skewed {
                     min: 0.,
                     max: 1.,
-                    factor: FloatRange::skew_factor(-1.5),
+                    factor: FloatRange::skew_factor(1.5),
                 },
             )
-            .with_smoother(SmoothingStyle::Exponential(50.)),
+            .with_smoother(SmoothingStyle::Exponential(50.))
+            .with_string_to_value(formatters::s2v_f32_percentage())
+            .with_value_to_string(formatters::v2s_f32_percentage(2))
+            .with_unit(" %"),
             amp: FloatParam::new(
                 "Gain",
                 1.,
@@ -140,9 +147,9 @@ impl Default for FilterParams {
             .with_smoother(SmoothingStyle::Exponential(50.))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_unit("dB"),
+            .with_unit(" dB"),
             ftype: EnumParam::new("Filter Type", FilterType::default()),
-            fdirty: EnumParam::new("Nonlinear", DirtyType::default()),
+            resclip: EnumParam::new("Resonance clipping", ResonanceClip::default()),
         }
     }
 }
@@ -160,7 +167,7 @@ impl FilterParams {
 #[derive(Debug, Clone)]
 pub struct Filter<const N: usize> {
     pub params: Arc<FilterParams>,
-    svf: [Svf<f32, Dynamic>; N],
+    svf: [Svf<f32, Dynamic<f32>>; N],
 }
 
 impl<const N: usize> Filter<N> {
@@ -176,7 +183,7 @@ impl<const N: usize> Filter<N> {
     pub fn reset(&mut self, samplerate: f32) {
         let fc = self.params.cutoff.smoothed.next();
         let q = self.params.q.value();
-        let nl = self.params.fdirty.value().as_dynamic_type();
+        let nl = self.params.resclip.value().as_dynamic_type();
         for f in &mut self.svf {
             f.reset();
             f.set_cutoff(fc);
@@ -193,7 +200,7 @@ impl<const N: usize> Filter<N> {
         } else {
             self.params.q.smoothed.next()
         };
-        let nl = self.params.fdirty.value().as_dynamic_type();
+        let nl = self.params.resclip.value().as_dynamic_type();
         for f in &mut self.svf {
             f.set_cutoff(fc);
             f.set_r(1. - q);
@@ -214,7 +221,7 @@ impl<const N: usize> Filter<N> {
         scale: f32,
     ) {
         self.update_coefficients_sample();
-        let equal_loudness = self.params.fdirty.value().equal_loudness();
+        let equal_loudness = self.params.resclip.value().equal_loudness();
         let amps = util::db_to_gain(util::gain_to_db(self.params.amp.smoothed.next()) * scale);
         for (sample, filt) in samples.into_iter().zip(&mut self.svf) {
             *sample *= equal_loudness;
