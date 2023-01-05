@@ -55,8 +55,9 @@ impl<const N: usize> View for EqData<N> {
             );
         let mut path = vg::Path::new();
 
-        for i in 0..bounds.w as usize {
-            let x = i as f32 / bounds.w;
+        for j in 0..4 * bounds.w as usize {
+            let i = j as f32 / 4.;
+            let x = i / bounds.w;
             let freq = self.frequency_range.unnormalize(x);
             let jw = TAU * freq;
             let y = (0..N)
@@ -72,8 +73,12 @@ impl<const N: usize> View for EqData<N> {
                                     ),
                             )
                         } else {
-                            util::db_to_gain(self.params.scale.unmodulated_plain_value()
-                                * util::gain_to_db(self.params.params[i].amp.unmodulated_plain_value()))
+                            util::db_to_gain(
+                                self.params.scale.unmodulated_plain_value()
+                                    * util::gain_to_db(
+                                        self.params.params[i].amp.unmodulated_plain_value(),
+                                    ),
+                            )
                         },
                         jw,
                     )
@@ -81,7 +86,7 @@ impl<const N: usize> View for EqData<N> {
                 .product::<Complex<f32>>()
                 .norm();
             let y = (util::gain_to_db(y) + 24.) / 48.;
-            if i == 0 {
+            if j == 0 {
                 path.move_to(bounds.x + bounds.w * x, bounds.y + bounds.h * (1. - y));
             } else {
                 path.line_to(bounds.x + bounds.w * x, bounds.y + bounds.h * (1. - y));
