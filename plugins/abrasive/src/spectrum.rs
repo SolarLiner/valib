@@ -129,7 +129,7 @@ impl Analyzer {
                 //         -self.scratch.samplerate / self.window.len() as f32 / 2. * self.decay.get(),
                 //     );
                 let decay = f32::ln(1e-3) / self.decay.get();
-                let mix= f32::exp(decay * 1024. / self.scratch.samplerate);
+                let mix = f32::exp(decay * 1024. / self.scratch.samplerate);
                 *scratch = lerp(mix, fft, *scratch).max(fft);
             }
         });

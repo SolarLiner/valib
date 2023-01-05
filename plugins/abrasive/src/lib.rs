@@ -56,7 +56,8 @@ impl<const N: usize> Default for AbrasiveParams<N> {
                     max: 10e3,
                     factor: FloatRange::skew_factor(-1.5),
                 },
-            ).with_unit("ms"),
+            )
+            .with_unit("ms"),
         }
     }
 }
@@ -132,8 +133,10 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, 2> {
         self.samplerate.set(sr);
         self.analyzer_in.set_samplerate(sr);
         self.analyzer_out.set_samplerate(sr);
-        self.analyzer_in.set_decay(self.params.analyzer_smooth.value());
-        self.analyzer_out.set_decay(self.params.analyzer_smooth.value());
+        self.analyzer_in
+            .set_decay(self.params.analyzer_smooth.value());
+        self.analyzer_out
+            .set_decay(self.params.analyzer_smooth.value());
         self.set_filterbank_samplerate(sr);
         true
     }
@@ -144,8 +147,10 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, 2> {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        self.analyzer_in.set_decay(self.params.analyzer_smooth.value());
-        self.analyzer_out.set_decay(self.params.analyzer_smooth.value());
+        self.analyzer_in
+            .set_decay(self.params.analyzer_smooth.value());
+        self.analyzer_out
+            .set_decay(self.params.analyzer_smooth.value());
         self.analyzer_in.process_buffer(buffer);
         self.process_filter_bank::<256>(buffer);
         self.analyzer_out.process_buffer(buffer);

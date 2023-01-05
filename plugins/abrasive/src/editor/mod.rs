@@ -2,8 +2,8 @@ use std::sync::{Arc, Mutex};
 
 use atomic_float::AtomicF32;
 use nih_plug::prelude::*;
-use nih_plug_vizia::{assets, create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
 use nih_plug_vizia::widgets::ResizeHandle;
+use nih_plug_vizia::{assets, create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
 use triple_buffer::Output;
 
 use analyzer::SpectrumAnalyzer;
@@ -12,8 +12,8 @@ use crate::spectrum::Spectrum;
 
 mod analyzer;
 mod background;
-mod eq;
 mod band;
+mod eq;
 
 pub type SpectrumUI = Arc<Mutex<Output<Spectrum>>>;
 

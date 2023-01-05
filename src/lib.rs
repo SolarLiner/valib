@@ -43,7 +43,10 @@ impl<const I: usize, const O: usize, D: DspAnalog<I, O>> DspAnalysis<I, O> for D
     }
 
     #[inline(always)]
-    fn freq_response(&self, jw: [Self::Sample; I]) -> [Complex<Self::Sample>; O] where Self::Sample: RealField {
+    fn freq_response(&self, jw: [Self::Sample; I]) -> [Complex<Self::Sample>; O]
+    where
+        Self::Sample: RealField,
+    {
         self.h_s(jw.map(|jw| Complex::new(D::Sample::zero(), jw)))
     }
 }
