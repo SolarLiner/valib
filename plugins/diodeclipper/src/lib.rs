@@ -110,9 +110,9 @@ impl Plugin for ClipperPlugin {
 
     fn initialize(
         &mut self,
-        bus_config: &BusConfig,
+        _bus_config: &BusConfig,
         buffer_config: &BufferConfig,
-        context: &mut impl InitContext<Self>,
+        _context: &mut impl InitContext<Self>,
     ) -> bool {
         let samplerate = buffer_config.sample_rate;
         self.dc_couple_in = std::array::from_fn(|_| Biquad::highpass(3. / samplerate, 1.));

@@ -439,8 +439,8 @@ impl<T: FromPrimitive> DiodeClipperModel<T> {
         assert!((1..=5).contains(&nf) && (1..=5).contains(&nb), "# diodes in clipper must be within 1..=5");
         let [a,b,si,so] = match (nf,nb) {
             (1, 1) => [
-                4.435713979386322e-05,
-                4.435638644124075e-05,
+                4.435_713_979_386_322e-5,
+                4.435_638_644_124_075e-5,
                 0.3001402495706703,
                 1.676015028548096,
             ],
