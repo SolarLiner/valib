@@ -7,6 +7,7 @@
       <sourceFolder url="file://$MODULE_DIR$/xtask/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/plugins/abrasive/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/plugins/dirty-biquad/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/plugins/diodeclipper/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

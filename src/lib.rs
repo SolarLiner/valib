@@ -9,6 +9,8 @@ use std::marker::PhantomData;
 pub mod biquad;
 pub mod saturators;
 pub mod svf;
+pub mod math;
+pub mod clippers;
 
 pub trait Scalar: Float + FloatConst + FloatSample {}
 

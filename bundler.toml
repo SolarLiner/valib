@@ -6,3 +6,6 @@ name = "Dirty Biquad"
 
 [abrasive]
 name = "Abrasive EQ"
+
+[diodeclipper]
+name = "Diode Clipper"

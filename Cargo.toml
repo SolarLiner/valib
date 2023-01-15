@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace]
-members = ["plugins/svfmixer", "plugins/dirty-biquad", "plugins/abrasive", "xtask"]
+members = ["plugins/svfmixer", "plugins/dirty-biquad", "plugins/abrasive", "plugins/diodeclipper", "xtask"]
 
 [dependencies]
 dasp_sample = "0.11.0"
