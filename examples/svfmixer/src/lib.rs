@@ -150,7 +150,7 @@ impl nih_plug::prelude::Plugin for Plugin {
         let mut bp_gain = [0.; MAX_BUFFER_SIZE];
         let mut hp_gain = [0.; MAX_BUFFER_SIZE];
         for (_, mut block) in buffer.iter_blocks(MAX_BUFFER_SIZE) {
-            let len = block.len();
+            let len = block.samples();
             let os_len = OVERSAMPLE * len;
             self.params.fc.smoothed.next_block_exact(&mut fc[..len]);
             self.params.q.smoothed.next_block_exact(&mut q[..len]);

@@ -181,7 +181,7 @@ impl nih_plug::prelude::Plugin for Plugin {
         let mut os_q = [0.; OVERSAMPLE * MAX_BLOCK_SIZE];
         let mut os_drive = [0.; OVERSAMPLE * MAX_BLOCK_SIZE];
         for (_, mut block) in buffer.iter_blocks(MAX_BLOCK_SIZE) {
-            let len = block.len();
+            let len = block.samples();
             let os_len = OVERSAMPLE * len;
             self.params.fc.smoothed.next_block_exact(&mut fc[..len]);
             self.params.q.smoothed.next_block_exact(&mut q[..len]);

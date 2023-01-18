@@ -178,7 +178,7 @@ impl Plugin for ClipperPlugin {
         for (_, mut block) in buffer.iter_blocks(MAX_BLOCK_SIZE) {
             let mut drive = [0.; MAX_BLOCK_SIZE];
             let mut drive_os = [0.; OVERSAMPLE * MAX_BLOCK_SIZE];
-            let len = block.len();
+            let len = block.samples();
             self.params
                 .drive
                 .smoothed
