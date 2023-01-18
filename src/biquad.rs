@@ -190,14 +190,16 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
 impl<T: Scalar, S: Saturator<T>> DSP<1, 1> for Biquad<T, S> {
     type Sample = T;
 
+    #[inline]
+    #[replace_float_literals(T::from(literal).unwrap())]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let x = x[0];
         let in0 = x * self.b[0] + self.s[0];
-        let in1 = x * self.b[1] + self.s[1] + self.sats[0].saturate(in0) * self.na[0];
-        let in2 = x * self.b[2] + self.sats[1].saturate(in0) * self.na[1];
+        let in1 = x * self.b[1] + self.s[1] + self.sats[0].saturate(in0 / 10.) * 10. * self.na[0];
+        let in2 = x * self.b[2] + self.sats[1].saturate(in0 / 10.) * 10. * self.na[1];
         self.s = [in1, in2];
-        self.sats[0].update_state(in0);
-        self.sats[1].update_state(in0);
+        self.sats[0].update_state(in0 / 10.);
+        self.sats[1].update_state(in0 / 10.);
         [in0]
     }
 }

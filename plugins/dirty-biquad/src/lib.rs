@@ -1,10 +1,18 @@
 #![feature(default_free_fn)]
 
-use nih_plug::prelude::*;
 use std::default::default;
 use std::sync::Arc;
+
+use nih_plug::prelude::*;
+
+use valib::clippers::DiodeClipperModel;
+use valib::oversample::Oversample;
 use valib::saturators::Dynamic;
+use valib::util::lerp_block;
 use valib::{biquad::Biquad, DSP};
+
+const OVERSAMPLE: usize = 2;
+const MAX_BLOCK_SIZE: usize = 512;
 
 #[derive(Debug, Enum, Eq, PartialEq)]
 enum FilterType {
@@ -18,6 +26,7 @@ enum NLType {
     Linear,
     Clipped,
     Tanh,
+    Diode,
 }
 
 impl NLType {
@@ -26,6 +35,7 @@ impl NLType {
             Self::Linear => Dynamic::Linear,
             Self::Clipped => Dynamic::HardClipper,
             Self::Tanh => Dynamic::Tanh,
+            Self::Diode => Dynamic::DiodeClipper(DiodeClipperModel::new_silicon(1, 1)),
         }
     }
 }
@@ -36,6 +46,8 @@ struct PluginParams {
     fc: FloatParam,
     #[id = "q"]
     q: FloatParam,
+    #[id = "drive"]
+    drive: FloatParam,
     #[id = "type"]
     filter_type: EnumParam<FilterType>,
     #[id = "nl"]
@@ -66,6 +78,20 @@ impl Default for PluginParams {
                 },
             )
             .with_smoother(SmoothingStyle::Exponential(50.)),
+            drive: FloatParam::new(
+                "Drive",
+                1.,
+                FloatRange::SymmetricalSkewed {
+                    min: util::db_to_gain(-36.),
+                    max: util::db_to_gain(36.),
+                    center: 1.,
+                    factor: FloatRange::skew_factor(-2.),
+                },
+            )
+            .with_unit(" dB")
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_smoother(SmoothingStyle::Exponential(100.)),
             filter_type: EnumParam::new("Filter Type", FilterType::Lowpass),
             nonlinearity: EnumParam::new("Nonlinearity", NLType::Linear),
         }
@@ -76,6 +102,7 @@ impl Default for PluginParams {
 struct Plugin {
     params: Arc<PluginParams>,
     biquad: [Biquad<f32, Dynamic<f32>>; 2],
+    oversample: [Oversample<f32>; 2],
 }
 
 impl Plugin {
@@ -91,22 +118,8 @@ impl Plugin {
             };
             x.set_saturators(nltype, nltype);
         }
-    }
-
-    fn update_filters_sample(&mut self, samplerate: f32) {
-        let fc = self.params.fc.smoothed.next() / samplerate;
-        let q = self.params.q.smoothed.next();
-
-        let filter = match self.params.filter_type.value() {
-            FilterType::Lowpass => Biquad::lowpass(fc, q),
-            FilterType::Bandpass => Biquad::bandpass_peak0(fc, q),
-            FilterType::Highpass => Biquad::highpass(fc, q),
-        };
-
-        let nltype = self.params.nonlinearity.value().as_dynamic_saturator();
-        for f in &mut self.biquad {
-            f.update_coefficients(&filter);
-            f.set_saturators(nltype, nltype);
+        for os in &mut self.oversample {
+            os.reset();
         }
     }
 }
@@ -117,12 +130,13 @@ impl Default for Plugin {
         Self {
             params,
             biquad: std::array::from_fn(move |_| Biquad::new(default(), default())),
+            oversample: std::array::from_fn(|_| Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE)),
         }
     }
 }
 
 impl nih_plug::prelude::Plugin for Plugin {
-    const NAME: &'static str = "SVF Mixer";
+    const NAME: &'static str = "Dirty Biquad";
     const VENDOR: &'static str = "SolarLiner";
     const URL: &'static str = "https://github.com/SolarLiner/valib";
     const EMAIL: &'static str = "me@solarliner.dev";
@@ -159,10 +173,43 @@ impl nih_plug::prelude::Plugin for Plugin {
         _aux: &mut AuxiliaryBuffers,
         ctx: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        for samples in buffer.iter_samples() {
-            self.update_filters_sample(ctx.transport().sample_rate);
-            for (ch, f) in samples.into_iter().zip(&mut self.biquad) {
-                *ch = f.process([*ch])[0];
+        let os_samplerate = ctx.transport().sample_rate * OVERSAMPLE as f32;
+        let mut fc = [0.; MAX_BLOCK_SIZE];
+        let mut q = [0.; MAX_BLOCK_SIZE];
+        let mut drive = [0.; MAX_BLOCK_SIZE];
+        let mut os_fc = [0.; OVERSAMPLE * MAX_BLOCK_SIZE];
+        let mut os_q = [0.; OVERSAMPLE * MAX_BLOCK_SIZE];
+        let mut os_drive = [0.; OVERSAMPLE * MAX_BLOCK_SIZE];
+        for (_, mut block) in buffer.iter_blocks(MAX_BLOCK_SIZE) {
+            let len = block.len();
+            let os_len = OVERSAMPLE * len;
+            self.params.fc.smoothed.next_block_exact(&mut fc[..len]);
+            self.params.q.smoothed.next_block_exact(&mut q[..len]);
+            self.params.drive.smoothed.next_block_exact(&mut drive[..len]);
+            lerp_block(&mut os_fc[..os_len], &fc[..len]);
+            lerp_block(&mut os_q[..os_len], &q[..len]);
+            lerp_block(&mut os_drive[..os_len], &drive[..len]);
+
+            for ch in 0..2 {
+                let buffer = block.get_mut(ch).unwrap();
+                let mut os_buffer = self.oversample[ch].oversample(buffer);
+                for (i, s) in os_buffer.iter_mut().enumerate() {
+                    let fc = os_fc[i] / os_samplerate;
+                    let q = os_q[i];
+                    let drive = os_drive[i];
+                    let f = &mut self.biquad[ch];
+                    let filter = match self.params.filter_type.value() {
+                        FilterType::Lowpass => Biquad::lowpass(fc, q),
+                        FilterType::Bandpass => Biquad::bandpass_peak0(fc, q),
+                        FilterType::Highpass => Biquad::highpass(fc, q),
+                    };
+
+                    let nltype = self.params.nonlinearity.value().as_dynamic_saturator();
+                    f.update_coefficients(&filter);
+                    f.set_saturators(nltype, nltype);
+                    *s = f.process([*s * drive])[0] / drive;
+                }
+                os_buffer.finish(buffer);
             }
         }
 

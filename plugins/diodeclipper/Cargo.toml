@@ -9,3 +9,6 @@ crate-type = ["cdylib"]
 [dependencies]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 valib = { path = "../.." }
+
+[profile.release]
+debug = true

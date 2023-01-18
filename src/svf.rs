@@ -26,7 +26,7 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
     type Sample = T;
 
     #[inline(always)]
-    // #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from(literal).unwrap())]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
         let [s1, s2] = self.s;
 
@@ -40,9 +40,12 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
         let lp = v2 + s2;
         let s2 = lp + v2;
 
-        self.s = [self.sats[0].saturate(s1), self.sats[1].saturate(s2)];
-        self.sats[0].update_state(s1);
-        self.sats[1].update_state(s2);
+        self.s = [
+            self.sats[0].saturate(s1 / 10.) * 10.,
+            self.sats[1].saturate(s2 / 10.) * 10.,
+        ];
+        self.sats[0].update_state(s1 / 10.);
+        self.sats[1].update_state(s2 / 10.);
         [lp, bp, hp]
     }
 }

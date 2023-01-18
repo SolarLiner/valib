@@ -1,9 +1,14 @@
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
 use valib::clippers::DiodeClipperModel;
+use valib::oversample::Oversample;
 use valib::{biquad::Biquad, clippers::DiodeClipper, saturators::Linear, DSP};
+
+const OVERSAMPLE: usize = 4;
+const MAX_BLOCK_SIZE: usize = 512;
 
 #[derive(Debug, Enum, Eq, PartialEq)]
 enum DiodeType {
@@ -45,10 +50,12 @@ struct ClipperParams {
     model: BoolParam,
     #[id = "qlty"]
     quality: IntParam,
+    #[id = "reset"]
+    reset: BoolParam,
 }
 
-impl Default for ClipperParams {
-    fn default() -> Self {
+impl ClipperParams {
+    fn new(reset_atomic: Arc<AtomicBool>) -> Self {
         Self {
             dtype: EnumParam::new("Diode", DiodeType::Silicon),
             nf: IntParam::new("# Forward", 1, IntRange::Linear { min: 1, max: 5 }),
@@ -68,6 +75,10 @@ impl Default for ClipperParams {
             .with_unit(" dB"),
             model: BoolParam::new("Use Model", false),
             quality: IntParam::new("Sim Quality", 50, IntRange::Linear { min: 10, max: 100 }),
+            reset: BoolParam::new("Reset", false)
+                .with_callback(Arc::new(move |_| {
+                    reset_atomic.store(true, Ordering::Release)
+                })),
         }
     }
 }
@@ -78,16 +89,22 @@ struct ClipperPlugin {
     clipper_model: [DiodeClipperModel<f32>; 2],
     dc_couple_in: [Biquad<f32, Linear>; 2],
     dc_couple_out: [Biquad<f32, Linear>; 2],
+    oversample: [Oversample<f32>; 2],
+    force_reset: Arc<AtomicBool>,
 }
 
 impl Default for ClipperPlugin {
     fn default() -> Self {
+        let samplerate = 44.1e3 * OVERSAMPLE as f32;
+        let force_reset = Arc::new(AtomicBool::new(false));
         Self {
-            params: Arc::new(ClipperParams::default()),
+            params: Arc::new(ClipperParams::new(force_reset.clone())),
             clipper_nr: std::array::from_fn(|_| DiodeClipper::new_germanium(1, 1, 0.)),
             clipper_model: std::array::from_fn(|_| DiodeClipperModel::new_silicon(1, 1)),
-            dc_couple_in: std::array::from_fn(|_| Biquad::highpass(3. / 44.1e3, 1.)),
-            dc_couple_out: std::array::from_fn(|_| Biquad::highpass(5. / 44.1e3, 1.)),
+            dc_couple_in: std::array::from_fn(|_| Biquad::highpass(20. / samplerate, 1.)),
+            dc_couple_out: std::array::from_fn(|_| Biquad::highpass(20. / samplerate, 1.)),
+            oversample: std::array::from_fn(|_| Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE)),
+            force_reset,
         }
     }
 }
@@ -114,9 +131,9 @@ impl Plugin for ClipperPlugin {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        let samplerate = buffer_config.sample_rate;
-        self.dc_couple_in = std::array::from_fn(|_| Biquad::highpass(3. / samplerate, 1.));
-        self.dc_couple_out = std::array::from_fn(|_| Biquad::highpass(5. / samplerate, 1.));
+        let samplerate = buffer_config.sample_rate * OVERSAMPLE as f32;
+        self.dc_couple_in = std::array::from_fn(|_| Biquad::highpass(20. / samplerate, 1.));
+        self.dc_couple_out = std::array::from_fn(|_| Biquad::highpass(20. / samplerate, 1.));
         true
     }
 
@@ -128,6 +145,9 @@ impl Plugin for ClipperPlugin {
         {
             ele.reset();
         }
+        for os in self.oversample.iter_mut() {
+            os.reset();
+        }
     }
 
     fn process(
@@ -136,6 +156,10 @@ impl Plugin for ClipperPlugin {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        if self.force_reset.load(Ordering::Acquire) {
+            self.force_reset.store(false, Ordering::Release);
+            self.reset();
+        }
         for cl in &mut self.clipper_nr {
             *cl = self.params.dtype.value().get_clipper_model(
                 self.params.nf.value() as usize,
@@ -151,19 +175,45 @@ impl Plugin for ClipperPlugin {
                 .get_model_params(self.params.nf.value() as _, self.params.nb.value() as _);
         }
 
-        for mut samples in buffer.iter_samples() {
-            let drive = self.params.drive.smoothed.next();
-            for (i, s) in samples.iter_mut().enumerate() {
-                *s = self.dc_couple_in[i].process([*s])[0];
-                if self.params.model.value() {
-                    *s = self.clipper_model[i].process([*s * drive])[0];
-                } else {
-                    let [c] = self.clipper_nr[i].process([*s * drive]);
-                    *s = c;
+        for (_, mut block) in buffer.iter_blocks(MAX_BLOCK_SIZE) {
+            let mut drive = [0.; MAX_BLOCK_SIZE];
+            let mut drive_os = [0.; OVERSAMPLE * MAX_BLOCK_SIZE];
+            let len = block.len();
+            self.params
+                .drive
+                .smoothed
+                .next_block_exact(&mut drive[..len]);
+            valib::util::lerp_block(&mut drive_os[..OVERSAMPLE * len], &drive[..len]);
+            for ch in 0..block.channels() {
+                let buffer = block.get_mut(ch).unwrap();
+                let mut os_buffer = self.oversample[ch].oversample(buffer);
+                for (i, s) in os_buffer.iter_mut().enumerate() {
+                    let drive = drive_os[i];
+                    *s = self.dc_couple_in[ch].process([*s])[0];
+                    if self.params.model.value() {
+                        *s = self.clipper_model[ch].process([*s * drive])[0];
+                    } else {
+                        *s = self.clipper_nr[ch].process([*s * drive])[0];
+                    }
+                    *s = self.dc_couple_out[ch].process([*s * 2. / drive])[0];
                 }
-                *s = self.dc_couple_out[i].process([*s * 2. / drive])[0];
+                os_buffer.finish(buffer);
             }
         }
+
+        // for mut samples in buffer.iter_samples() {
+        //     let drive = self.params.drive.smoothed.next();
+        //     for (i, s) in samples.iter_mut().enumerate() {
+        //         *s = self.dc_couple_in[i].process([*s])[0];
+        //         if self.params.model.value() {
+        //             *s = self.clipper_model[i].process([*s * drive])[0];
+        //         } else {
+        //             let [c] = self.clipper_nr[i].process([*s * drive]);
+        //             *s = c;
+        //         }
+        //         *s = self.dc_couple_out[i].process([*s * 2. / drive])[0];
+        //     }
+        // }
 
         ProcessStatus::Normal
     }

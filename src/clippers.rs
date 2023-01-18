@@ -5,6 +5,7 @@ use nalgebra::{ComplexField, SMatrix, SVector};
 use num_traits::FromPrimitive;
 use numeric_literals::replace_float_literals;
 
+use crate::saturators::Saturator;
 use crate::{
     math::{newton_rhapson_steps, RootEq},
     Scalar, DSP,
@@ -104,6 +105,7 @@ impl<T: Scalar + ComplexField + fmt::Debug> DSP<1, 1> for DiodeClipper<T> {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DiodeClipperModel<T> {
     pub a: T,
     pub b: T,
@@ -118,7 +120,10 @@ pub struct DiodeClipperModel<T> {
 impl<T: FromPrimitive> DiodeClipperModel<T> {
     #[replace_float_literals(T::from_f64(literal).unwrap())]
     pub fn new_silicon(nf: u8, nb: u8) -> Self {
-        assert!((1..=5).contains(&nf) && (1..=5).contains(&nb), "# diodes in clipper must be within 1..=5");
+        assert!(
+            (1..=5).contains(&nf) && (1..=5).contains(&nb),
+            "# diodes in clipper must be within 1..=5"
+        );
         let [a, b, si, so] = match (nb, nb) {
             (1, 1) => [
                 14.013538783148167,
@@ -277,8 +282,11 @@ impl<T: FromPrimitive> DiodeClipperModel<T> {
 
     #[replace_float_literals(T::from_f64(literal).unwrap())]
     pub fn new_germanium(nf: u8, nb: u8) -> Self {
-        assert!((1..=5).contains(&nf) && (1..=5).contains(&nb), "# diodes in clipper must be within 1..=5");
-        let [a,b,si,so] = match (nf,nb) {
+        assert!(
+            (1..=5).contains(&nf) && (1..=5).contains(&nb),
+            "# diodes in clipper must be within 1..=5"
+        );
+        let [a, b, si, so] = match (nf, nb) {
             (1, 1) => [
                 16.377243363175054,
                 16.37724336318019,
@@ -431,13 +439,16 @@ impl<T: FromPrimitive> DiodeClipperModel<T> {
             ],
             _ => unreachable!(),
         };
-        Self { a,b,si,so }
+        Self { a, b, si, so }
     }
 
     #[replace_float_literals(T::from_f64(literal).unwrap())]
     pub fn new_led(nf: u8, nb: u8) -> Self {
-        assert!((1..=5).contains(&nf) && (1..=5).contains(&nb), "# diodes in clipper must be within 1..=5");
-        let [a,b,si,so] = match (nf,nb) {
+        assert!(
+            (1..=5).contains(&nf) && (1..=5).contains(&nb),
+            "# diodes in clipper must be within 1..=5"
+        );
+        let [a, b, si, so] = match (nf, nb) {
             (1, 1) => [
                 4.435_713_979_386_322e-5,
                 4.435_638_644_124_075e-5,
@@ -590,17 +601,30 @@ impl<T: FromPrimitive> DiodeClipperModel<T> {
             ],
             _ => unreachable!(),
         };
-        Self {a,b,si,so}
+        Self { a, b, si, so }
     }
 }
 
-impl<T: Scalar> DSP<1, 1> for DiodeClipperModel<T> {
+impl<T: FromPrimitive> Default for DiodeClipperModel<T> {
+    fn default() -> Self {
+        Self::new_silicon(1, 1)
+    }
+}
+
+impl<T: Scalar + FromPrimitive> DSP<1, 1> for DiodeClipperModel<T> {
     type Sample = T;
 
     #[inline(always)]
-    #[replace_float_literals(T::from(literal).unwrap())]
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let x = self.si * x;
+        [self.saturate(x * self.so) / self.si]
+    }
+}
+
+impl<T: Scalar + FromPrimitive> Saturator<T> for DiodeClipperModel<T> {
+    #[inline]
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn saturate(&self, x: T) -> T {
+        let x = self.si / self.so * x;
         let out = if x < -self.a {
             -T::ln(1. - x - self.a) - self.a
         } else if x > self.b {
@@ -608,7 +632,7 @@ impl<T: Scalar> DSP<1, 1> for DiodeClipperModel<T> {
         } else {
             x
         };
-        [out * self.so]
+        out * self.so / self.si
     }
 }
 

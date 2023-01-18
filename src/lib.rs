@@ -12,6 +12,7 @@ pub mod svf;
 pub mod math;
 pub mod clippers;
 pub mod oversample;
+pub mod util;
 
 pub trait Scalar: Float + FloatConst + FloatSample {}
 

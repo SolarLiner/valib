@@ -1,5 +1,6 @@
-use num_traits::NumCast;
+use num_traits::{FromPrimitive, NumCast};
 use numeric_literals::replace_float_literals;
+use crate::clippers::DiodeClipperModel;
 
 use crate::Scalar;
 
@@ -70,34 +71,6 @@ impl<S: Scalar> Saturator<S> for Clipper {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct DiodeClipper<T> {
-    param: T,
-}
-
-impl<T: Scalar> Default for DiodeClipper<T> {
-    fn default() -> Self {
-        // Parameter fit from a KiCad simulation of a buffer -> 2x3 diode clipper stage from -12V to 12V,
-        // which yields a maximum difference of -20 dB.
-        Self {
-            param: T::from(0.75975449).unwrap(),
-        }
-    }
-}
-
-impl<T: Scalar> Saturator<T> for DiodeClipper<T> {
-    #[inline(always)]
-    fn saturate(&self, x: T) -> T {
-        self.param * x / (self.param + x.abs())
-    }
-
-    #[inline(always)]
-    fn sat_diff(&self, x: T) -> T {
-        let frac = self.param / (self.param + x.abs());
-        frac.powi(2)
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Blend<T, S> {
     amt: T,
     inner: S,
@@ -134,11 +107,11 @@ pub enum Dynamic<T> {
     Linear,
     Tanh,
     HardClipper,
-    DiodeClipper(DiodeClipper<T>),
-    SoftClipper(Blend<T, DiodeClipper<T>>),
+    DiodeClipper(DiodeClipperModel<T>),
+    SoftClipper(Blend<T, DiodeClipperModel<T>>),
 }
 
-impl<T: Scalar> Saturator<T> for Dynamic<T> {
+impl<T: Scalar + FromPrimitive> Saturator<T> for Dynamic<T> {
     #[inline(always)]
     fn saturate(&self, x: T) -> T {
         match self {

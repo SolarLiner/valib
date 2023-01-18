@@ -3,6 +3,7 @@ use crate::biquad::Biquad;
 use crate::saturators::Linear;
 use crate::{DSP, Scalar};
 
+#[derive(Debug, Clone)]
 pub struct Oversample<T> {
     os_factor: usize,
     os_buffer: Vec<T>,
