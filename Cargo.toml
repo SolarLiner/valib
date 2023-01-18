@@ -11,3 +11,6 @@ dasp_sample = "0.11.0"
 nalgebra = "0.31.4"
 num-traits = "0.2.15"
 numeric_literals = "0.2.0"
+
+[dev-dependencies]
+csv = "1.1.6"
