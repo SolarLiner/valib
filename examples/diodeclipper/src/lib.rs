@@ -73,7 +73,7 @@ impl ClipperParams {
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_unit(" dB"),
-            model: BoolParam::new("Use Model", false),
+            model: BoolParam::new("Use Model", true),
             quality: IntParam::new("Sim Quality", 50, IntRange::Linear { min: 10, max: 100 }),
             reset: BoolParam::new("Reset", false)
                 .with_callback(Arc::new(move |_| {

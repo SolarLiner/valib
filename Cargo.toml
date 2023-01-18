@@ -2,9 +2,10 @@
 name = "valib"
 version = "0.1.0"
 edition = "2021"
+license = "MIT"
 
 [workspace]
-members = ["plugins/svfmixer", "plugins/dirty-biquad", "plugins/abrasive", "plugins/diodeclipper", "xtask"]
+members = ["examples/svfmixer", "examples/dirty-biquad", "plugins/abrasive", "examples/diodeclipper", "xtask"]
 
 [dependencies]
 dasp_sample = "0.11.0"
