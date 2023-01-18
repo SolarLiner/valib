@@ -14,7 +14,7 @@ Abrasive is pre-alpha software.
 ## Download
 
 You can download the latest nightly build from the Release page of the GitHub project, or find a permalink to the latest
-nightly builds [here].
+nightly builds [here](https://nightly.link/SolarLiner/valib/workflows/build/master).
 
 ## Tips
 

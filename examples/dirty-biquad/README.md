@@ -8,8 +8,8 @@ Dirty Biquad is provided for demonstration purposes, and is not a fully-featured
 
 ## Download
 
-You can download the latest nightly build from the Release page of the GitHub project, or find a permalink to the latest
-nightly builds [here].
+You can download the latest nightly build from a permalink to the latest nightly builds
+[here](https://nightly.link/SolarLiner/valib/workflows/build/master).
 
 ## Tips
 
