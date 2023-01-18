@@ -4,6 +4,7 @@ use nih_plug_vizia::vizia::vg;
 pub(crate) struct Background;
 
 impl Background {
+    #[cfg(never)]
     pub fn new(cx: &mut Context) -> Handle<Self> {
         Self.build(cx, |_| ())
     }

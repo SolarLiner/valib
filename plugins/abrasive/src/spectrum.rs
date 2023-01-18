@@ -93,6 +93,7 @@ impl Analyzer {
         self.samplerate.store(samplerate, Relaxed);
     }
 
+    #[cfg(never)]
     pub fn set_window_size(&mut self, window_size: usize) {
         self.stft.set_block_size(window_size);
         self.plan = RealFftPlanner::new().plan_fft_forward(window_size);

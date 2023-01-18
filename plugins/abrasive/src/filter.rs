@@ -4,9 +4,10 @@ use nih_plug::buffer::Block;
 use nih_plug::prelude::*;
 use realfft::num_complex::Complex;
 
-use valib::saturators::{Blend, DiodeClipper, Dynamic, Saturator};
+use valib::saturators::{Blend, Dynamic, Saturator};
 use valib::svf::Svf;
 use valib::{DspAnalysis, DSP};
+use valib::clippers::DiodeClipperModel;
 
 #[derive(Debug, Copy, Clone, Enum, Eq, PartialEq)]
 pub enum FilterType {
@@ -86,7 +87,7 @@ impl ResonanceClip {
     pub fn as_dynamic_type(&self) -> Dynamic<f32> {
         match self {
             Self::None => Dynamic::Linear,
-            Self::Diode => Dynamic::DiodeClipper(DiodeClipper::default()),
+            Self::Diode => Dynamic::DiodeClipper(DiodeClipperModel::default()),
             Self::Buffer => Dynamic::SoftClipper(Blend::default()),
         }
     }

@@ -16,7 +16,7 @@ struct EqData<const N: usize> {
     samplerate: Arc<AtomicF32>,
     params: Arc<AbrasiveParams<N>>,
     frequency_range: FloatRange,
-    gain_range: FloatRange,
+    // gain_range: FloatRange,
     modulated: bool,
 }
 
@@ -107,11 +107,11 @@ impl<const N: usize> EqData<N> {
             samplerate,
             params,
             frequency_range: FilterParams::cutoff_range(),
-            gain_range: FloatRange::Skewed {
-                min: util::db_to_gain(-24.),
-                max: util::db_to_gain(24.),
-                factor: FloatRange::gain_skew_factor(-24., 24.),
-            },
+            // gain_range: FloatRange::Skewed {
+            //     min: util::db_to_gain(-24.),
+            //     max: util::db_to_gain(24.),
+            //     factor: FloatRange::gain_skew_factor(-24., 24.),
+            // },
             modulated,
         }
     }

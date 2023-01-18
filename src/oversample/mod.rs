@@ -18,11 +18,11 @@ impl<T: Scalar> Oversample<T> {
         assert!(os_factor > 1);
         let os_buffer = vec![T::EQUILIBRIUM; max_block_size*os_factor];
         let filter = Biquad::lowpass(T::one() / T::from(2*os_factor).unwrap(), T::from(0.707).unwrap());
-        let filter = std::array::from_fn(|_| filter.clone());
+        let filter = std::array::from_fn(|_| filter);
         Self {
             os_factor,
             os_buffer,
-            pre_filter: filter.clone(),
+            pre_filter: filter,
             post_filter: filter,
         }
     }
