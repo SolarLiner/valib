@@ -5,11 +5,11 @@ edition = "2021"
 license = "MIT"
 
 [workspace]
-members = ["examples/svfmixer", "examples/dirty-biquad", "plugins/abrasive", "examples/diodeclipper", "xtask"]
+members = ["examples/svfmixer", "examples/dirty-biquad", "examples/diodeclipper", "plugins/abrasive", "plugins/refuzz", "xtask"]
 
 [dependencies]
 dasp_sample = "0.11.0"
-nalgebra = "0.31.4"
+nalgebra = "0.32.1"
 num-traits = "0.2.15"
 numeric_literals = "0.2.0"
 

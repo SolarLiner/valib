@@ -1,14 +1,17 @@
-use std::fmt;
-use std::ops::Not;
+use std::{
+    fmt,
+    ops::Not
+};
 
 use nalgebra::{ComplexField, SMatrix, SVector};
 use num_traits::FromPrimitive;
 use numeric_literals::replace_float_literals;
 
-use crate::saturators::Saturator;
 use crate::{
+    saturators::Saturator,
     math::{newton_rhapson_steps, RootEq},
-    Scalar, DSP,
+    Scalar,
+    DSP
 };
 
 pub struct DiodeClipper<T> {

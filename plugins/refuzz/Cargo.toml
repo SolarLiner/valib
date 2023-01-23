@@ -1,0 +1,17 @@
+[package]
+name = "refuzz"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+license-file = "COPYING"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+simba = "0.8.0"
+valib = { path = "../.." }
+
+[profile.release]
+debug = true
