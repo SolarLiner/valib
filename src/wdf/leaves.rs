@@ -1,5 +1,5 @@
 use numeric_literals::replace_float_literals;
-use num_traits::{Float, Zero};
+use num_traits::{Zero};
 use crate::Scalar;
 use crate::wdf::{Wave, Wdf};
 

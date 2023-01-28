@@ -1,11 +1,10 @@
 use std::any::Any;
 use std::cell::RefMut;
 use std::{fmt, ops};
-use std::ops::DerefMut;
+
 use std::{
     cell::RefCell,
-    ops::Deref,
-    rc::{Rc, Weak},
+    rc::{Rc},
 };
 
 use num_traits::Zero;
@@ -300,16 +299,16 @@ impl<'a, T, W> ops::Deref for NodeWdfRef<'a, T, W> {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc, sync::atomic::AtomicBool};
+    use std::{sync::atomic::AtomicBool};
 
     use num_traits::Zero;
 
     use crate::{wdf::{
-        adaptors::{Parallel, Series},
-        leaves::{Capacitor, Resistor},
+        adaptors::{Series},
+        leaves::{Resistor},
         root::IdealVs,
         IntoNode, Wdf, Node,
-    }, Scalar};
+    }};
 
     use super::{Impedance, adaptors::PolarityInvert};
 
@@ -324,7 +323,7 @@ mod tests {
         impl<T: Zero, W> MonitorImpedance<T, W> where Self: Wdf<T> {
             fn new(child: impl Into<Node<T, W>>) -> Node<T, Self> {
                 let mut child = child.into();
-                let mut this = Self { child_node: child.clone(), impedance_called: AtomicBool::new(false) }.into_node();
+                let this = Self { child_node: child.clone(), impedance_called: AtomicBool::new(false) }.into_node();
                 child.set_parent(&this);
                 this
             }
@@ -340,11 +339,11 @@ mod tests {
                 self.child_node.impedance()
             }
 
-            fn reflected(&mut self, impedance: Impedance<T>, wave: &mut crate::wdf::Wave<T>) -> T {
+            fn reflected(&mut self, _impedance: Impedance<T>, _wave: &mut crate::wdf::Wave<T>) -> T {
                 self.child_node.reflected()
             }
 
-            fn incident(&mut self, impedance: Impedance<T>, wave: &mut crate::wdf::Wave<T>, a: T) {
+            fn incident(&mut self, _impedance: Impedance<T>, _wave: &mut crate::wdf::Wave<T>, a: T) {
                 self.child_node.incident(a)
             }
         }

@@ -1,7 +1,7 @@
 use std::sync::{atomic::AtomicBool, Arc};
 
 use nih_plug::prelude::*;
-use simba::simd::SimdComplexField;
+
 
 use valib::{clippers::DiodeClipper, oversample::Oversample, DSP};
 
@@ -70,8 +70,8 @@ struct Refuzz<const N: usize> {
 
 impl<const N: usize> Default for Refuzz<N> {
     fn default() -> Self {
-        let samplerate = 44.1e3 * OVERSAMPLE as f32;
-        let force_reset = Arc::new(AtomicBool::new(false));
+        let _samplerate = 44.1e3 * OVERSAMPLE as f32;
+        let _force_reset = Arc::new(AtomicBool::new(false));
         Self {
             params: Arc::new(ClipperParams::default()),
             model: std::array::from_fn(|_| PhysicalModel::default()),
