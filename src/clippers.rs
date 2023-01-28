@@ -608,6 +608,22 @@ impl<T: FromPrimitive> DiodeClipperModel<T> {
     }
 }
 
+impl<T: Scalar> DiodeClipperModel<T> {
+    #[replace_float_literals(T::from(literal).unwrap())]
+    #[inline]
+    pub fn eval(&self, x: T) -> T {
+        let x = self.si * x;
+        let out = if x < -self.a {
+            -T::ln(1. - x - self.a) - self.a
+        } else if x > self.b {
+            T::ln(1. + x - self.b) + self.b
+        } else {
+            x
+        };
+        out * self.so
+    }
+}
+
 impl<T: FromPrimitive> Default for DiodeClipperModel<T> {
     fn default() -> Self {
         Self::new_silicon(1, 1)
@@ -619,7 +635,7 @@ impl<T: Scalar + FromPrimitive> DSP<1, 1> for DiodeClipperModel<T> {
 
     #[inline(always)]
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        [self.saturate(x * self.so) / self.si]
+        [self.eval(x)]
     }
 }
 
@@ -628,13 +644,7 @@ impl<T: Scalar + FromPrimitive> Saturator<T> for DiodeClipperModel<T> {
     #[replace_float_literals(T::from(literal).unwrap())]
     fn saturate(&self, x: T) -> T {
         let x = self.si / self.so * x;
-        let out = if x < -self.a {
-            -T::ln(1. - x - self.a) - self.a
-        } else if x > self.b {
-            T::ln(1. + x - self.b) + self.b
-        } else {
-            x
-        };
+        let out = self.eval(x);
         out * self.so / self.si
     }
 }

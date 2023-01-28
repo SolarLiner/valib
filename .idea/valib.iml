@@ -9,6 +9,7 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/diodeclipper/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/dirty-biquad/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/svfmixer/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/plugins/refuzz/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />
