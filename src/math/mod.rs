@@ -58,7 +58,7 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar + ComplexField, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
     tol: T,
-    max_iter: usize
+    max_iter: usize,
 ) {
     for _ in 0..max_iter {
         let Some(step) = nr_step(eq, value) else {

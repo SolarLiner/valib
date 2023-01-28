@@ -1,14 +1,14 @@
-use numeric_literals::replace_float_literals;
-use num_traits::{Zero};
-use crate::Scalar;
 use crate::wdf::{Wave, Wdf};
+use crate::Scalar;
+use num_traits::Zero;
+use numeric_literals::replace_float_literals;
 
 use super::Impedance;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Resistor<T>(pub Impedance<T>);
 
-impl<T:'static + Scalar> Wdf<T> for Resistor<T> {
+impl<T: 'static + Scalar> Wdf<T> for Resistor<T> {
     #[inline]
     fn impedance(&self) -> Impedance<T> {
         self.0
@@ -31,7 +31,7 @@ pub struct Capacitor<T> {
     pub c: T,
 }
 
-impl<T:'static + Scalar> Wdf<T> for Capacitor<T> {
+impl<T: 'static + Scalar> Wdf<T> for Capacitor<T> {
     #[replace_float_literals(T::from(literal).unwrap())]
     #[inline]
     fn impedance(&self) -> Impedance<T> {
@@ -114,7 +114,7 @@ pub struct ResistiveVs<T> {
     pub vs: T,
 }
 
-impl<T:'static + Scalar> Wdf<T> for ResistiveVs<T> {
+impl<T: 'static + Scalar> Wdf<T> for ResistiveVs<T> {
     fn impedance(&self) -> Impedance<T> {
         self.r
     }

@@ -75,10 +75,9 @@ impl ClipperParams {
             .with_unit(" dB"),
             model: BoolParam::new("Use Model", true),
             quality: IntParam::new("Sim Quality", 50, IntRange::Linear { min: 10, max: 100 }),
-            reset: BoolParam::new("Reset", false)
-                .with_callback(Arc::new(move |_| {
-                    reset_atomic.store(true, Ordering::Release)
-                })),
+            reset: BoolParam::new("Reset", false).with_callback(Arc::new(move |_| {
+                reset_atomic.store(true, Ordering::Release)
+            })),
         }
     }
 }

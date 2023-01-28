@@ -2,8 +2,8 @@ use num_traits::Zero;
 use numeric_literals::replace_float_literals;
 
 use crate::clippers::DiodeClipperModel;
-use crate::Scalar;
 use crate::wdf::{Wave, Wdf};
+use crate::Scalar;
 
 use super::{Impedance, IntoNode, Node};
 
@@ -18,7 +18,7 @@ impl<T: Scalar> From<DiodeClipperModel<T>> for DiodePair<T> {
     }
 }
 
-impl<T:'static + Scalar> Wdf<T> for DiodePair<T> {
+impl<T: 'static + Scalar> Wdf<T> for DiodePair<T> {
     fn impedance(&self) -> Impedance<T> {
         Impedance::nonadaptable()
     }
@@ -34,9 +34,12 @@ impl<T:'static + Scalar> Wdf<T> for DiodePair<T> {
 }
 
 #[derive(Debug, Clone)]
-pub struct IdealVs<T, W> { pub vs: T, child: Node<T, W> }
+pub struct IdealVs<T, W> {
+    pub vs: T,
+    child: Node<T, W>,
+}
 
-impl<T:'static + Scalar, W: Wdf<T>> Wdf<T> for IdealVs<T, W> {
+impl<T: 'static + Scalar, W: Wdf<T>> Wdf<T> for IdealVs<T, W> {
     fn impedance(&self) -> Impedance<T> {
         Impedance::nonadaptable()
     }
@@ -57,7 +60,11 @@ impl<T:'static + Scalar, W: Wdf<T>> Wdf<T> for IdealVs<T, W> {
 impl<T: 'static + Scalar, W: Wdf<T>> IdealVs<T, W> {
     pub fn new(child: impl Into<Node<T, W>>) -> Node<T, Self> {
         let mut child = child.into();
-        let this = Self { vs: T::zero(), child: child.clone() }.into_node();
+        let this = Self {
+            vs: T::zero(),
+            child: child.clone(),
+        }
+        .into_node();
         child.set_parent(&this);
         this
     }

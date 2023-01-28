@@ -185,7 +185,10 @@ impl nih_plug::prelude::Plugin for Plugin {
             let os_len = OVERSAMPLE * len;
             self.params.fc.smoothed.next_block_exact(&mut fc[..len]);
             self.params.q.smoothed.next_block_exact(&mut q[..len]);
-            self.params.drive.smoothed.next_block_exact(&mut drive[..len]);
+            self.params
+                .drive
+                .smoothed
+                .next_block_exact(&mut drive[..len]);
             lerp_block(&mut os_fc[..os_len], &fc[..len]);
             lerp_block(&mut os_q[..os_len], &q[..len]);
             lerp_block(&mut os_drive[..os_len], &drive[..len]);

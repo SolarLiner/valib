@@ -119,7 +119,10 @@ impl<T: 'static + Scalar, W: Wdf<T>> Wdf<T> for PolarityInvert<T, W> {
 impl<T: 'static + Scalar, W: Wdf<T>> PolarityInvert<T, W> {
     pub fn new(child: impl Into<Node<T, W>>) -> Node<T, Self> {
         let mut child = child.into();
-        let this = Self { child: child.clone() }.into_node();
+        let this = Self {
+            child: child.clone(),
+        }
+        .into_node();
         child.set_parent(&this);
         this
     }

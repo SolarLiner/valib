@@ -1,5 +1,5 @@
-use numeric_literals::replace_float_literals;
 use crate::Scalar;
+use numeric_literals::replace_float_literals;
 
 #[replace_float_literals(T::from(literal).unwrap())]
 pub fn lerp_block<T: Scalar>(out: &mut [T], inp: &[T]) {

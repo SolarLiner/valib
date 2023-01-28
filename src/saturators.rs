@@ -1,6 +1,6 @@
+use crate::clippers::DiodeClipperModel;
 use num_traits::{FromPrimitive, NumCast};
 use numeric_literals::replace_float_literals;
-use crate::clippers::DiodeClipperModel;
 
 use crate::Scalar;
 

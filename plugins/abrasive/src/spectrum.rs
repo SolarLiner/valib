@@ -115,7 +115,8 @@ impl Analyzer {
             multiply_with_window(buffer, &self.window);
             if self
                 .plan
-                .process_with_scratch(buffer, &mut self.fft_buffer, &mut []).is_err()
+                .process_with_scratch(buffer, &mut self.fft_buffer, &mut [])
+                .is_err()
             {
                 self.fft_buffer.fill(Complex32::zero());
             }

@@ -4,10 +4,10 @@ use nih_plug::buffer::Block;
 use nih_plug::prelude::*;
 use realfft::num_complex::Complex;
 
+use valib::clippers::DiodeClipperModel;
 use valib::saturators::{Blend, Dynamic, Saturator};
 use valib::svf::Svf;
 use valib::{DspAnalysis, DSP};
-use valib::clippers::DiodeClipperModel;
 
 #[derive(Debug, Copy, Clone, Enum, Eq, PartialEq)]
 pub enum FilterType {

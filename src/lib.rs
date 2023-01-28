@@ -7,11 +7,11 @@ use std::marker::PhantomData;
 // pub mod ladder;
 // pub mod sallenkey;
 pub mod biquad;
+pub mod clippers;
+pub mod math;
+pub mod oversample;
 pub mod saturators;
 pub mod svf;
-pub mod math;
-pub mod clippers;
-pub mod oversample;
 pub mod util;
 mod wdf;
 

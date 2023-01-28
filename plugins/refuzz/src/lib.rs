@@ -2,7 +2,6 @@ use std::sync::{atomic::AtomicBool, Arc};
 
 use nih_plug::prelude::*;
 
-
 use valib::{clippers::DiodeClipper, oversample::Oversample, DSP};
 
 const OVERSAMPLE: usize = 4;
@@ -127,7 +126,7 @@ impl<const N: usize> Plugin for Refuzz<N> {
                 .next_block_exact(&mut drive[..len]);
             self.params.tone.smoothed.next_block_exact(&mut tone[..len]);
             valib::util::lerp_block(&mut drive_os[..OVERSAMPLE * len], &drive[..len]);
-            valib::util::lerp_block(&mut tone_os[..OVERSAMPLE*len], &tone[..len]);
+            valib::util::lerp_block(&mut tone_os[..OVERSAMPLE * len], &tone[..len]);
             for ch in 0..block.channels() {
                 let buffer = block.get_mut(ch).unwrap();
                 let mut os_buffer = self.oversample[ch].oversample(buffer);

@@ -5,13 +5,10 @@ extern crate core;
 
 use crate::{
     filter::{Filter, FilterParams},
-    spectrum::Analyzer
+    spectrum::Analyzer,
 };
 use atomic_float::AtomicF32;
-use nih_plug::{
-    params::persist::PersistentField,
-    prelude::*
-};
+use nih_plug::{params::persist::PersistentField, prelude::*};
 use std::sync::{Arc, Mutex};
 
 mod editor;

@@ -2,10 +2,7 @@ use std::any::Any;
 use std::cell::RefMut;
 use std::{fmt, ops};
 
-use std::{
-    cell::RefCell,
-    rc::{Rc},
-};
+use std::{cell::RefCell, rc::Rc};
 
 use num_traits::Zero;
 use numeric_literals::replace_float_literals;
@@ -73,18 +70,12 @@ impl<T: Scalar> Impedance<T> {
         }
     }
 
-    pub fn from_resistance(r: T) -> Self  {
-        Self {
-            r,
-            g: r.recip(),
-        }
+    pub fn from_resistance(r: T) -> Self {
+        Self { r, g: r.recip() }
     }
 
     pub fn from_admittance(g: T) -> Self {
-        Self {
-            r: g.recip(),
-            g,
-        }
+        Self { r: g.recip(), g }
     }
 
     pub fn set_resistance(&mut self, r: T) {
@@ -102,15 +93,19 @@ impl<T: Scalar> Impedance<T> {
     }
 
     #[inline]
-    pub fn resistance(&self) -> T { self.r}
+    pub fn resistance(&self) -> T {
+        self.r
+    }
 
     #[inline]
-    pub fn admittance(&self) -> T { self.g }
+    pub fn admittance(&self) -> T {
+        self.g
+    }
 
     pub fn parallel_with(self, other: Self) -> Self {
         Self {
-            r: self.r*other.r / (self.r + other.r),
-            g: self.g + other.g
+            r: self.r * other.r / (self.r + other.r),
+            g: self.g + other.g,
         }
     }
 
@@ -217,7 +212,9 @@ impl<T: 'static, W: ?Sized> Node<T, W> {
     }
 
     pub fn inner(&self) -> NodeWdfRef<T, W> {
-        NodeWdfRef { borrow: self.0.borrow_mut() }
+        NodeWdfRef {
+            borrow: self.0.borrow_mut(),
+        }
     }
 }
 
@@ -286,7 +283,7 @@ impl<T: Scalar, W: Wdf<T>> Node<T, W> {
 }
 
 pub struct NodeWdfRef<'a, T, W: ?Sized> {
-    borrow: RefMut<'a, NodeImpl<T, W>>
+    borrow: RefMut<'a, NodeImpl<T, W>>,
 }
 
 impl<'a, T, W> ops::Deref for NodeWdfRef<'a, T, W> {
@@ -299,51 +296,64 @@ impl<'a, T, W> ops::Deref for NodeWdfRef<'a, T, W> {
 
 #[cfg(test)]
 mod tests {
-    use std::{sync::atomic::AtomicBool};
+    use std::sync::atomic::AtomicBool;
 
     use num_traits::Zero;
 
-    use crate::{wdf::{
-        adaptors::{Series},
-        leaves::{Resistor},
-        root::IdealVs,
-        IntoNode, Wdf, Node,
-    }};
+    use crate::wdf::{adaptors::Series, leaves::Resistor, root::IdealVs, IntoNode, Node, Wdf};
 
-    use super::{Impedance, adaptors::PolarityInvert};
+    use super::{adaptors::PolarityInvert, Impedance};
 
     #[test]
     /// Tests that the invalidation behavior bubbles up the WDF tree
     fn bubbling_invalidation() {
         struct MonitorImpedance<T, W> {
             impedance_called: AtomicBool,
-            child_node: Node<T, W>
+            child_node: Node<T, W>,
         }
 
-        impl<T: Zero, W> MonitorImpedance<T, W> where Self: Wdf<T> {
+        impl<T: Zero, W> MonitorImpedance<T, W>
+        where
+            Self: Wdf<T>,
+        {
             fn new(child: impl Into<Node<T, W>>) -> Node<T, Self> {
                 let mut child = child.into();
-                let this = Self { child_node: child.clone(), impedance_called: AtomicBool::new(false) }.into_node();
+                let this = Self {
+                    child_node: child.clone(),
+                    impedance_called: AtomicBool::new(false),
+                }
+                .into_node();
                 child.set_parent(&this);
                 this
             }
 
             fn impedance_called(&self) -> bool {
-                self.impedance_called.load(std::sync::atomic::Ordering::SeqCst)
+                self.impedance_called
+                    .load(std::sync::atomic::Ordering::SeqCst)
             }
         }
 
-        impl<T:'static + Copy, W: Wdf<T>> Wdf<T> for MonitorImpedance<T, W> {
+        impl<T: 'static + Copy, W: Wdf<T>> Wdf<T> for MonitorImpedance<T, W> {
             fn impedance(&self) -> Impedance<T> {
-                self.impedance_called.store(true, std::sync::atomic::Ordering::SeqCst);
+                self.impedance_called
+                    .store(true, std::sync::atomic::Ordering::SeqCst);
                 self.child_node.impedance()
             }
 
-            fn reflected(&mut self, _impedance: Impedance<T>, _wave: &mut crate::wdf::Wave<T>) -> T {
+            fn reflected(
+                &mut self,
+                _impedance: Impedance<T>,
+                _wave: &mut crate::wdf::Wave<T>,
+            ) -> T {
                 self.child_node.reflected()
             }
 
-            fn incident(&mut self, _impedance: Impedance<T>, _wave: &mut crate::wdf::Wave<T>, a: T) {
+            fn incident(
+                &mut self,
+                _impedance: Impedance<T>,
+                _wave: &mut crate::wdf::Wave<T>,
+                a: T,
+            ) {
                 self.child_node.incident(a)
             }
         }
@@ -356,15 +366,15 @@ mod tests {
 
     #[test]
     fn voltage_divider() {
-        let r1 = Resistor(Impedance::from_resistance(10e3)).into_node();
-        let r2 = Resistor(Impedance::from_resistance(10e3)).into_node();
+        let r1 = Resistor(Impedance::from_resistance(10e3));
+        let r2 = r1.into_node();
         let s1 = Series::new(r1, r2.clone());
         let mut p1 = PolarityInvert::new(s1);
         let mut vs = IdealVs::new(p1.clone());
-        vs.inner().vs = 1e3;
+        vs.inner().vs = 1.;
         vs.incident(p1.reflected());
         p1.incident(vs.reflected());
         let vout = r2.voltage();
-        assert_eq!(vout, 500.);
+        assert_eq!(vout, 0.5);
     }
 }
