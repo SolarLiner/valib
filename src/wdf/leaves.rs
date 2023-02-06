@@ -129,3 +129,21 @@ impl<T: 'static + Scalar> Wdf<T> for ResistiveVs<T> {
         wave.a = a;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::wdf::{Wave, Impedance, Wdf};
+
+    use super::Resistor;
+
+    #[test]
+    fn test_resistor_wave() {
+        let impedance = Impedance::from_resistance(100.);
+        let mut r = Resistor(impedance);
+        let mut wave = Wave::default();
+        let refl = r.reflected(impedance, &mut wave);
+        r.incident(impedance, &mut wave, 1.);
+        println!("Wave: {wave:?}\tReflected: {refl}\nVoltage: {}\tCurrent: {}", wave.voltage(), wave.current(impedance.r));
+        todo!()
+    }
+}

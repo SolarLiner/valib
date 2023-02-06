@@ -103,14 +103,19 @@ impl<T: Scalar> Impedance<T> {
     }
 
     pub fn parallel_with(self, other: Self) -> Self {
-        Self {
-            r: self.r * other.r / (self.r + other.r),
-            g: self.g + other.g,
-        }
+        Self::from_admittance(self.g + other.g)
+        // Self {
+        //     r: self.r * other.r / (self.r + other.r),
+        //     g: self.g + other.g,
+        // }
     }
 
     pub fn series_with(self, other: Self) -> Self {
         Self::from_resistance(self.r + other.r)
+        // Self {
+        //     r: self.r + other.r,
+        //     g: self.g * other.g / (self.g + other.g),
+        // }
     }
 }
 
@@ -305,6 +310,21 @@ mod tests {
     use super::{adaptors::PolarityInvert, Impedance};
 
     #[test]
+    fn series_impedance() {
+        let series = Impedance::from_resistance(100.).series_with(Impedance::from_resistance(100.));
+        assert_eq!(series.resistance(), 200.);
+        assert_eq!(series.admittance(), 0.005);
+    }
+
+    #[test]
+    fn parallel_impedance() {
+        let parallel =
+            Impedance::from_resistance(100f64).parallel_with(Impedance::from_resistance(100.));
+        assert_eq!(parallel.resistance(), 50.);
+        assert_eq!(parallel.admittance(), parallel.resistance().recip());
+    }
+
+    #[test]
     /// Tests that the invalidation behavior bubbles up the WDF tree
     fn bubbling_invalidation() {
         struct MonitorImpedance<T, W> {
@@ -366,15 +386,31 @@ mod tests {
 
     #[test]
     fn voltage_divider() {
-        let r1 = Resistor(Impedance::from_resistance(10e3));
-        let r2 = r1.into_node();
-        let s1 = Series::new(r1, r2.clone());
+        let r1 = Resistor(Impedance::from_resistance(10e3)).into_node();
+        let r2 = r1.clone();
+        let s1 = Series::new(r1.clone(), r2.clone());
         let mut p1 = PolarityInvert::new(s1);
-        let mut vs = IdealVs::new(p1.clone());
-        vs.inner().vs = 1.;
-        vs.incident(p1.reflected());
-        p1.incident(vs.reflected());
+        let mut vs = IdealVs::new(&mut p1);
+        vs.inner().0 = 1.;
+
+        let p1r = p1.reflected();
+        vs.incident(p1r);
+
+        eprintln!("=== After wave up\nvs wave: {:?}", vs.wave());
+        eprintln!("p1 wave: {:?}", p1.wave());
+        eprintln!("s1 wave: {:?}", p1.inner().child.wave());
+        eprintln!("r1 wave: {:?}", r1.wave());
+        eprintln!("r2 wave: {:?}", r2.wave());
+        
+        let vsr = vs.reflected();
+        p1.incident(vsr);
         let vout = r2.voltage();
+
+        eprintln!("=== After wave down\nvs wave: {:?}", vs.wave());
+        eprintln!("p1 wave: {:?}", p1.wave());
+        eprintln!("s1 wave: {:?}", p1.inner().child.wave());
+        eprintln!("r1 wave: {:?}", r1.wave());
+        eprintln!("r2 wave: {:?}", r2.wave());
         assert_eq!(vout, 0.5);
     }
 }
