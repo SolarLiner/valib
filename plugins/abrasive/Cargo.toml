@@ -1,9 +1,13 @@
 [package]
 name = "abrasive"
-version = "0.1.0"
-edition = "2021"
-license = "GPL-3.0-or-later"
-license-file = "COPYING"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
@@ -11,11 +15,8 @@ crate-type = ["cdylib"]
 [dependencies]
 atomic_float = "0.1.0"
 morphorm = "*"
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
-nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git", folder = "nih_plug_vizia" }
+nih_plug = { workspace=true }
+nih_plug_vizia = { workspace=true }
 realfft = "3.2.0"
 triple_buffer = "6.2.0"
 valib = { path = "../.." }
-
-[profile.dev]
-opt-level = 1

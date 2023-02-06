@@ -1,13 +1,17 @@
 [package]
 name = "dirty-biquad"
-version = "0.1.0"
-edition = "2021"
-license = "GPL-3.0-or-later"
-license-file = "COPYING"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
 
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+nih_plug = { workspace = true }
 valib = { path = "../.." }

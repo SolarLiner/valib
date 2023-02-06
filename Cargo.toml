@@ -7,6 +7,21 @@ license = "MIT"
 [workspace]
 members = ["examples/svfmixer", "examples/dirty-biquad", "examples/diodeclipper", "plugins/abrasive", "plugins/refuzz", "xtask"]
 
+[workspace.package]
+version = "0.1.0"
+rust-version = "1.68"
+authors = ["Nathan Graule <me@solarliner.dev>"]
+edition = "2021"
+license = "GPL-3.0-or-later"
+homepage = "https://github.com/SolarLiner/valib"
+repository = "https://github.com/SolarLiner/valib"
+keywords = ["virtual-analog", "audio", "plugin", "vst", "vst3", "clap", "va-modeling", "dsp"]
+
+[workspace.dependencies]
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+
+
 [dependencies]
 dasp_sample = "0.11.0"
 nalgebra = "0.32.1"
@@ -15,3 +30,12 @@ numeric_literals = "0.2.0"
 
 [dev-dependencies]
 csv = "1.1.6"
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+debug = true

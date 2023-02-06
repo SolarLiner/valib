@@ -115,6 +115,7 @@ impl Plugin for ClipperPlugin {
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = "0.0.0";
     type BackgroundTask = ();
+    type SysExMessage = ();
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -227,13 +228,17 @@ impl ClapPlugin for ClipperPlugin {
         ClapFeature::AudioEffect,
         ClapFeature::Filter,
         ClapFeature::Stereo,
-        ClapFeature::Mono,
     ];
 }
 
 impl Vst3Plugin for ClipperPlugin {
     const VST3_CLASS_ID: [u8; 16] = *b"VaLibDiodeClpSLN";
-    const VST3_CATEGORIES: &'static str = "Fx|Filter";
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
+        Vst3SubCategory::Fx,
+        Vst3SubCategory::Filter,
+        Vst3SubCategory::Distortion,
+        Vst3SubCategory::Stereo,
+    ];
 }
 
 nih_export_clap!(ClipperPlugin);
