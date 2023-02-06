@@ -10,13 +10,13 @@ repository.workspace = true
 keywords.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 atomic_float = "0.1.0"
 morphorm = "*"
-nih_plug = { workspace=true }
-nih_plug_vizia = { workspace=true }
+nih_plug = { workspace = true, features = ["standalone"] }
+nih_plug_vizia = { workspace = true }
 realfft = "3.2.0"
 triple_buffer = "6.2.0"
 valib = { path = "../.." }

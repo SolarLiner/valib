@@ -20,30 +20,17 @@ pub type SpectrumUI = Arc<Mutex<Output<Spectrum>>>;
 
 #[derive(Lens, Clone)]
 pub(crate) struct Data {
-    pub(crate) params: Arc<crate::AbrasiveParams<2>>,
+    pub(crate) params: Arc<crate::AbrasiveParams<{super::NUM_BANDS}>>,
     pub(crate) samplerate: Arc<AtomicF32>,
     pub(crate) spectrum_in: SpectrumUI,
     pub(crate) spectrum_out: SpectrumUI,
     pub(crate) selected: Option<usize>,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum DataEvent {
-    Select(usize),
-    Deselect,
-}
-
-impl Model for Data {
-    fn event(&mut self, _: &mut EventContext, event: &mut Event) {
-        event.map(|event, _| match nih_dbg!(event) {
-            DataEvent::Select(ix) => self.selected = Some(*ix),
-            DataEvent::Deselect => self.selected = None,
-        })
-    }
-}
+impl Model for Data {}
 
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::from_size(850, 300)
+    ViziaState::from_size(683, 500)
 }
 
 pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Editor>> {
@@ -55,13 +42,13 @@ pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Edito
 
         ResizeHandle::new(cx);
         VStack::new(cx, |cx| {
-            analyzer(cx);
+            analyzer(cx).class("analyzer");
             HStack::new(cx, |cx| {
-                for i in 0..2 {
+                for i in 0..super::NUM_BANDS {
                     band::band_knobs(cx, i);
                 }
-            });
-        });
+            }).class("panel");
+        }).width(Percentage(100.)).height(Percentage(100.)).id("ui");
     })
 }
 

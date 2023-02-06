@@ -3,7 +3,7 @@
   font-style: normal;
   font-weight: 400;
 
-  background-color: #111;
+  background-color: #333333;
   color: #fff;
 }
 
@@ -19,16 +19,6 @@ spectrum.output {
   color: #558077;
 }
 
-#side-panel {
-  background-color: #232;
-  width: 0;
-  transition: width 300ms ease-out;
-}
-
-#side-panel.visible {
-  width: 200px;
-}
-
 /* FIXME: These use border-width as stroke-width is not accessible within the code */
 eq.unmodulated {
   color: #d9fff7;
@@ -40,53 +30,41 @@ eq.modulated {
   border-width: 1.5px;
 }
 
+.display {
+  width: 100%;
+  height: 285px;
+}
+
+.panel {
+  width: 100%;
+  height: 215px;
+}
+
 /* Knob */
-
 knob {
-  position: absolute;
-  left: 0%;
-  right: 0%;
-  top: 0%;
-  bottom: 23.88%;
-
   border-radius: 100%;
-  background: linear-gradient(180deg, #404040 0%, #262626 100%);
+  width: 51px;
+  height: 51px;
+  color: #F2C94C;
+  background-color: linear-gradient(180deg, #404040 0%, #262626 100%);
+  /* background-color: #404040; */
   box-shadow: 0px 4px 4px rgba(0, 0, 0, 0.25);
 }
 
-knob .arc {
-  position: absolute;
-  left: 5.88%;
-  right: 5.88%;
-  top: 4.48%;
-  bottom: 28.36%;
-
-  border: 1px solid #f2c94c;
+.small knob {
+  width: 25px;
+  height: 25px;
 }
 
-knob .line {
-  position: absolute;
-  left: 82.35%;
-  right: -26.72%;
-  top: 61.19%;
-  bottom: 38.81%;
+.param label {
+  width: 100%;
 
-  border: 1px solid #f2c94c;
-  transform: rotate(-135deg);
-}
-
-knob .text {
-  position: absolute;
-  width: 29px;
-  height: 15px;
-  left: 11px;
-  top: 55px;
-
-  font-size: 12px;
-  line-height: 15px;
-
-  /* identical to box height */
+  font-size: 12pt;
   text-align: center;
 
   color: #ffffff;
+}
+
+.param.small label {
+  font-size: 10pt;
 }

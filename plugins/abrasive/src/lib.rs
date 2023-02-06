@@ -15,6 +15,8 @@ mod editor;
 mod filter;
 mod spectrum;
 
+pub const NUM_BANDS: usize = 5;
+
 #[derive(Debug, Params)]
 struct AbrasiveParams<const N: usize> {
     #[id = "drive"]
@@ -63,7 +65,7 @@ impl<const N: usize> Default for AbrasiveParams<N> {
     }
 }
 
-struct Abrasive<const CHANNELS: usize, const N: usize> {
+pub struct Abrasive<const CHANNELS: usize, const N: usize> {
     params: Arc<AbrasiveParams<N>>,
     filters: [Filter<CHANNELS>; N],
     samplerate: Arc<AtomicF32>,
@@ -97,7 +99,7 @@ impl<const CHANNELS: usize, const N: usize> Default for Abrasive<CHANNELS, N> {
     }
 }
 
-impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, 2> {
+impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
     const NAME: &'static str = "Abrasive";
     const VENDOR: &'static str = "SolarLiner";
     const URL: &'static str = "https://github.com/solarliner/abrasive";
@@ -160,7 +162,7 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, 2> {
     }
 }
 
-impl<const CHANNELS: usize> Abrasive<CHANNELS, 2> {
+impl<const CHANNELS: usize> Abrasive<CHANNELS, NUM_BANDS> {
     fn set_filterbank_samplerate(&mut self, sr: f32) {
         for filter in self.filters.iter_mut() {
             filter.reset(sr);
@@ -197,7 +199,7 @@ impl<const CHANNELS: usize> Abrasive<CHANNELS, 2> {
     }
 }
 
-impl<const CHANNELS: usize> ClapPlugin for Abrasive<CHANNELS, 2> {
+impl<const CHANNELS: usize> ClapPlugin for Abrasive<CHANNELS, NUM_BANDS> {
     const CLAP_ID: &'static str = "com.github.SolarLiner.valib.Abrasive";
     const CLAP_DESCRIPTION: Option<&'static str> =
         Some("Configurable colorful parametric equalizer");
@@ -212,7 +214,7 @@ impl<const CHANNELS: usize> ClapPlugin for Abrasive<CHANNELS, 2> {
     ];
 }
 
-impl<const CHANNELS: usize> Vst3Plugin for Abrasive<CHANNELS, 2> {
+impl<const CHANNELS: usize> Vst3Plugin for Abrasive<CHANNELS, NUM_BANDS> {
     const VST3_CLASS_ID: [u8; 16] = *b"ValibAbrasiveSLN";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
         Vst3SubCategory::Fx,
@@ -223,5 +225,5 @@ impl<const CHANNELS: usize> Vst3Plugin for Abrasive<CHANNELS, 2> {
     ];
 }
 
-nih_export_clap!(Abrasive<2, 2>);
-nih_export_vst3!(Abrasive<2, 2>);
+nih_export_clap!(Abrasive<2, NUM_BANDS>);
+nih_export_vst3!(Abrasive<2, NUM_BANDS>);

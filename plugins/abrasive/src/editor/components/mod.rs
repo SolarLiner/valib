@@ -1,4 +1,4 @@
 
 pub mod knob;
 
-pub use knob::Knob;
+pub use knob::*;
