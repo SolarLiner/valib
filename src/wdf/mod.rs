@@ -1,18 +1,15 @@
-use std::any::Any;
-use std::cell::RefMut;
-use std::{fmt, ops};
+use std::{
+    any::Any,
+    cell::{RefCell, RefMut},
+    fmt,
+    ops::{self, Neg},
+    rc::Rc,
+};
 
-use std::{cell::RefCell, rc::Rc};
-
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
 
-// use crate::wdf::adaptors::Series;
 use crate::Scalar;
-
-mod adaptors;
-mod leaves;
-mod root;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Wave<T> {
@@ -119,298 +116,221 @@ impl<T: Scalar> Impedance<T> {
     }
 }
 
-#[allow(unused_variables)]
 pub trait Wdf<T>: Any {
-    fn reflected(&mut self, impedance: Impedance<T>, wave: &mut Wave<T>) -> T;
-    fn incident(&mut self, impedance: Impedance<T>, wave: &mut Wave<T>, a: T);
+    /// Returns the matched impedance of the port. If it is unadaptable, the impedence should indicate 0 resistance (or +oo admittance).
     fn impedance(&self) -> Impedance<T>;
+
+    /// Evaluate a wave through this port. The `p` parameter indicates the type of wave (1 for voltage waves, 1/2 for power waves and 0 for current waves).
+    /// The `a`-value of the wave is passed in, and the `b` parameter should be returned.
+    fn eval_wave(&mut self, rp: Impedance<T>, p: T, a: T) -> T;
 }
 
-pub trait IntoNode<T>: Wdf<T> {
-    fn into_node(self) -> Node<T, Self>
-    where
-        Self: Sized,
-        T: Zero,
-    {
-        Node::from(self)
-    }
-}
+pub struct Resistor<T>(pub T);
 
-impl<T, W: Wdf<T>> IntoNode<T> for W {}
-
-#[repr(transparent)]
-struct Invalidator(Box<dyn Fn()>);
-
-impl<F: 'static + Fn()> From<F> for Invalidator {
-    fn from(func: F) -> Self {
-        Self(Box::new(func))
-    }
-}
-
-impl fmt::Debug for Invalidator {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Invalidator").field(&"|| ...").finish()
-    }
-}
-
-impl Invalidator {
-    fn invalidate(&self) {
-        (self.0)()
-    }
-}
-
-/* impl<'a, T> Wdf<T> for &'a mut DynWdf<T> {
+impl<T: 'static + Scalar> Wdf<T> for Resistor<T> {
     fn impedance(&self) -> Impedance<T> {
-        self.0.impedance()
+        Impedance::from_resistance(self.0)
     }
 
-    fn reflected(&mut self, impedance: Impedance<T>, wave: &mut Wave<T>, a: T) -> T {
-        self.0.reflected(impedance, wave, a)
-    }
-
-    fn incident(&mut self, impedence: Impedance<T>, wave: &mut Wave<T>, a: T) {
-        self.0.incident(impedence, wave, a)
-    }
-} */
-
-#[derive(Debug)]
-struct NodeImpl<T, W: ?Sized> {
-    pub invalidate_parent: Option<Invalidator>,
-    pub wave: Wave<T>,
-    pub impedance: Impedance<T>,
-    pub wdf: W,
-}
-
-#[derive(Debug)]
-pub struct Node<T, W: ?Sized>(Rc<RefCell<NodeImpl<T, W>>>);
-
-impl<T, W: ?Sized> Clone for Node<T, W> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
+    fn eval_wave(&mut self, _: Impedance<T>, _: T, _: T) -> T {
+        T::zero()
     }
 }
 
-impl<T: 'static, W: ?Sized> Node<T, W> {
-    #[inline]
-    pub fn set_parent<W2: Wdf<T> + ?Sized>(&mut self, parent: &Node<T, W2>) {
-        // This contrived snippet of code acts upon the invalidation by re-calculating the impedance value of the parent adaptor,
-        // then bubbling the invalidation up the tree.
-        let parent = Rc::downgrade(&parent.0);
-        let mut b = self.0.borrow_mut();
-        b.invalidate_parent.replace(Invalidator::from(move || {
-            if let Some(parent) = parent.upgrade() {
-                let mut pb = parent.borrow_mut();
-                if let Some(invalidator) = &pb.invalidate_parent {
-                    invalidator.invalidate();
-                }
-                pb.impedance = pb.wdf.impedance();
-            }
-        }));
-    }
+pub struct IdealVs<T>(pub T);
 
-    #[inline]
-    pub fn invalidate_parent_impedence(&self) {
-        let b = self.0.borrow();
-        if let Some(invalidator) = &b.invalidate_parent {
-            invalidator.invalidate();
-        }
-    }
-
-    pub fn inner(&self) -> NodeWdfRef<T, W> {
-        NodeWdfRef {
-            borrow: self.0.borrow_mut(),
-        }
-    }
-}
-
-impl<'a, T, W> ops::DerefMut for NodeWdfRef<'a, T, W> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.borrow.wdf
-    }
-}
-
-impl<T: Copy, W: ?Sized> Node<T, W> {
-    #[inline]
-    pub fn wave(&self) -> Wave<T> {
-        self.0.borrow().wave
-    }
-
-    #[inline]
-    pub fn impedance(&self) -> Impedance<T> {
-        self.0.borrow().impedance
-    }
-}
-
-impl<T: 'static + Copy, W: Wdf<T> + ?Sized> Node<T, W> {
-    #[inline]
-    pub fn reflected(&mut self) -> T {
-        let mut b = self.0.borrow_mut();
-        let b = &mut *b;
-        let wave = &mut b.wave;
-        b.wdf.reflected(b.impedance, wave)
-    }
-
-    #[inline]
-    pub fn incident(&mut self, a: T) {
-        let mut b = self.0.borrow_mut();
-        let b = &mut *b;
-        let wave = &mut b.wave;
-        b.wdf.incident(b.impedance, wave, a)
-    }
-}
-
-impl<T: Zero, W: Wdf<T>> From<W> for Node<T, W> {
-    fn from(wdf: W) -> Self {
-        let impedance = wdf.impedance();
-        Self(Rc::new(RefCell::new(NodeImpl {
-            invalidate_parent: None,
-            wave: Wave::default(),
-            impedance,
-            wdf,
-        })))
-    }
-}
-
-impl<T: Scalar, W: Wdf<T>> Node<T, W> {
-    #[replace_float_literals(T::from(literal).unwrap())]
-    #[inline]
-    pub fn voltage(&self) -> T {
-        self.0.borrow().wave.voltage()
+impl<T: 'static + Scalar> Wdf<T> for IdealVs<T> {
+    fn impedance(&self) -> Impedance<T> {
+        Impedance::nonadaptable()
     }
 
     #[replace_float_literals(T::from(literal).unwrap())]
-    #[inline]
-    pub fn current(&self) -> T {
-        let b = self.0.borrow();
-        let rp = b.wdf.impedance().resistance();
-        b.wave.current(rp)
+    fn eval_wave(&mut self, rp: Impedance<T>, p: T, a: T) -> T {
+        2. * rp.resistance().powf(p - 1.) * self.0 - a
     }
 }
 
-pub struct NodeWdfRef<'a, T, W: ?Sized> {
-    borrow: RefMut<'a, NodeImpl<T, W>>,
+pub struct IdealIs<T>(pub T);
+
+impl<T: 'static + Scalar> Wdf<T> for IdealIs<T> {
+    fn impedance(&self) -> Impedance<T> {
+        Impedance::nonadaptable()
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn eval_wave(&mut self, rp: Impedance<T>, p: T, a: T) -> T {
+        2. * rp.resistance().powf(p) + a
+    }
 }
 
-impl<'a, T, W> ops::Deref for NodeWdfRef<'a, T, W> {
-    type Target = W;
+pub struct ResistiveVs<T> {
+    pub r: T,
+    pub vs: T,
+}
 
-    fn deref(&self) -> &Self::Target {
-        &self.borrow.wdf
+impl<T: 'static + Scalar> Wdf<T> for ResistiveVs<T> {
+    fn impedance(&self) -> Impedance<T> {
+        Impedance::from_resistance(self.r)
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn eval_wave(&mut self, port_impedance: Impedance<T>, p: T, _: T) -> T {
+        self.vs * port_impedance.resistance().powf(p - 1.)
+    }
+}
+
+pub struct ResistiveIs<T> {
+    pub r: T,
+    pub is: T,
+}
+
+impl<T: 'static + Scalar> Wdf<T> for ResistiveIs<T> {
+    fn impedance(&self) -> Impedance<T> {
+        Impedance::from_resistance(self.r)
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn eval_wave(&mut self, port_impedance: Impedance<T>, p: T, _: T) -> T {
+        self.is * port_impedance.resistance().powf(p)
+    }
+}
+
+pub struct ShortCircuit;
+
+impl<T: 'static + Scalar> Wdf<T> for ShortCircuit {
+    fn impedance(&self) -> Impedance<T> {
+        Impedance::nonadaptable()
+    }
+
+    fn eval_wave(&mut self, _: Impedance<T>, p: T, a: T) -> T {
+        a.neg()
+    }
+}
+
+pub struct OpenCircuit;
+
+impl<T: 'static + Scalar> Wdf<T> for OpenCircuit {
+    fn impedance(&self) -> Impedance<T> {
+        Impedance::nonadaptable()
+    }
+
+    fn eval_wave(&mut self, _: Impedance<T>, p: T, a: T) -> T {
+        a
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SwitchState {
+    Closed,
+    Open,
+}
+
+impl SwitchState {
+    #[inline(always)]
+    pub fn lambda<T: One + Neg<Output = T>>(&self) -> T {
+        match self {
+            Self::Open => T::one(),
+            Self::Closed => T::one().neg(),
+        }
+    }
+}
+
+pub struct Switch(pub SwitchState);
+
+impl<T: 'static + Scalar> Wdf<T> for Switch {
+    fn impedance(&self) -> Impedance<T> {
+        Impedance::nonadaptable()
+    }
+
+    fn eval_wave(&mut self, _: Impedance<T>, p: T, a: T) -> T {
+        a * self.0.lambda()
+    }
+}
+
+pub struct Capacitor<T> {
+    pub fs: T,
+    pub c: T,
+    state: T,
+}
+
+impl<T: Scalar> Default for Capacitor<T> {
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn default() -> Self {
+        Self {
+            fs: 44.1e3,
+            c: 0.,
+            state: 0.,
+        }
+    }
+}
+
+impl<T: 'static + Scalar> Wdf<T> for Capacitor<T> {
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn impedance(&self) -> Impedance<T> {
+        Impedance::from_admittance(2. * self.fs * self.c)
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn eval_wave(&mut self, port_impedance: Impedance<T>, p: T, a: T) -> T {
+        std::mem::replace(&mut self.state, a)
+    }
+}
+
+pub struct Inductor<T> {
+    pub fs: T,
+    pub l: T,
+    state: T,
+}
+
+impl<T: Scalar> Default for Inductor<T> {
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn default() -> Self {
+        Self {
+            fs: 44.1e3,
+            l: 0.,
+            state: 0.,
+        }
+    }
+}
+
+impl<T: 'static + Scalar> Wdf<T> for Inductor<T> {
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn impedance(&self) -> Impedance<T> {
+        Impedance::from_resistance(2. * self.fs * self.l)
+    }
+
+    #[replace_float_literals(T::from(literal).unwrap())]
+    fn eval_wave(&mut self, _: Impedance<T>, p: T, a: T) -> T {
+        std::mem::replace(&mut self.state, -a)
+    }
+}
+
+// Two-ports
+pub struct Parallel<L, R>(pub L, pub R);
+
+impl<T: 'static + Scalar, L: Wdf<T>, R: Wdf<R>> Wdf<T> for Parallel<L, R> {
+    fn impedance(&self) -> Impedance<T> {
+        todo!()
+    }
+
+    fn eval_wave(&mut self, rp: Impedance<T>, p: T, a: T) -> T {
+        todo!()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::AtomicBool;
+    use crate::wdf::{Wave, Resistor};
 
-    use num_traits::Zero;
-
-    use crate::wdf::{adaptors::Series, leaves::Resistor, root::IdealVs, IntoNode, Node, Wdf};
-
-    use super::{adaptors::PolarityInvert, Impedance};
+    use super::{ResistiveVs, Capacitor, Wdf};
 
     #[test]
-    fn series_impedance() {
-        let series = Impedance::from_resistance(100.).series_with(Impedance::from_resistance(100.));
-        assert_eq!(series.resistance(), 200.);
-        assert_eq!(series.admittance(), 0.005);
-    }
-
-    #[test]
-    fn parallel_impedance() {
-        let parallel =
-            Impedance::from_resistance(100f64).parallel_with(Impedance::from_resistance(100.));
-        assert_eq!(parallel.resistance(), 50.);
-        assert_eq!(parallel.admittance(), parallel.resistance().recip());
-    }
-
-    #[test]
-    /// Tests that the invalidation behavior bubbles up the WDF tree
-    fn bubbling_invalidation() {
-        struct MonitorImpedance<T, W> {
-            impedance_called: AtomicBool,
-            child_node: Node<T, W>,
-        }
-
-        impl<T: Zero, W> MonitorImpedance<T, W>
-        where
-            Self: Wdf<T>,
-        {
-            fn new(child: impl Into<Node<T, W>>) -> Node<T, Self> {
-                let mut child = child.into();
-                let this = Self {
-                    child_node: child.clone(),
-                    impedance_called: AtomicBool::new(false),
-                }
-                .into_node();
-                child.set_parent(&this);
-                this
-            }
-
-            fn impedance_called(&self) -> bool {
-                self.impedance_called
-                    .load(std::sync::atomic::Ordering::SeqCst)
-            }
-        }
-
-        impl<T: 'static + Copy, W: Wdf<T>> Wdf<T> for MonitorImpedance<T, W> {
-            fn impedance(&self) -> Impedance<T> {
-                self.impedance_called
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-                self.child_node.impedance()
-            }
-
-            fn reflected(
-                &mut self,
-                _impedance: Impedance<T>,
-                _wave: &mut crate::wdf::Wave<T>,
-            ) -> T {
-                self.child_node.reflected()
-            }
-
-            fn incident(
-                &mut self,
-                _impedance: Impedance<T>,
-                _wave: &mut crate::wdf::Wave<T>,
-                a: T,
-            ) {
-                self.child_node.incident(a)
-            }
-        }
-
-        let child = Resistor(Impedance::from_resistance(330f32)).into_node();
-        let monitor = MonitorImpedance::new(child.clone());
-        child.invalidate_parent_impedence();
-        assert!(monitor.inner().impedance_called());
-    }
-
-    #[test]
-    fn voltage_divider() {
-        let r1 = Resistor(Impedance::from_resistance(10e3)).into_node();
-        let r2 = r1.clone();
-        let s1 = Series::new(r1.clone(), r2.clone());
-        let mut p1 = PolarityInvert::new(s1);
-        let mut vs = IdealVs::new(&mut p1);
-        vs.inner().0 = 1.;
-
-        let p1r = p1.reflected();
-        vs.incident(p1r);
-
-        eprintln!("=== After wave up\nvs wave: {:?}", vs.wave());
-        eprintln!("p1 wave: {:?}", p1.wave());
-        eprintln!("s1 wave: {:?}", p1.inner().child.wave());
-        eprintln!("r1 wave: {:?}", r1.wave());
-        eprintln!("r2 wave: {:?}", r2.wave());
-        
-        let vsr = vs.reflected();
-        p1.incident(vsr);
-        let vout = r2.voltage();
-
-        eprintln!("=== After wave down\nvs wave: {:?}", vs.wave());
-        eprintln!("p1 wave: {:?}", p1.wave());
-        eprintln!("s1 wave: {:?}", p1.inner().child.wave());
-        eprintln!("r1 wave: {:?}", r1.wave());
-        eprintln!("r2 wave: {:?}", r2.wave());
-        assert_eq!(vout, 0.5);
+    fn lpf_1pole() {
+        let mut rs = ResistiveVs { r: 330., vs: 1. };
+        let mut r = Resistor(330.);
+        let b_rs = rs.eval_wave(r.impedance(), 1., 0.);
+        let b_c = r.eval_wave(rs.impedance(), 1., b_rs);
+        let out_wave = Wave { a: b_rs, b: b_c };
+        println!("b_rs: {b_rs}\tb_c: {b_c}\tout voltage: {}", out_wave.voltage());
     }
 }
