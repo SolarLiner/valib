@@ -7,4 +7,4 @@ description = "A helper for compiling and bundling plugins, can be invoked in th
 license = "ISC"
 
 [dependencies]
-nih_plug_xtask = { git = "https://github.com/robbert-vdh/nih-plug", folder = "nih_plug_xtask" }
+nih_plug_xtask = { git = "https://github.com/robbert-vdh/nih-plug" }
