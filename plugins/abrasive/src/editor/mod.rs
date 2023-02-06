@@ -12,6 +12,7 @@ use crate::spectrum::Spectrum;
 
 mod analyzer;
 mod background;
+mod components;
 mod band;
 mod eq;
 
@@ -48,32 +49,18 @@ pub(crate) fn default_state() -> Arc<ViziaState> {
 pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Editor>> {
     create_vizia_editor(state, ViziaTheming::Custom, move |cx, _| {
         assets::register_noto_sans_light(cx);
+        cx.add_fonts_mem(&[include_bytes!("../assets/Metrophobic-Regular.ttf")]);
         cx.add_theme(include_str!("./theme.css"));
         data.clone().build(cx);
 
         ResizeHandle::new(cx);
-        ZStack::new(cx, |cx| {
+        VStack::new(cx, |cx| {
+            analyzer(cx);
             HStack::new(cx, |cx| {
-                analyzer(cx);
-                band::side_panel(cx);
-            })
-            .id("ui");
-            // FIXME: replace buttons by band handles
-            HStack::new(cx, |cx| {
-                Button::new(
-                    cx,
-                    |cx| cx.emit(DataEvent::Deselect),
-                    |cx| Label::new(cx, "Deselect"),
-                );
-                for i in 0..data.params.params.len() {
-                    Button::new(
-                        cx,
-                        move |cx| cx.emit(DataEvent::Select(i)),
-                        |cx| Label::new(cx, &format!("Select {}", i + 1)),
-                    );
+                for i in 0..2 {
+                    band::band_knobs(cx, i);
                 }
-            })
-            .col_between(Pixels(3.));
+            });
         });
     })
 }

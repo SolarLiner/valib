@@ -3,7 +3,8 @@ use nih_plug_vizia::{
     vizia::{modifiers::StyleModifiers, prelude::*},
     widgets::GenericUi,
 };
-
+use crate::editor::components::knob::HandleKnobExt;
+use super::components::knob::Knob;
 use crate::editor::Data;
 
 pub fn side_panel(cx: &mut Context) {
@@ -18,12 +19,15 @@ pub fn side_panel(cx: &mut Context) {
     .toggle_class("visible", Data::selected.map(|opt| opt.is_some()));
 }
 
-fn band_knobs(cx: &mut Context, selected: usize) {
+pub fn band_knobs(cx: &mut Context, selected: usize) {
     Binding::new(
         cx,
         Data::params.map(move |p| p.params[selected].clone()),
         |cx, fparams| {
-            GenericUi::new(cx, fparams);
+            // GenericUi::new(cx, fparams);
+            GenericUi::new_custom(cx, fparams, |cx, param_ptr| {
+                Knob::new(cx).value(unsafe { param_ptr.modulated_normalized_value() });
+            });
         },
     );
 }
