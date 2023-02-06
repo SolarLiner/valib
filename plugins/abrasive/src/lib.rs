@@ -5,13 +5,10 @@ extern crate core;
 
 use crate::{
     filter::{Filter, FilterParams},
-    spectrum::Analyzer
+    spectrum::Analyzer,
 };
 use atomic_float::AtomicF32;
-use nih_plug::{
-    params::persist::PersistentField,
-    prelude::*
-};
+use nih_plug::{params::persist::PersistentField, prelude::*};
 use std::sync::{Arc, Mutex};
 
 mod editor;
@@ -109,6 +106,7 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, 2> {
     const DEFAULT_INPUT_CHANNELS: u32 = CHANNELS as _;
     const DEFAULT_OUTPUT_CHANNELS: u32 = CHANNELS as _;
     type BackgroundTask = ();
+    type SysExMessage = ();
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -216,7 +214,13 @@ impl<const CHANNELS: usize> ClapPlugin for Abrasive<CHANNELS, 2> {
 
 impl<const CHANNELS: usize> Vst3Plugin for Abrasive<CHANNELS, 2> {
     const VST3_CLASS_ID: [u8; 16] = *b"ValibAbrasiveSLN";
-    const VST3_CATEGORIES: &'static str = "Fx|Filter|Equalizer";
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
+        Vst3SubCategory::Fx,
+        Vst3SubCategory::Filter,
+        Vst3SubCategory::Eq,
+        Vst3SubCategory::Analyzer,
+        Vst3SubCategory::Stereo,
+    ];
 }
 
 nih_export_clap!(Abrasive<2, 2>);

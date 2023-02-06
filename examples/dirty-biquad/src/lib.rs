@@ -142,6 +142,7 @@ impl nih_plug::prelude::Plugin for Plugin {
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = "0.0.0";
     type BackgroundTask = ();
+    type SysExMessage = ();
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -232,7 +233,11 @@ impl ClapPlugin for Plugin {
 
 impl Vst3Plugin for Plugin {
     const VST3_CLASS_ID: [u8; 16] = *b"VaLibDirTYBiqUAD";
-    const VST3_CATEGORIES: &'static str = "Fx|Filter";
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
+        Vst3SubCategory::Fx,
+        Vst3SubCategory::Filter,
+        Vst3SubCategory::Stereo,
+    ];
 }
 
 nih_export_clap!(Plugin);
