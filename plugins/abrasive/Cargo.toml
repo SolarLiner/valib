@@ -17,6 +17,7 @@ atomic_float = "0.1.0"
 morphorm = "*"
 nih_plug = { workspace = true, features = ["standalone"] }
 nih_plug_vizia = { workspace = true }
-realfft = "3.2.0"
-triple_buffer = "6.2.0"
+realfft = "3.3.0"
+triple_buffer = "7.0.0"
 valib = { path = "../.." }
+resource = "0.5.0"

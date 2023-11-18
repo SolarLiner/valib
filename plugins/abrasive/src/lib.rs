@@ -105,8 +105,6 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
     const URL: &'static str = "https://github.com/solarliner/abrasive";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-    const DEFAULT_INPUT_CHANNELS: u32 = CHANNELS as _;
-    const DEFAULT_OUTPUT_CHANNELS: u32 = CHANNELS as _;
     type BackgroundTask = ();
     type SysExMessage = ();
 
@@ -114,7 +112,7 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
         self.params.clone()
     }
 
-    fn editor(&self, _: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+    fn editor(&mut self, _: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         editor::create(
             editor::Data {
                 spectrum_out: self.analyzer_output.clone(),
@@ -129,7 +127,7 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
 
     fn initialize(
         &mut self,
-        _bus_config: &BusConfig,
+        _audio_io_layout: &AudioIOLayout,
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
@@ -160,6 +158,16 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
         self.analyzer_out.process_buffer(buffer);
         ProcessStatus::Normal
     }
+
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
+        AudioIOLayout {
+            main_input_channels: NonZeroU32::new(2),
+            main_output_channels: NonZeroU32::new(2),
+            aux_input_ports: &[],
+            aux_output_ports: &[],
+            names: PortNames::const_default(),
+        }
+    ];
 }
 
 impl<const CHANNELS: usize> Abrasive<CHANNELS, NUM_BANDS> {

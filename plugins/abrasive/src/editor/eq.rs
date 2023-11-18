@@ -46,12 +46,9 @@ impl<const N: usize> View for EqData<N> {
             })
         };
         let bounds = cx.bounds();
-        let paint = vg::Paint::color(cx.font_color().copied().unwrap_or(Color::white()).into())
+        let paint = vg::Paint::color(cx.font_color().into())
             .with_line_width(
-                // FIXME: Using border width as stroke-width is not currently accessible
-                cx.border_width()
-                    .map(|u| u.value_or(bounds.h, 1.))
-                    .unwrap_or(1.),
+                cx.outline_width(),
             );
         let mut path = vg::Path::new();
 

@@ -4,6 +4,7 @@ use atomic_float::AtomicF32;
 use nih_plug::prelude::*;
 use nih_plug_vizia::widgets::ResizeHandle;
 use nih_plug_vizia::{assets, create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
+use resource::{resource, Resource, resource_str};
 use triple_buffer::Output;
 
 use analyzer::SpectrumAnalyzer;
@@ -30,14 +31,19 @@ pub(crate) struct Data {
 impl Model for Data {}
 
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::from_size(683, 500)
+    // ViziaState::from_size(683, 500)
+    ViziaState::new(|| (683, 500))
 }
 
 pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Editor>> {
     create_vizia_editor(state, ViziaTheming::Custom, move |cx, _| {
+        let theme_resource = resource_str!("src/editor/theme.css");
+        let theme_resource = Box::leak(Box::new(theme_resource));
         assets::register_noto_sans_light(cx);
-        cx.add_fonts_mem(&[include_bytes!("../assets/Metrophobic-Regular.ttf")]);
-        cx.add_theme(include_str!("./theme.css"));
+        cx.add_font_mem(resource!("src/assets/Metrophobic-Regular.ttf"));
+        if let Err(err) = cx.add_stylesheet(&**theme_resource) {
+            nih_error!("Cannot read CSS: {err}");
+        }
         data.clone().build(cx);
 
         ResizeHandle::new(cx);

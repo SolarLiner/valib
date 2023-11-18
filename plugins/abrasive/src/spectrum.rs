@@ -27,8 +27,6 @@ impl Clone for Spectrum {
     }
 
     fn clone_from(&mut self, source: &Self)
-    where
-        Self: ~const Destruct,
     {
         self.window_size = source.window_size;
         self.samplerate = source.samplerate;

@@ -45,7 +45,7 @@ impl View for Knob {
         event.map(|event, _| match event {
             WindowEvent::MouseDown(MouseButton::Left) => {
                 self.drag_start = Some((
-                    cx.mouse.cursory,
+                    cx.mouse().cursory,
                     self.widget_base.unmodulated_normalized_value(),
                 ));
                 cx.set_active(true);
@@ -55,7 +55,7 @@ impl View for Knob {
             }
             &WindowEvent::MouseMove(_, y) => {
                 if let Some((start_y, start_normalized_value)) = self.drag_start {
-                    let speed = if cx.modifiers.contains(Modifiers::SHIFT) {
+                    let speed = if cx.modifiers().contains(Modifiers::SHIFT) {
                         5e-4
                     } else {
                         5e-3
@@ -87,7 +87,6 @@ impl View for Knob {
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
         let bounds = cx.bounds();
         // Background
-        let paint = get_fill(cx, canvas).unwrap_or(vg::Paint::color(vg::Color::black()));
         let mut path = vg::Path::new();
         path.rounded_rect(
             bounds.x,
@@ -106,12 +105,12 @@ impl View for Knob {
             // cx.border_radius_bottom_right()
             //     .map(|u| u.value_or(0., 0.))
             //     .unwrap_or(0.),
-            Percentage(100.).value_or(bounds.w, 0.1 * bounds.w),
+            Percentage(100.).to_px(bounds.w, 0.1 * bounds.w),
             // Percentage(100.).value_or(bounds.w, 0.1 * bounds.w),
             // Percentage(100.).value_or(bounds.w, 0.1 * bounds.w),
             // Percentage(100.).value_or(bounds.w, 0.1 * bounds.w),
         );
-        canvas.fill_path(&mut path, &paint);
+        cx.draw_background(canvas, &mut path);
 
         // Value arc + line
         let paint = get_stroke(cx, canvas).unwrap_or(vg::Paint::color(vg::Color::white()));
@@ -138,30 +137,6 @@ impl View for Knob {
     }
 }
 
-fn get_fill(cx: &mut DrawContext, canvas: &mut Canvas) -> Option<vg::Paint> {
-    cx.background_image()
-        .cloned()
-        .and_then(|imgpath| load_image_file(cx, canvas, &imgpath))
-        .or_else(|| {
-            cx.background_gradient().map(|g| {
-                let bounds = cx.bounds();
-                let ((x0, y0), (x1, y1)) = match g.direction {
-                    GradientDirection::BottomToTop => (bounds.center_bottom(), bounds.center_top()),
-                    GradientDirection::TopToBottom => (bounds.center_top(), bounds.center_bottom()),
-                    GradientDirection::LeftToRight => (bounds.center_left(), bounds.center_right()),
-                    GradientDirection::RightToLeft => (bounds.center_right(), bounds.center_left()),
-                };
-                let stops: Vec<_> = g
-                    .stops
-                    .iter()
-                    .map(|stop| (stop.position.value_or(0., 0.), color2color(&stop.color)))
-                    .collect();
-                vg::Paint::linear_gradient_stops(x0, y0, x1, y1, &stops)
-            })
-        })
-        .or_else(|| cx.background_color().map(color2color).map(vg::Paint::color))
-}
-
 fn load_image_file(cx: &mut DrawContext, canvas: &mut Canvas, imgpath: &str) -> Option<vg::Paint> {
     let bounds = cx.bounds();
     let (cx, cy) = bounds.top_left();
@@ -183,18 +158,7 @@ fn load_image_file(cx: &mut DrawContext, canvas: &mut Canvas, imgpath: &str) -> 
 }
 
 fn get_stroke(cx: &mut DrawContext, canvas: &mut Canvas) -> Option<vg::Paint> {
-    cx.image()
-        .cloned()
-        .and_then(|imgpath| load_image_file(cx, canvas, &imgpath))
-        .or_else(|| cx.font_color().map(color2color).map(vg::Paint::color))
-        .map(|mut paint| {
-            paint.set_line_width(
-                cx.border_width()
-                    .map(|units| units.value_or(1., 1.))
-                    .unwrap_or(1.),
-            );
-            paint
-        })
+    Some(vg::Paint::color(cx.outline_color().into()).with_line_width(cx.outline_width()))
 }
 
 fn color2color(inp: &Color) -> vg::Color {
