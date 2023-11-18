@@ -1,24 +1,38 @@
+#[cfg(not(feature = "example"))]
 use std::sync::{Arc, Mutex};
 
+#[cfg(not(feature = "example"))]
 use atomic_float::AtomicF32;
+#[cfg(not(feature = "example"))]
 use nih_plug::prelude::*;
+#[cfg(not(feature = "example"))]
 use nih_plug_vizia::widgets::ResizeHandle;
+#[cfg(not(feature = "example"))]
 use nih_plug_vizia::{assets, create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
+#[cfg(not(feature = "example"))]
 use resource::{resource, Resource, resource_str};
+#[cfg(not(feature = "example"))]
 use triple_buffer::Output;
 
+#[cfg(not(feature = "example"))]
 use analyzer::SpectrumAnalyzer;
 
 use crate::spectrum::Spectrum;
 
+#[cfg(not(feature = "example"))]
 mod analyzer;
+#[cfg(not(feature = "example"))]
 mod background;
-mod components;
+pub mod components;
+#[cfg(not(feature = "example"))]
 mod band;
+#[cfg(not(feature = "example"))]
 mod eq;
 
+#[cfg(not(feature = "example"))]
 pub type SpectrumUI = Arc<Mutex<Output<Spectrum>>>;
 
+#[cfg(not(feature = "example"))]
 #[derive(Lens, Clone)]
 pub(crate) struct Data {
     pub(crate) params: Arc<crate::AbrasiveParams<{super::NUM_BANDS}>>,
@@ -28,20 +42,21 @@ pub(crate) struct Data {
     pub(crate) selected: Option<usize>,
 }
 
+#[cfg(not(feature = "example"))]
 impl Model for Data {}
 
+#[cfg(not(feature = "example"))]
 pub(crate) fn default_state() -> Arc<ViziaState> {
     // ViziaState::from_size(683, 500)
     ViziaState::new(|| (683, 500))
 }
 
+#[cfg(not(feature = "example"))]
 pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Editor>> {
     create_vizia_editor(state, ViziaTheming::Custom, move |cx, _| {
-        let theme_resource = resource_str!("src/editor/theme.css");
-        let theme_resource = Box::leak(Box::new(theme_resource));
         assets::register_noto_sans_light(cx);
         cx.add_font_mem(resource!("src/assets/Metrophobic-Regular.ttf"));
-        if let Err(err) = cx.add_stylesheet(&**theme_resource) {
+        if let Err(err) = cx.add_stylesheet(include_style!("src/editor/theme.css")) {
             nih_error!("Cannot read CSS: {err}");
         }
         data.clone().build(cx);
@@ -58,6 +73,7 @@ pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Edito
     })
 }
 
+#[cfg(not(feature = "example"))]
 fn analyzer(cx: &mut Context) -> Handle<impl View> {
     nih_log!("Creating analyzer");
     ZStack::new(cx, |cx| {

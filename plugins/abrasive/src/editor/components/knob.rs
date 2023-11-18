@@ -3,7 +3,7 @@ use std::{
     ops::Neg,
 };
 
-use nih_plug::{nih_error, prelude::Param};
+use nih_plug::{nih_error, nih_log, prelude::Param};
 use nih_plug_vizia::{
     vizia::{prelude::*, vg},
     widgets::param_base::ParamWidgetBase,
@@ -33,6 +33,8 @@ impl Knob {
             drag_start: None,
         }
         .build(cx, |_| ())
+            .min_width(Pixels(32.0))
+            .min_height(Pixels(32.0))
     }
 }
 
@@ -42,31 +44,47 @@ impl View for Knob {
     }
 
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
-        event.map(|event, _| match event {
-            WindowEvent::MouseDown(MouseButton::Left) => {
-                self.drag_start = Some((
-                    cx.mouse().cursory,
-                    self.widget_base.unmodulated_normalized_value(),
-                ));
-                cx.set_active(true);
-            }
-            WindowEvent::MouseUp(MouseButton::Left) => {
-                self.drag_start = None;
-            }
-            &WindowEvent::MouseMove(_, y) => {
-                if let Some((start_y, start_normalized_value)) = self.drag_start {
-                    let speed = if cx.modifiers().contains(Modifiers::SHIFT) {
-                        5e-4
-                    } else {
-                        5e-3
-                    };
+        event.map(|event, _| {
+            match event {
+                WindowEvent::MouseDown(MouseButton::Left) => {
+                    self.drag_start = Some((
+                        cx.mouse().cursory,
+                        self.widget_base.unmodulated_normalized_value(),
+                    ));
                     self.widget_base.begin_set_parameter(cx);
-                    self.widget_base
-                        .set_normalized_value(cx, start_normalized_value - speed * (y - start_y));
+                    cx.set_active(true);
+                }
+                WindowEvent::MouseUp(MouseButton::Left) => {
+                    self.drag_start = None;
                     self.widget_base.end_set_parameter(cx);
                 }
+                &WindowEvent::MouseMove(_, y) => {
+                    if let Some((start_y, start_normalized_value)) = self.drag_start {
+                        let speed = if cx.modifiers().contains(Modifiers::SHIFT) {
+                            5e-4
+                        } else {
+                            5e-3
+                        };
+                        let normalized_value = start_normalized_value - speed * (y - start_y);
+                        nih_log!("Normalized value: {normalized_value}");
+                        self.widget_base
+                            .set_normalized_value(cx, normalized_value);
+                    }
+                }
+                &WindowEvent::MouseScroll(_, y) => {
+                    let step = if cx.modifiers().contains(Modifiers::SHIFT) {
+                        0.01
+                    } else {
+                        0.1
+                    };
+                    let normalized_value = self.widget_base.unmodulated_normalized_value() +  y*step;
+                    nih_log!("Scroll -- normalized value: {normalized_value}");
+                    self.widget_base.begin_set_parameter(cx);
+                    self.widget_base.set_normalized_value(cx, normalized_value);
+                    self.widget_base.end_set_parameter(cx);
+                }
+                _ => {}
             }
-            _ => {}
         });
         event.map(|event, _| {
             self.widget_base.begin_set_parameter(cx);
@@ -110,10 +128,10 @@ impl View for Knob {
             // Percentage(100.).value_or(bounds.w, 0.1 * bounds.w),
             // Percentage(100.).value_or(bounds.w, 0.1 * bounds.w),
         );
+        cx.draw_shadows(canvas, &mut path);
         cx.draw_background(canvas, &mut path);
 
         // Value arc + line
-        let paint = get_stroke(cx, canvas).unwrap_or(vg::Paint::color(vg::Color::white()));
         let mut path = vg::Path::new();
         let (ctx, cty) = bounds.center();
         let radius = bounds.w.min(bounds.h) / 2. - 3.;
@@ -133,34 +151,10 @@ impl View for Knob {
         let (s, c) = (-end + FRAC_PI_2).sin_cos();
         path.move_to(ctx, cty);
         path.line_to(ctx + radius * s, cty + radius * c);
-        canvas.stroke_path(&mut path, &paint);
+        canvas.stroke_path(&mut path, &get_stroke(cx));
     }
 }
 
-fn load_image_file(cx: &mut DrawContext, canvas: &mut Canvas, imgpath: &str) -> Option<vg::Paint> {
-    let bounds = cx.bounds();
-    let (cx, cy) = bounds.top_left();
-    match canvas.load_image_file(imgpath, vg::ImageFlags::empty()) {
-        Ok(img) => Some(vg::Paint::image(
-            img,
-            cx,
-            cy,
-            bounds.width(),
-            bounds.height(),
-            0.,
-            1.,
-        )),
-        Err(err) => {
-            nih_error!("Cannot get background image: {}", err);
-            None
-        }
-    }
-}
-
-fn get_stroke(cx: &mut DrawContext, canvas: &mut Canvas) -> Option<vg::Paint> {
-    Some(vg::Paint::color(cx.outline_color().into()).with_line_width(cx.outline_width()))
-}
-
-fn color2color(inp: &Color) -> vg::Color {
-    vg::Color::rgba(inp.r(), inp.g(), inp.b(), inp.a())
+fn get_stroke(cx: &mut DrawContext) -> vg::Paint {
+    vg::Paint::color(cx.outline_color().into()).with_line_width(cx.outline_width())
 }

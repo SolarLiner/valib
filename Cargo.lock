@@ -10,6 +10,7 @@ dependencies = [
  "morphorm",
  "nih_plug 0.0.0 (git+https://github.com/geom3trik/nih-plug.git?branch=vizia-update)",
  "nih_plug_vizia",
+ "once_cell",
  "realfft",
  "resource",
  "triple_buffer",
