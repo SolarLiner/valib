@@ -26,8 +26,7 @@ impl Clone for Spectrum {
         this
     }
 
-    fn clone_from(&mut self, source: &Self)
-    {
+    fn clone_from(&mut self, source: &Self) {
         self.window_size = source.window_size;
         self.samplerate = source.samplerate;
         self.data.copy_from_slice(&source.data);

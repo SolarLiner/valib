@@ -69,7 +69,14 @@ impl<T: Scalar> Oversample<T> {
         let os_len = out.len() * self.os_factor;
         assert!(os_len <= self.os_buffer.len());
 
-        for (i, s) in self.os_buffer.iter().step_by(self.os_factor).copied().enumerate().take(out.len()) {
+        for (i, s) in self
+            .os_buffer
+            .iter()
+            .step_by(self.os_factor)
+            .copied()
+            .enumerate()
+            .take(out.len())
+        {
             out[i] = s;
         }
     }

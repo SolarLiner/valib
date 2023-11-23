@@ -23,14 +23,12 @@ impl SpectrumAnalyzer {
             samplerate,
             frange: FilterParams::cutoff_range(),
         }
-            .build(cx, |_cx| ())
+        .build(cx, |_cx| ())
     }
 
     fn draw_analyzer(&self, cx: &mut DrawContext, canvas: &mut Canvas, bounds: BoundingBox) {
         let line_width = cx.scale_factor() * 1.5;
-        let line_paint =
-            vg::Paint::color(cx.font_color().into())
-                .with_line_width(line_width);
+        let line_paint = vg::Paint::color(cx.font_color().into()).with_line_width(line_width);
 
         let mut path = vg::Path::new();
 
@@ -54,6 +52,7 @@ impl SpectrumAnalyzer {
             path.line_to(bounds.x + bounds.w * x, bounds.y + bounds.h * (1. - h));
         }
 
+        canvas.scissor(bounds.x, bounds.y, bounds.w, bounds.h);
         canvas.stroke_path(&mut path, &line_paint);
     }
 }

@@ -320,9 +320,9 @@ impl<T: 'static + Scalar, L: Wdf<T>, R: Wdf<R>> Wdf<T> for Parallel<L, R> {
 
 #[cfg(test)]
 mod tests {
-    use crate::wdf::{Wave, Resistor};
+    use crate::wdf::{Resistor, Wave};
 
-    use super::{ResistiveVs, Capacitor, Wdf};
+    use super::{Capacitor, ResistiveVs, Wdf};
 
     #[test]
     fn lpf_1pole() {
@@ -331,6 +331,9 @@ mod tests {
         let b_rs = rs.eval_wave(r.impedance(), 1., 0.);
         let b_c = r.eval_wave(rs.impedance(), 1., b_rs);
         let out_wave = Wave { a: b_rs, b: b_c };
-        println!("b_rs: {b_rs}\tb_c: {b_c}\tout voltage: {}", out_wave.voltage());
+        println!(
+            "b_rs: {b_rs}\tb_c: {b_c}\tout voltage: {}",
+            out_wave.voltage()
+        );
     }
 }

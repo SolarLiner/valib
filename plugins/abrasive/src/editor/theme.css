@@ -45,9 +45,22 @@ knob {
   border-radius: 100%;
   width: 51px;
   height: 51px;
-  color: #F2C94C;
+  border-width: 1px;
   background-image: linear-gradient(to bottom, #404040 0%, #262626 100%);
   box-shadow: 0 4px 4px rgba(0, 0, 0, 0.25);
+}
+
+knob arc {
+  width: 51px;
+  height: 51px;
+}
+
+arc.unmodulated {
+  color: #F2C94C;
+}
+
+arc.modulated {
+  color: #00ff77;
 }
 
 .small knob {
@@ -57,11 +70,7 @@ knob {
 
 .param label {
   width: 100%;
-
   font-size: 12pt;
-  text-align: center;
-  align-self: center;
-
   color: #ffffff;
 }
 

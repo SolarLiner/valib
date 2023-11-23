@@ -10,7 +10,7 @@ use nih_plug_vizia::widgets::ResizeHandle;
 #[cfg(not(feature = "example"))]
 use nih_plug_vizia::{assets, create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
 #[cfg(not(feature = "example"))]
-use resource::{resource, Resource, resource_str};
+use resource::{resource, resource_str, Resource};
 #[cfg(not(feature = "example"))]
 use triple_buffer::Output;
 
@@ -23,9 +23,9 @@ use crate::spectrum::Spectrum;
 mod analyzer;
 #[cfg(not(feature = "example"))]
 mod background;
-pub mod components;
 #[cfg(not(feature = "example"))]
 mod band;
+pub mod components;
 #[cfg(not(feature = "example"))]
 mod eq;
 
@@ -35,7 +35,7 @@ pub type SpectrumUI = Arc<Mutex<Output<Spectrum>>>;
 #[cfg(not(feature = "example"))]
 #[derive(Lens, Clone)]
 pub(crate) struct Data {
-    pub(crate) params: Arc<crate::AbrasiveParams<{super::NUM_BANDS}>>,
+    pub(crate) params: Arc<crate::AbrasiveParams<{ super::NUM_BANDS }>>,
     pub(crate) samplerate: Arc<AtomicF32>,
     pub(crate) spectrum_in: SpectrumUI,
     pub(crate) spectrum_out: SpectrumUI,
@@ -68,8 +68,12 @@ pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Edito
                 for i in 0..super::NUM_BANDS {
                     band::band_knobs(cx, i);
                 }
-            }).class("panel");
-        }).width(Percentage(100.)).height(Percentage(100.)).id("ui");
+            })
+            .class("panel");
+        })
+        .width(Percentage(100.))
+        .height(Percentage(100.))
+        .id("ui");
     })
 }
 

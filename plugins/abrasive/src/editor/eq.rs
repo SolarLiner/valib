@@ -46,10 +46,7 @@ impl<const N: usize> View for EqData<N> {
             })
         };
         let bounds = cx.bounds();
-        let paint = vg::Paint::color(cx.font_color().into())
-            .with_line_width(
-                cx.outline_width(),
-            );
+        let paint = vg::Paint::color(cx.font_color().into()).with_line_width(cx.border_width());
         let mut path = vg::Path::new();
 
         for j in 0..4 * bounds.w as usize {
@@ -90,6 +87,7 @@ impl<const N: usize> View for EqData<N> {
             }
         }
 
+        canvas.scissor(bounds.x, bounds.y, bounds.w, bounds.h);
         canvas.stroke_path(&mut path, &paint);
     }
 }

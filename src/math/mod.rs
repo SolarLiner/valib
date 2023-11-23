@@ -22,7 +22,9 @@ pub fn newton_rhapson_steps<T: Scalar + ComplexField, const N: usize>(
     value: &mut SVector<T, N>,
     iter: usize,
 ) -> T {
-    let Some(mut step ) = nr_step(eq, value) else { return T::zero() };
+    let Some(mut step) = nr_step(eq, value) else {
+        return T::zero();
+    };
     for _ in 1..iter {
         *value -= step;
         if let Some(newstep) = nr_step(eq, value) {

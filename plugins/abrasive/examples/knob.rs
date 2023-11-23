@@ -1,13 +1,13 @@
-use std::fmt::format;
-use std::sync::Arc;
+use abrasive::editor::components::Knob;
 use nih_plug::log;
 use nih_plug::log::{Level, Log, Record};
 use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::prelude::*;
 use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
-use resource::{Resource, resource, resource_str};
-use abrasive::editor::components::Knob;
 use once_cell::sync::Lazy;
+use resource::{resource, resource_str, Resource};
+use std::fmt::format;
+use std::sync::Arc;
 
 #[derive(Debug)]
 struct KnobParams {
@@ -19,7 +19,7 @@ impl Default for KnobParams {
         Self {
             value: FloatParam::new("value", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_string_to_value(formatters::s2v_f32_percentage())
-                .with_value_to_string(formatters::v2s_f32_percentage(2))
+                .with_value_to_string(formatters::v2s_f32_percentage(2)),
         }
     }
 }
@@ -66,18 +66,40 @@ fn main() {
     nih_log!("Test log");
     Application::new(|cx| {
         cx.add_font_mem(resource!("src/assets/Metrophobic-Regular.ttf"));
-        cx.add_stylesheet(include_style!("src/editor/theme.css")).expect("Cannot load stylesheet");
+        cx.add_stylesheet(include_style!("src/editor/theme.css"))
+            .expect("Cannot load stylesheet");
         ExampleData::default().build(cx);
 
         VStack::new(cx, |cx| {
             Binding::new(cx, ExampleData::bipolar, |cx, lens| {
                 let bipolar = lens.get(cx);
-                Knob::new(cx, bipolar, ExampleData::knob_params, |params| &params.value);
+                Knob::new(cx, bipolar, ExampleData::knob_params, |params| {
+                    &params.value
+                });
             });
             VStack::new(cx, |cx| {
-                Label::new(cx, ExampleData::knob_params.map(|params| format!("Normalized value: {:2.2}", params.value.unmodulated_normalized_value())));
-                Label::new(cx, ExampleData::knob_params.map(|params| format!("Plain      value: {:2.2}", params.value.unmodulated_plain_value())));
-            }).font_family([FamilyOwned::Monospace]);
-        }).id("ui");
-    }).run();
+                Label::new(
+                    cx,
+                    ExampleData::knob_params.map(|params| {
+                        format!(
+                            "Normalized value: {:2.2}",
+                            params.value.unmodulated_normalized_value()
+                        )
+                    }),
+                );
+                Label::new(
+                    cx,
+                    ExampleData::knob_params.map(|params| {
+                        format!(
+                            "Plain      value: {:2.2}",
+                            params.value.unmodulated_plain_value()
+                        )
+                    }),
+                );
+            })
+            .font_family([FamilyOwned::Monospace]);
+        })
+        .id("ui");
+    })
+    .run();
 }
