@@ -3,7 +3,7 @@ name: Automated Builds
 on:
   push:
     branches:
-      - '**'
+      - main
     tags:
       # Run when pushing version tags, since otherwise it's impossible to
       # restart a successful build after pushing a tag
@@ -61,9 +61,6 @@ jobs:
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: nightly
-          profile: minimal
-          default: true
           # The macOS AArch64/universal build is done from an x86_64 macOS CI
           # runner, so it needs to be cross compiled
           target: ${{ matrix.cross-target }}
