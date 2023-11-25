@@ -57,10 +57,6 @@ jobs:
 
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          profile: minimal
-          default: true
       - name: Build all targets
         uses: actions-rs/cargo@v1
         with:
