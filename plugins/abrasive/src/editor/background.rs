@@ -16,12 +16,7 @@ impl View for Background {
     }
 
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
-        let paint = vg::Paint::color(
-            cx.background_color()
-                .copied()
-                .unwrap_or(Color::black())
-                .into(),
-        );
+        let paint = vg::Paint::color(cx.background_color().into());
         let mut bg_path = vg::Path::new();
         let bounds = cx.bounds();
         bg_path.rect(bounds.x, bounds.y, bounds.w, bounds.h);

@@ -11,12 +11,13 @@ use atomic_float::AtomicF32;
 use nih_plug::{params::persist::PersistentField, prelude::*};
 use std::sync::{Arc, Mutex};
 
-mod editor;
+pub mod editor;
 mod filter;
 mod spectrum;
 
 pub const NUM_BANDS: usize = 5;
 
+#[cfg(not(feature = "example"))]
 #[derive(Debug, Params)]
 struct AbrasiveParams<const N: usize> {
     #[id = "drive"]
@@ -29,6 +30,7 @@ struct AbrasiveParams<const N: usize> {
     analyzer_smooth: FloatParam,
 }
 
+#[cfg(not(feature = "example"))]
 impl<const N: usize> Default for AbrasiveParams<N> {
     fn default() -> Self {
         Self {
@@ -65,6 +67,7 @@ impl<const N: usize> Default for AbrasiveParams<N> {
     }
 }
 
+#[cfg(not(feature = "example"))]
 pub struct Abrasive<const CHANNELS: usize, const N: usize> {
     params: Arc<AbrasiveParams<N>>,
     filters: [Filter<CHANNELS>; N],
@@ -75,6 +78,7 @@ pub struct Abrasive<const CHANNELS: usize, const N: usize> {
     analyzer_output: editor::SpectrumUI,
 }
 
+#[cfg(not(feature = "example"))]
 impl<const CHANNELS: usize, const N: usize> Default for Abrasive<CHANNELS, N> {
     fn default() -> Self {
         let params = AbrasiveParams::default();
@@ -99,14 +103,13 @@ impl<const CHANNELS: usize, const N: usize> Default for Abrasive<CHANNELS, N> {
     }
 }
 
+#[cfg(not(feature = "example"))]
 impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
     const NAME: &'static str = "Abrasive";
     const VENDOR: &'static str = "SolarLiner";
     const URL: &'static str = "https://github.com/solarliner/abrasive";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-    const DEFAULT_INPUT_CHANNELS: u32 = CHANNELS as _;
-    const DEFAULT_OUTPUT_CHANNELS: u32 = CHANNELS as _;
     type BackgroundTask = ();
     type SysExMessage = ();
 
@@ -114,7 +117,7 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
         self.params.clone()
     }
 
-    fn editor(&self, _: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+    fn editor(&mut self, _: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
         editor::create(
             editor::Data {
                 spectrum_out: self.analyzer_output.clone(),
@@ -129,7 +132,7 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
 
     fn initialize(
         &mut self,
-        _bus_config: &BusConfig,
+        _audio_io_layout: &AudioIOLayout,
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
@@ -160,8 +163,17 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
         self.analyzer_out.process_buffer(buffer);
         ProcessStatus::Normal
     }
+
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
+        main_input_channels: NonZeroU32::new(2),
+        main_output_channels: NonZeroU32::new(2),
+        aux_input_ports: &[],
+        aux_output_ports: &[],
+        names: PortNames::const_default(),
+    }];
 }
 
+#[cfg(not(feature = "example"))]
 impl<const CHANNELS: usize> Abrasive<CHANNELS, NUM_BANDS> {
     fn set_filterbank_samplerate(&mut self, sr: f32) {
         for filter in self.filters.iter_mut() {
@@ -199,6 +211,7 @@ impl<const CHANNELS: usize> Abrasive<CHANNELS, NUM_BANDS> {
     }
 }
 
+#[cfg(not(feature = "example"))]
 impl<const CHANNELS: usize> ClapPlugin for Abrasive<CHANNELS, NUM_BANDS> {
     const CLAP_ID: &'static str = "com.github.SolarLiner.valib.Abrasive";
     const CLAP_DESCRIPTION: Option<&'static str> =
@@ -214,6 +227,7 @@ impl<const CHANNELS: usize> ClapPlugin for Abrasive<CHANNELS, NUM_BANDS> {
     ];
 }
 
+#[cfg(not(feature = "example"))]
 impl<const CHANNELS: usize> Vst3Plugin for Abrasive<CHANNELS, NUM_BANDS> {
     const VST3_CLASS_ID: [u8; 16] = *b"ValibAbrasiveSLN";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
@@ -225,5 +239,7 @@ impl<const CHANNELS: usize> Vst3Plugin for Abrasive<CHANNELS, NUM_BANDS> {
     ];
 }
 
+#[cfg(not(feature = "example"))]
 nih_export_clap!(Abrasive<2, NUM_BANDS>);
+#[cfg(not(feature = "example"))]
 nih_export_vst3!(Abrasive<2, NUM_BANDS>);

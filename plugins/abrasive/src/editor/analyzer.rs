@@ -2,7 +2,7 @@ use std::sync::{atomic::Ordering, Arc};
 
 use atomic_float::AtomicF32;
 use nih_plug::prelude::*;
-use nih_plug_vizia::vizia::{cache::BoundingBox, prelude::*, vg};
+use nih_plug_vizia::vizia::{prelude::*, vg};
 
 use crate::filter::FilterParams;
 
@@ -27,10 +27,8 @@ impl SpectrumAnalyzer {
     }
 
     fn draw_analyzer(&self, cx: &mut DrawContext, canvas: &mut Canvas, bounds: BoundingBox) {
-        let line_width = cx.style.dpi_factor as f32 * 1.5;
-        let line_paint =
-            vg::Paint::color(cx.font_color().cloned().unwrap_or(Color::white()).into())
-                .with_line_width(line_width);
+        let line_width = cx.scale_factor() * 1.5;
+        let line_paint = vg::Paint::color(cx.font_color().into()).with_line_width(line_width);
 
         let mut path = vg::Path::new();
 
@@ -54,6 +52,7 @@ impl SpectrumAnalyzer {
             path.line_to(bounds.x + bounds.w * x, bounds.y + bounds.h * (1. - h));
         }
 
+        canvas.scissor(bounds.x, bounds.y, bounds.w, bounds.h);
         canvas.stroke_path(&mut path, &line_paint);
     }
 }

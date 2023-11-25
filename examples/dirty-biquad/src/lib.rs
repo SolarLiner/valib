@@ -1,6 +1,3 @@
-#![feature(default_free_fn)]
-
-use std::default::default;
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
@@ -129,7 +126,7 @@ impl Default for Plugin {
         let params = Arc::new(PluginParams::default());
         Self {
             params,
-            biquad: std::array::from_fn(move |_| Biquad::new(default(), default())),
+            biquad: std::array::from_fn(move |_| Biquad::new(Default::default(), Default::default())),
             oversample: std::array::from_fn(|_| Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE)),
         }
     }
@@ -141,6 +138,15 @@ impl nih_plug::prelude::Plugin for Plugin {
     const URL: &'static str = "https://github.com/SolarLiner/valib";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = "0.0.0";
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
+        AudioIOLayout { main_input_channels: Some(new_nonzero_u32(2)), main_output_channels: Some(new_nonzero_u32(2)), aux_input_ports: &[], aux_output_ports: &[], names: PortNames {
+            layout: Some("Stereo"),
+            main_input: Some("Input"),
+            main_output: Some("Output"),
+            aux_inputs: &[],
+            aux_outputs: &[],
+        } }
+    ];
     type BackgroundTask = ();
     type SysExMessage = ();
 
@@ -148,13 +154,9 @@ impl nih_plug::prelude::Plugin for Plugin {
         self.params.clone()
     }
 
-    fn accepts_bus_config(&self, config: &BusConfig) -> bool {
-        config.num_input_channels == 2 && config.num_output_channels == 2
-    }
-
     fn initialize(
         &mut self,
-        _bus_config: &BusConfig,
+        _audio_io_config: &AudioIOLayout,
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {

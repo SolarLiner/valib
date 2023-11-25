@@ -1,11 +1,11 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use nih_plug::prelude::*;
 
+use valib::{biquad::Biquad, clippers::DiodeClipper, DSP, saturators::Linear};
 use valib::clippers::DiodeClipperModel;
 use valib::oversample::Oversample;
-use valib::{biquad::Biquad, clippers::DiodeClipper, saturators::Linear, DSP};
 
 const OVERSAMPLE: usize = 4;
 const MAX_BLOCK_SIZE: usize = 512;
@@ -69,10 +69,10 @@ impl ClipperParams {
                     factor: FloatRange::skew_factor(-2.5),
                 },
             )
-            .with_smoother(SmoothingStyle::Exponential(50.))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_unit(" dB"),
+                .with_smoother(SmoothingStyle::Exponential(50.))
+                .with_string_to_value(formatters::s2v_f32_gain_to_db())
+                .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+                .with_unit(" dB"),
             model: BoolParam::new("Use Model", true),
             quality: IntParam::new("Sim Quality", 50, IntRange::Linear { min: 10, max: 100 }),
             reset: BoolParam::new("Reset", false).with_callback(Arc::new(move |_| {
@@ -114,20 +114,25 @@ impl Plugin for ClipperPlugin {
     const URL: &'static str = "https://github.com/SolarLiner/valib";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = "0.0.0";
-    type BackgroundTask = ();
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
+        AudioIOLayout {
+            main_input_channels: Some(new_nonzero_u32(2)),
+            main_output_channels: Some(new_nonzero_u32(2)),
+            aux_input_ports: &[],
+            aux_output_ports: &[],
+            names: PortNames { layout: Some("Stereo"), main_input: Some("Input"), main_output: Some("Output"), aux_inputs: &[], aux_outputs: &[] },
+        }
+    ];
     type SysExMessage = ();
+    type BackgroundTask = ();
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
     }
 
-    fn accepts_bus_config(&self, config: &BusConfig) -> bool {
-        config.num_input_channels == 2 && config.num_output_channels == 2
-    }
-
     fn initialize(
         &mut self,
-        _bus_config: &BusConfig,
+        _audio_io_layout: &AudioIOLayout,
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
