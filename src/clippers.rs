@@ -2,7 +2,7 @@ mod diode_clipper_model_data;
 
 use std::{fmt, ops::Not};
 
-use nalgebra::{SMatrix, SVector};
+use nalgebra::{ComplexField, SMatrix, SVector};
 use num_traits::Float;
 use numeric_literals::replace_float_literals;
 
@@ -12,6 +12,7 @@ use crate::{
     saturators::Saturator,
     Scalar,
 };
+use crate::dsp::DSP;
 
 pub struct DiodeClipper<T> {
     pub isat: T,
@@ -26,8 +27,7 @@ pub struct DiodeClipper<T> {
 }
 
 impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
-    #[cfg_attr(test, inline(never))]
-    #[cfg_attr(not(test), inline)]
+    #[inline]
     #[replace_float_literals(T::from_f64(literal))]
     fn eval(&self, input: &nalgebra::SVector<T, 1>) -> nalgebra::SVector<T, 1> {
         let vout = input[0];

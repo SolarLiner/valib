@@ -2,9 +2,8 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::{dsp::DSP, Scalar};
-use valib::simd::{AutoSimd, SimdValue};
 use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf};
+use valib::dsp::DSP;
 
 const MAX_BUFFER_SIZE: usize = 512;
 const OVERSAMPLE: usize = 2;
