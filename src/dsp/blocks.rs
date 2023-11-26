@@ -137,14 +137,14 @@ macro_rules! parallel_tuple {
             #[inline(always)]
             fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
                 let Self(($($p),*)) = self;
-                let mut x = [Self::Sample::zero(); N];
+                let mut ret = [Self::Sample::zero(); N];
                 $(
                 let y = $p.process(x);
                 for i in 0..N {
-                    x[i] += y[i];
+                    ret[i] += y[i];
                 }
                 )*
-                x
+                ret
             }
         }
     };

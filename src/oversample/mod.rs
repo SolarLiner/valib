@@ -126,8 +126,6 @@ mod tests {
         let inp: [f32; 512] = std::array::from_fn(|i| (TAU * i as f32 / 64.).sin());
         let mut os = Oversample::new(4, 512);
         let osblock = black_box(os.oversample(&inp));
-        for (i, s) in osblock.iter().copied().enumerate() {
-            csv.write_record([i.to_string(), s.to_string()]).unwrap();
-        }
+        insta::assert_csv_snapshot!(&*osblock);
     }
 }

@@ -12,6 +12,3 @@ crate-type = ["cdylib"]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 simba = "0.8.0"
 valib = { path = "../.." }
-
-[profile.release]
-debug = true

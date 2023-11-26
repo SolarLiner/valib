@@ -2,6 +2,8 @@ use az::{Az, Cast, CastFrom};
 use num_traits::Zero;
 use simba::simd::{AutoSimd, PrimitiveSimdValue, SimdRealField, SimdValue};
 
+pub use simba::simd;
+
 // pub mod ladder;
 // pub mod sallenkey;
 pub mod biquad;
@@ -17,6 +19,15 @@ pub mod wdf;
 
 pub trait Scalar: Copy + SimdRealField {
     fn from_f64(value: f64) -> Self;
+
+    fn values<const N: usize>(self) -> [Self::Element; N] {
+        assert_eq!(N, Self::lanes());
+        std::array::from_fn(|i| self.extract(i))
+    }
+
+    fn into_iter(self) -> impl ExactSizeIterator<Item=Self::Element> {
+        (0..Self::lanes()).map(move |i| self.extract(i))
+    }
 }
 
 impl<T: Copy + SimdRealField> Scalar for T {

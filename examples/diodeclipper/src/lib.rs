@@ -207,20 +207,6 @@ impl Plugin for ClipperPlugin {
             }
         }
 
-        // for mut samples in buffer.iter_samples() {
-        //     let drive = self.params.drive.smoothed.next();
-        //     for (i, s) in samples.iter_mut().enumerate() {
-        //         *s = self.dc_couple_in[i].process([*s])[0];
-        //         if self.params.model.value() {
-        //             *s = self.clipper_model[i].process([*s * drive])[0];
-        //         } else {
-        //             let [c] = self.clipper_nr[i].process([*s * drive]);
-        //             *s = c;
-        //         }
-        //         *s = self.dc_couple_out[i].process([*s * 2. / drive])[0];
-        //     }
-        // }
-
         ProcessStatus::Normal
     }
 }

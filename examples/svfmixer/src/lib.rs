@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf};
 use valib::dsp::DSP;
+use valib::simd::{AutoSimd, SimdValue};
+use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf};
 
 const MAX_BUFFER_SIZE: usize = 512;
 const OVERSAMPLE: usize = 2;
@@ -85,22 +86,25 @@ impl Default for PluginParams {
     }
 }
 
+type Sample = AutoSimd<[f32; 2]>;
+type Filter = Svf<Sample, DiodeClipperModel<Sample>>;
+
 #[derive(Debug)]
 struct Plugin {
     params: Arc<PluginParams>,
-    svf: [Svf<f32, DiodeClipperModel<f32>>; 2],
-    oversample: [Oversample<f32>; 2],
+    svf: Filter,
+    oversample: Oversample<Sample>,
 }
 
 impl Default for Plugin {
     fn default() -> Self {
         let params = Arc::new(PluginParams::default());
-        let fc = params.fc.default_plain_value();
-        let q = params.q.default_plain_value();
+        let fc = Sample::splat(params.fc.default_plain_value());
+        let q = Sample::splat(params.q.default_plain_value());
         Self {
             params,
-            svf: std::array::from_fn(move |_| Svf::new(1., fc, 1. - q)),
-            oversample: std::array::from_fn(|_| Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE)),
+            svf: Svf::new(Sample::one(), fc, Sample::one() - q),
+            oversample: Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE),
         }
     }
 }
@@ -111,21 +115,19 @@ impl nih_plug::prelude::Plugin for Plugin {
     const URL: &'static str = "https://github.com/SolarLiner/valib";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = "0.0.0";
-    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
-        AudioIOLayout {
-            main_input_channels: Some(new_nonzero_u32(2)),
-            main_output_channels: Some(new_nonzero_u32(2)),
-            aux_input_ports: &[],
-            aux_output_ports: &[],
-            names: PortNames {
-                layout: Some("Stereo"),
-                main_input: Some("input"),
-                main_output: Some("output"),
-                aux_inputs: &[],
-                aux_outputs: &[],
-            }
-        }
-    ];
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
+        main_input_channels: Some(new_nonzero_u32(2)),
+        main_output_channels: Some(new_nonzero_u32(2)),
+        aux_input_ports: &[],
+        aux_output_ports: &[],
+        names: PortNames {
+            layout: Some("Stereo"),
+            main_input: Some("input"),
+            main_output: Some("output"),
+            aux_inputs: &[],
+            aux_outputs: &[],
+        },
+    }];
     type BackgroundTask = ();
     type SysExMessage = ();
 
@@ -139,16 +141,12 @@ impl nih_plug::prelude::Plugin for Plugin {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        for f in &mut self.svf {
-            f.set_samplerate(buffer_config.sample_rate * OVERSAMPLE as f32);
-        }
+        self.svf.set_samplerate(Sample::splat(buffer_config.sample_rate * OVERSAMPLE as f32));
         true
     }
 
     fn reset(&mut self) {
-        for f in &mut self.svf {
-            f.reset();
-        }
+        self.svf.reset();
     }
 
     fn process(
@@ -189,6 +187,7 @@ impl nih_plug::prelude::Plugin for Plugin {
             valib::util::lerp_block(&mut os_lp_gain[..os_len], &lp_gain[..len]);
             valib::util::lerp_block(&mut os_bp_gain[..os_len], &bp_gain[..len]);
             valib::util::lerp_block(&mut os_hp_gain[..os_len], &hp_gain[..len]);
+            block.
             for ch in 0..2 {
                 let buffer = block.get_mut(ch).unwrap();
                 let mut os_buffer = self.oversample[ch].oversample(buffer);
