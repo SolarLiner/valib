@@ -6,7 +6,8 @@ use valib::clippers::DiodeClipperModel;
 use valib::oversample::Oversample;
 use valib::saturators::Dynamic;
 use valib::util::lerp_block;
-use valib::{biquad::Biquad, DSP};
+use valib::biquad::Biquad;
+use valib::dsp::DSP;
 
 const OVERSAMPLE: usize = 2;
 const MAX_BLOCK_SIZE: usize = 512;

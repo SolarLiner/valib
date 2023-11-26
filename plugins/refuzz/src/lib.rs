@@ -1,8 +1,9 @@
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::{Arc, atomic::AtomicBool};
 
 use nih_plug::prelude::*;
 
-use valib::{clippers::DiodeClipper, oversample::Oversample, DSP};
+use valib::{clippers::DiodeClipper, oversample::Oversample};
+use valib::dsp::DSP;
 
 const OVERSAMPLE: usize = 4;
 const MAX_BLOCK_SIZE: usize = 512;
@@ -235,7 +236,7 @@ impl PhysicalModel {
     }
 
     fn process(&mut self, samplerate: f32, vin: f32) -> f32 {
-        let dt = samplerate.recip();
+        let dt = samplerate.simd_recip());
         let acc = self.acceleration(vin, dt);
         self.last_vin = vin;
         self.last_dvout += acc * dt;

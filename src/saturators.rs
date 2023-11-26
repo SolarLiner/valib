@@ -1,6 +1,6 @@
 use crate::clippers::DiodeClipperModel;
-use num_traits::{FromPrimitive, NumCast};
 use numeric_literals::replace_float_literals;
+use simba::simd::SimdValue;
 
 use crate::Scalar;
 
@@ -13,7 +13,7 @@ pub trait Saturator<T: Scalar>: Default {
     fn update_state(&mut self, _x: T) {}
 
     #[inline(always)]
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn sat_diff(&self, x: T) -> T {
         (self.saturate(x + 1e-4) - self.saturate(x)) / 1e-4
     }
@@ -40,13 +40,13 @@ pub struct Tanh;
 impl<S: Scalar> Saturator<S> for Tanh {
     #[inline(always)]
     fn saturate(&self, x: S) -> S {
-        x.tanh()
+        x.simd_tanh()
     }
 
     #[inline(always)]
-    #[replace_float_literals(S::from(literal).unwrap())]
+    #[replace_float_literals(S::from_f64(literal))]
     fn sat_diff(&self, x: S) -> S {
-        1. - x.tanh().powi(2)
+        1. - x.simd_tanh().simd_powi(2)
     }
 }
 
@@ -55,18 +55,16 @@ pub struct Clipper;
 
 impl<S: Scalar> Saturator<S> for Clipper {
     #[inline(always)]
+    #[replace_float_literals(S::from_f64(literal))]
     fn saturate(&self, x: S) -> S {
-        x.min(S::one()).max(S::one().neg())
+        x.simd_min(1.0).simd_max(0.0)
     }
 
     #[inline(always)]
-    #[replace_float_literals(S::from(literal).unwrap())]
+    #[replace_float_literals(S::from_f64(literal))]
     fn sat_diff(&self, x: S) -> S {
-        if x < -1. || x > 1. {
-            0.
-        } else {
-            1.
-        }
+        let mask = x.simd_abs().simd_gt(1.0);
+        (1.0).select(mask, 0.0)
     }
 }
 
@@ -93,10 +91,10 @@ impl<T: Scalar, S: Saturator<T>> Saturator<T> for Blend<T, S> {
     }
 }
 
-impl<T: NumCast, S: Default> Default for Blend<T, S> {
+impl<T: Scalar, S: Default> Default for Blend<T, S> {
     fn default() -> Self {
         Self {
-            amt: T::from(0.5).unwrap(),
+            amt: T::from_f64(0.5),
             inner: S::default(),
         }
     }
@@ -111,7 +109,7 @@ pub enum Dynamic<T> {
     SoftClipper(Blend<T, DiodeClipperModel<T>>),
 }
 
-impl<T: Scalar + FromPrimitive> Saturator<T> for Dynamic<T> {
+impl<T: Scalar> Saturator<T> for Dynamic<T> {
     #[inline(always)]
     fn saturate(&self, x: T) -> T {
         match self {

@@ -1,4 +1,5 @@
 use nalgebra::{ComplexField, Dim, OVector, SMatrix, SVector};
+use simba::simd::{SimdComplexField,SimdBool};
 
 use crate::Scalar;
 
@@ -9,7 +10,7 @@ pub trait RootEq<T, const N: usize> {
 }
 
 #[inline]
-pub fn nr_step<T: Scalar + ComplexField, const N: usize>(
+pub fn nr_step<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     input: &SVector<T, N>,
 ) -> Option<SVector<T, N>> {
@@ -17,7 +18,7 @@ pub fn nr_step<T: Scalar + ComplexField, const N: usize>(
 }
 
 #[inline]
-pub fn newton_rhapson_steps<T: Scalar + ComplexField, const N: usize>(
+pub fn newton_rhapson_steps<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
     iter: usize,
@@ -37,7 +38,7 @@ pub fn newton_rhapson_steps<T: Scalar + ComplexField, const N: usize>(
 }
 
 #[inline]
-pub fn newton_rhapson_tolerance<T: Scalar + ComplexField, const N: usize>(
+pub fn newton_rhapson_tolerance<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
     tol: T,
@@ -46,17 +47,19 @@ pub fn newton_rhapson_tolerance<T: Scalar + ComplexField, const N: usize>(
 
     while let Some(step) = nr_step(eq, value) {
         i += 1;
-        *value -= step;
-        if rms(&step) < tol {
+        let tgt = rms(&step).simd_lt(tol);
+        if tgt.all() {
             break;
         }
+        let changed = *value - step;
+        *value = value.zip_map(&changed, |v, c| v.select(tgt, c));
     }
 
     i
 }
 
 #[inline]
-pub fn newton_rhapson_tol_max_iter<T: Scalar + ComplexField, const N: usize>(
+pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
     tol: T,
@@ -66,17 +69,19 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar + ComplexField, const N: usize>(
         let Some(step) = nr_step(eq, value) else {
             break;
         };
-        if rms(&step) < tol {
+        let tgt = rms(&step).simd_lt(tol);
+        if tgt.all() {
             break;
         }
-        *value -= step;
+        let changed = *value - step;
+        *value = value.zip_map(&changed, |v, c| v.select(tgt, c));
     }
 }
 
 #[inline]
-fn rms<T: ComplexField, D: Dim>(value: &OVector<T, D>) -> T
+fn rms<T: SimdComplexField, D: Dim>(value: &OVector<T, D>) -> T
 where
     nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<T, D>,
 {
-    value.map(|v| v.powi(2)).sum().sqrt()
+    value.map(|v| v.simd_powi(2)).sum().simd_sqrt()
 }

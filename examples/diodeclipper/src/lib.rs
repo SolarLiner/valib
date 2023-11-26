@@ -3,8 +3,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use nih_plug::prelude::*;
 
-use valib::{biquad::Biquad, clippers::DiodeClipper, DSP, saturators::Linear};
+use valib::{biquad::Biquad, clippers::DiodeClipper, saturators::Linear};
 use valib::clippers::DiodeClipperModel;
+use valib::dsp::DSP;
 use valib::oversample::Oversample;
 
 const OVERSAMPLE: usize = 4;

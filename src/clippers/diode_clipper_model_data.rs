@@ -1,15 +1,15 @@
 use num_traits::FromPrimitive;
 use numeric_literals::replace_float_literals;
 
-
 use super::DiodeClipperModel;
+use crate::Scalar;
 
 // These seemingly magic constants have been fit against the diode clipper circuit equation for
 // combinations of up to 5 diodes in series each way.
 //
 // See the `clippers.ipynb` Notebook to see the rationale and working out process.
-impl<T: FromPrimitive> DiodeClipperModel<T> {
-    #[replace_float_literals(T::from_f64(literal).unwrap())]
+impl<T: Scalar> DiodeClipperModel<T> {
+    #[replace_float_literals(T::from_f64(literal))]
     pub fn new_silicon(nf: u8, nb: u8) -> Self {
         let [a, b, si, so] = match (nf, nb) {
             // RMS error: -54.7 dB

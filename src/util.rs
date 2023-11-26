@@ -1,16 +1,51 @@
-use crate::Scalar;
-use numeric_literals::replace_float_literals;
+use num_traits::{FromPrimitive, Num, One, Zero};
+use numeric_literals::{replace_float_literals, replace_int_literals};
+use simba::simd::{SimdBool, SimdPartialOrd, SimdValue};
 
-#[replace_float_literals(T::from(literal).unwrap())]
-pub fn lerp_block<T: Scalar>(out: &mut [T], inp: &[T]) {
-    let rate = T::from(inp.len()).unwrap() / T::from(out.len()).unwrap();
+use crate::{Scalar, SimdCast};
+
+pub fn simd_index_scalar<Simd: Zero + SimdValue, Index: SimdValue<Element = usize>>(
+    values: &[Simd::Element],
+    index: Index,
+) -> Simd
+where
+    Simd::Element: Copy,
+{
+    let mut ret = Simd::zero();
+    for i in 0..Simd::lanes() {
+        let ix = index.extract(i);
+        ret.replace(i, values[ix]);
+    }
+    ret
+}
+
+pub fn simd_index_simd<Simd: Zero + SimdValue, Index: SimdValue<Element = usize>>(
+    values: &[Simd],
+    index: Index,
+) -> Simd {
+    let mut ret = Simd::zero();
+    for i in 0..Index::lanes() {
+        let ix = index.extract(i);
+        ret.replace(i, values[ix].extract(i));
+    }
+    ret
+}
+
+#[replace_float_literals(T::from_f64(literal))]
+pub fn lerp_block<T: Scalar + SimdCast<usize>>(out: &mut [T], inp: &[T])
+where
+    <T as SimdCast<usize>>::Output: Copy + Num + FromPrimitive + SimdPartialOrd,
+{
+    let ix_max = <T as SimdCast<usize>>::Output::from_usize(inp.len() - 1).unwrap();
+    let rate = T::from_f64(inp.len() as f64) / T::from_f64(out.len() as f64);
 
     for (i, y) in out.iter_mut().enumerate() {
-        let j = T::from(i).unwrap() * rate;
-        let f = j.fract();
-        let j = j.floor().to_usize().unwrap();
-        let a = inp[j];
-        let b = inp.get(j + 1).copied().unwrap_or(a);
+        let j = T::from_f64(i as f64) * rate;
+        let f = j.simd_fract();
+        let j = j.simd_floor().cast();
+        let jp1 = (j + <T as SimdCast<usize>>::Output::one()).simd_min(ix_max);
+        let a = simd_index_simd(inp, j);
+        let b = simd_index_simd(inp, jp1);
         *y = lerp(f, a, b);
     }
 }
