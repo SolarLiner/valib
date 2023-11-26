@@ -1,4 +1,7 @@
-use nalgebra::{ComplexField, Dim, OVector, SMatrix, SVector};
+use std::hint;
+
+use nalgebra::{Dim, OVector, SMatrix, SVector};
+use num_traits::Float;
 use simba::simd::{SimdComplexField,SimdBool};
 
 use crate::Scalar;
