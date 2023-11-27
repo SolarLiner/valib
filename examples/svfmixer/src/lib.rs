@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::dsp::DSP;
+use valib::{dsp::DSP, Scalar};
 use valib::simd::{AutoSimd, SimdValue};
 use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf};
 
