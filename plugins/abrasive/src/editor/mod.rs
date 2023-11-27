@@ -54,7 +54,7 @@ pub(crate) fn default_state() -> Arc<ViziaState> {
 #[cfg(not(feature = "example"))]
 pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Editor>> {
     create_vizia_editor(state, ViziaTheming::Custom, move |cx, _| {
-        assets::register_noto_sans_light(cx);
+        cx.emit(EnvironmentEvent::SetThemeMode(AppTheme::BuiltIn(ThemeMode::DarkMode)));
         cx.add_font_mem(resource!("src/assets/Metrophobic-Regular.ttf"));
         if let Err(err) = cx.add_stylesheet(include_style!("src/editor/theme.css")) {
             nih_error!("Cannot read CSS: {err}");
