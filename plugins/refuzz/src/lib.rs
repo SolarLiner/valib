@@ -1,6 +1,7 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
 use nih_plug::prelude::*;
+use simba::simd::SimdComplexField;
 
 use valib::{clippers::DiodeClipper, oversample::Oversample};
 use valib::dsp::DSP;

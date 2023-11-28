@@ -5,7 +5,7 @@ edition = "2021"
 license = "MIT"
 
 [workspace]
-members = ["examples/svfmixer", "examples/dirty-biquad", "examples/diodeclipper", "plugins/abrasive", "plugins/refuzz", "xtask"]
+members = ["examples/*", "plugins/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
