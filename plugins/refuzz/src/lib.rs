@@ -85,16 +85,21 @@ impl<const N: usize> Plugin for Refuzz<N> {
     const URL: &'static str = "https://github.com/SolarLiner/valib";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = "0.0.0";
-    const DEFAULT_INPUT_CHANNELS: u32 = N as u32;
-    const DEFAULT_OUTPUT_CHANNELS: u32 = N as u32;
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
+        AudioIOLayout {
+            aux_input_ports: &[],
+            aux_output_ports: &[],
+            main_input_channels: Some(new_nonzero_u32(2)),
+            main_output_channels: Some(new_nonzero_u32(2)),
+            names: PortNames { layout: Some("Stereo"), main_input: Some("Input"), main_output: Some("Output"), aux_inputs: &[], aux_outputs: &[] },
+        }
+    ];
+
     type BackgroundTask = ();
+    type SysExMessage = ();
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
-    }
-
-    fn accepts_bus_config(&self, config: &BusConfig) -> bool {
-        config.num_input_channels == N as u32 && config.num_output_channels == N as u32
     }
 
     fn reset(&mut self) {
@@ -173,8 +178,12 @@ impl<const N: usize> ClapPlugin for Refuzz<N> {
 }
 
 impl<const N: usize> Vst3Plugin for Refuzz<N> {
-    const VST3_CLASS_ID: [u8; 16] = *b"VaLibDiodeClpSLN";
-    const VST3_CATEGORIES: &'static str = "Fx|Filter";
+    const VST3_CLASS_ID: [u8; 16] = *b"VaLibRefuzzSoLrN";
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
+        Vst3SubCategory::Fx,
+        Vst3SubCategory::Filter,
+        Vst3SubCategory::Distortion,
+    ];
 }
 
 nih_export_clap!(Refuzz::<2>);
