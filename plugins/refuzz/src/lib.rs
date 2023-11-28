@@ -236,7 +236,7 @@ impl PhysicalModel {
     }
 
     fn process(&mut self, samplerate: f32, vin: f32) -> f32 {
-        let dt = samplerate.simd_recip());
+        let dt = samplerate.simd_recip();
         let acc = self.acceleration(vin, dt);
         self.last_vin = vin;
         self.last_dvout += acc * dt;
