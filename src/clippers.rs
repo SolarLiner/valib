@@ -7,12 +7,9 @@ use num_traits::Float;
 use numeric_literals::replace_float_literals;
 
 use crate::{dsp::DSP, math::newton_rhapson_tol_max_iter};
-use crate::{
-    math::{newton_rhapson_steps, RootEq},
-    saturators::Saturator,
-    Scalar,
-};
+use crate::{math::RootEq, saturators::Saturator, Scalar};
 
+#[derive(Debug, Copy, Clone)]
 pub struct DiodeClipper<T> {
     pub isat: T,
     pub n: T,
@@ -23,6 +20,12 @@ pub struct DiodeClipper<T> {
     pub sim_tol: T,
     pub max_iter: usize,
     last_vout: T,
+}
+
+impl<T: Copy> DiodeClipper<T> {
+    pub fn reset(&mut self) {
+        self.last_vout = self.vin;
+    }
 }
 
 impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
@@ -164,36 +167,44 @@ impl<T: Scalar> Saturator<T> for DiodeClipperModel<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-    use std::{fs::File, result};
-
-    use nalgebra::SVector;
-
-    use crate::{
-        dsp::DSP,
-        math::{newton_rhapson_tolerance, RootEq},
-    };
+    use crate::dsp::DSP;
+    use simba::simd::SimdValue;
 
     use super::{DiodeClipper, DiodeClipperModel};
 
-    fn snapshot(name: &str, mut dsp: impl DSP<1, 1, Sample = f64>) {
+    fn dc_sweep(name: &str, mut dsp: impl DSP<1, 1, Sample = f32>) {
         let results = Vec::from_iter(
             (-4800..=4800)
                 .map(|i| i as f64 / 100.)
-                .map(|v| dsp.process([v])[0]),
+                .map(|v| dsp.process([v as f32])[0]),
         );
-        insta::assert_csv_snapshot!(name, results, { "[]" => insta::rounded_redaction(4) });
+        let full_name = format!("{name}/dc_sweep");
+        insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
+    }
+
+    fn drive_test(name: &str, mut dsp: impl DSP<1, 1, Sample = f32>) {
+        let sine_it = (0..).map(|i| i as f64 / 10.).map(f64::sin);
+        let amp = (0..5000).map(|v| v as f64 / 5000. * 500.);
+        let output = sine_it
+            .zip(amp)
+            .map(|(a, b)| a * b)
+            .map(|v| dsp.process([v as f32])[0]);
+        let results = Vec::from_iter(output.map(|v| v.extract(0)));
+        let full_name = format!("{name}/drive_test");
+        insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
     }
 
     #[test]
     fn snapshot_diode_clipper() {
         let clipper = DiodeClipper::new_led(3, 5, 0.0);
-        snapshot("regressions/clipper_nr", clipper);
+        dc_sweep("regressions/clipper_nr", clipper);
+        drive_test("regressions/clipper_nr", clipper);
     }
 
     #[test]
     fn snapshot_diode_clipper_model() {
-        let clipper = DiodeClipperModel::new_led(3, 5);
-        snapshot("regressions/clipper_model", clipper);
+        let clipper = DiodeClipperModel::<f32>::new_led(3, 5);
+        dc_sweep("regressions/clipper_model", clipper);
+        drive_test("regressions/clipper_model", clipper);
     }
 }
