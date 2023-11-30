@@ -3898,6 +3898,7 @@ dependencies = [
  "nalgebra",
  "num-traits",
  "numeric_literals",
+ "serde",
  "simba",
 ]
 

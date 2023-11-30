@@ -1,12 +1,22 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::{f32::consts::E, sync::Arc};
 
-use nih_plug::prelude::*;
+use nih_plug::{
+    buffer::{Block, ChannelSamples},
+    prelude::*,
+};
 
-use valib::{biquad::Biquad, clippers::DiodeClipper, saturators::Linear};
 use valib::clippers::DiodeClipperModel;
 use valib::dsp::DSP;
 use valib::oversample::Oversample;
+use valib::{
+    biquad::Biquad,
+    clippers::DiodeClipper,
+    dsp::process_block,
+    saturators::Linear,
+    simd::{AutoF32x2, AutoF64x2, AutoSimd, SimdComplexField, SimdValue},
+    Scalar,
+};
 
 const OVERSAMPLE: usize = 4;
 const MAX_BLOCK_SIZE: usize = 512;
@@ -20,15 +30,15 @@ enum DiodeType {
 
 impl DiodeType {
     #[inline]
-    fn get_clipper_model(&self, nf: usize, nb: usize) -> DiodeClipper<f32> {
+    fn get_clipper_model<T: Scalar>(&self, nf: usize, nb: usize) -> DiodeClipper<T> {
         match self {
-            Self::Silicon => DiodeClipper::new_silicon(nf, nb, 0.),
-            Self::Germanium => DiodeClipper::new_germanium(nf, nb, 0.),
-            Self::LED => DiodeClipper::new_led(nf, nb, 0.),
+            Self::Silicon => DiodeClipper::new_silicon(nf, nb, T::from_f64(0.)),
+            Self::Germanium => DiodeClipper::new_germanium(nf, nb, T::from_f64(0.)),
+            Self::LED => DiodeClipper::new_led(nf, nb, T::from_f64(0.)),
         }
     }
     #[inline]
-    fn get_model_params(&self, nf: u8, nb: u8) -> DiodeClipperModel<f32> {
+    fn get_model_params<T: Scalar>(&self, nf: u8, nb: u8) -> DiodeClipperModel<T> {
         match self {
             Self::Silicon => DiodeClipperModel::new_silicon(nf, nb),
             Self::Germanium => DiodeClipperModel::new_germanium(nf, nb),
@@ -70,10 +80,10 @@ impl ClipperParams {
                     factor: FloatRange::skew_factor(-2.5),
                 },
             )
-                .with_smoother(SmoothingStyle::Exponential(50.))
-                .with_string_to_value(formatters::s2v_f32_gain_to_db())
-                .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-                .with_unit(" dB"),
+            .with_smoother(SmoothingStyle::Exponential(50.))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_unit(" dB"),
             model: BoolParam::new("Use Model", true),
             quality: IntParam::new("Sim Quality", 50, IntRange::Linear { min: 10, max: 100 }),
             reset: BoolParam::new("Reset", false).with_callback(Arc::new(move |_| {
@@ -83,28 +93,74 @@ impl ClipperParams {
     }
 }
 
+type Sample = AutoF32x2;
+type Sample64 = AutoF64x2;
+
 struct ClipperPlugin {
     params: Arc<ClipperParams>,
-    clipper_nr: [DiodeClipper<f32>; 2],
-    clipper_model: [DiodeClipperModel<f32>; 2],
-    dc_couple_in: [Biquad<f32, Linear>; 2],
-    dc_couple_out: [Biquad<f32, Linear>; 2],
-    oversample: [Oversample<f32>; 2],
+    clipper_nr: DiodeClipper<Sample64>,
+    clipper_model: DiodeClipperModel<Sample64>,
+    dc_couple_in: Biquad<Sample, Linear>,
+    dc_couple_out: Biquad<Sample, Linear>,
+    oversample: Oversample<Sample64>,
     force_reset: Arc<AtomicBool>,
 }
 
 impl Default for ClipperPlugin {
     fn default() -> Self {
-        let samplerate = 44.1e3 * OVERSAMPLE as f32;
+        // let samplerate = 44.1e3 * OVERSAMPLE as f32;
         let force_reset = Arc::new(AtomicBool::new(false));
         Self {
             params: Arc::new(ClipperParams::new(force_reset.clone())),
-            clipper_nr: std::array::from_fn(|_| DiodeClipper::new_germanium(1, 1, 0.)),
-            clipper_model: std::array::from_fn(|_| DiodeClipperModel::new_silicon(1, 1)),
-            dc_couple_in: std::array::from_fn(|_| Biquad::highpass(20. / samplerate, 1.)),
-            dc_couple_out: std::array::from_fn(|_| Biquad::highpass(20. / samplerate, 1.)),
-            oversample: std::array::from_fn(|_| Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE)),
+            clipper_nr: DiodeClipper::new_silicon(1, 1, Sample64::from_f64(0.0)),
+            clipper_model: DiodeClipperModel::new_silicon(1, 1),
+            dc_couple_in: Biquad::highpass(Sample::from_f64(20. / 44.1e3), Sample::from_f64(1.0)),
+            dc_couple_out: Biquad::highpass(Sample::from_f64(20. / 44.1e3), Sample::from_f64(1.0)),
+            oversample: Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE),
             force_reset,
+        }
+    }
+}
+
+fn block_to_simd_array<T, const N: usize>(
+    block: &mut Block,
+    output: &mut [AutoSimd<[T; N]>],
+    cast: impl Fn(f32) -> T,
+) -> usize {
+    let mut i = 0;
+    for samples in block.iter_samples().take(output.len()) {
+        let mut it = samples.into_iter();
+        output[i] = AutoSimd(std::array::from_fn(|_| cast(it.next().copied().unwrap())));
+        i += 1;
+    }
+    i
+}
+
+fn simd_array_to_block<T, const N: usize>(
+    input: &[AutoSimd<[T; N]>],
+    block: &mut Block,
+    uncast: impl Fn(&T) -> f32,
+) {
+    for (inp, mut out_samples) in input.iter().zip(block.iter_samples()) {
+        for i in 0..N {
+            *out_samples.get_mut(i).unwrap() = uncast(&inp.0[i]);
+        }
+    }
+}
+
+fn apply<P: DSP<1, 1, Sample = AutoSimd<[f32; N]>>, const N: usize>(
+    buffer: &mut Buffer,
+    dsp: &mut P,
+) where
+    AutoSimd<[f32; N]>: SimdValue,
+    <P::Sample as SimdValue>::Element: Copy,
+{
+    for mut samples in buffer.iter_samples() {
+        let mut it = samples.iter_mut();
+        let input = AutoSimd(std::array::from_fn(|_| it.next().copied().unwrap()));
+        let [output] = dsp.process([input]);
+        for (out, inp) in samples.into_iter().zip(output.0.into_iter()) {
+            *out = inp;
         }
     }
 }
@@ -115,15 +171,19 @@ impl Plugin for ClipperPlugin {
     const URL: &'static str = "https://github.com/SolarLiner/valib";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = "0.0.0";
-    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
-        AudioIOLayout {
-            main_input_channels: Some(new_nonzero_u32(2)),
-            main_output_channels: Some(new_nonzero_u32(2)),
-            aux_input_ports: &[],
-            aux_output_ports: &[],
-            names: PortNames { layout: Some("Stereo"), main_input: Some("Input"), main_output: Some("Output"), aux_inputs: &[], aux_outputs: &[] },
-        }
-    ];
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
+        main_input_channels: Some(new_nonzero_u32(2)),
+        main_output_channels: Some(new_nonzero_u32(2)),
+        aux_input_ports: &[],
+        aux_output_ports: &[],
+        names: PortNames {
+            layout: Some("Stereo"),
+            main_input: Some("Input"),
+            main_output: Some("Output"),
+            aux_inputs: &[],
+            aux_outputs: &[],
+        },
+    }];
     type SysExMessage = ();
     type BackgroundTask = ();
 
@@ -137,23 +197,19 @@ impl Plugin for ClipperPlugin {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        let samplerate = buffer_config.sample_rate * OVERSAMPLE as f32;
-        self.dc_couple_in = std::array::from_fn(|_| Biquad::highpass(20. / samplerate, 1.));
-        self.dc_couple_out = std::array::from_fn(|_| Biquad::highpass(20. / samplerate, 1.));
+        let samplerate = buffer_config.sample_rate as f64;
+        self.dc_couple_in =
+            Biquad::highpass(Sample::from_f64(20. / samplerate), Sample::from_f64(1.0));
+        self.dc_couple_out =
+            Biquad::highpass(Sample::from_f64(20. / samplerate), Sample::from_f64(1.0));
         true
     }
 
     fn reset(&mut self) {
-        for ele in self
-            .dc_couple_in
-            .iter_mut()
-            .chain(self.dc_couple_out.iter_mut())
-        {
-            ele.reset();
-        }
-        for os in self.oversample.iter_mut() {
-            os.reset();
-        }
+        self.dc_couple_in.reset();
+        self.dc_couple_out.reset();
+        self.oversample.reset();
+        self.clipper_nr.reset();
     }
 
     fn process(
@@ -166,20 +222,19 @@ impl Plugin for ClipperPlugin {
             self.force_reset.store(false, Ordering::Release);
             self.reset();
         }
-        for cl in &mut self.clipper_nr {
-            *cl = self.params.dtype.value().get_clipper_model(
-                self.params.nf.value() as usize,
-                self.params.nb.value() as usize,
-            );
-            cl.max_iter = self.params.quality.value() as usize;
-        }
-        for cl in &mut self.clipper_model {
-            *cl = self
-                .params
-                .dtype
-                .value()
-                .get_model_params(self.params.nf.value() as _, self.params.nb.value() as _);
-        }
+        self.clipper_nr = self
+            .params
+            .dtype
+            .value()
+            .get_clipper_model(self.params.nf.value() as _, self.params.nb.value() as _);
+        self.clipper_nr.max_iter = self.params.quality.value() as _;
+        self.clipper_model = self
+            .params
+            .dtype
+            .value()
+            .get_model_params(self.params.nf.value() as _, self.params.nb.value() as _);
+
+        apply(buffer, &mut self.dc_couple_in);
 
         for (_, mut block) in buffer.iter_blocks(MAX_BLOCK_SIZE) {
             let mut drive = [0.; MAX_BLOCK_SIZE];
@@ -190,22 +245,26 @@ impl Plugin for ClipperPlugin {
                 .smoothed
                 .next_block_exact(&mut drive[..len]);
             valib::util::lerp_block(&mut drive_os[..OVERSAMPLE * len], &drive[..len]);
-            for ch in 0..block.channels() {
-                let buffer = block.get_mut(ch).unwrap();
-                let mut os_buffer = self.oversample[ch].oversample(buffer);
-                for (i, s) in os_buffer.iter_mut().enumerate() {
-                    let drive = drive_os[i];
-                    *s = self.dc_couple_in[ch].process([*s])[0];
-                    if self.params.model.value() {
-                        *s = self.clipper_model[ch].process([*s * drive])[0];
-                    } else {
-                        *s = self.clipper_nr[ch].process([*s * drive])[0];
-                    }
-                    *s = self.dc_couple_out[ch].process([*s * 2. / drive.asinh()])[0];
-                }
-                os_buffer.finish(buffer);
+
+            let mut simd_buffer = [Sample64::from_f64(0.0); MAX_BLOCK_SIZE];
+            let actual_len = block_to_simd_array(&mut block, &mut simd_buffer, |f| f as f64);
+            let simd_buffer = &mut simd_buffer[..actual_len];
+            let mut os_buffer = self.oversample.oversample(simd_buffer);
+            for (i, s) in os_buffer.iter_mut().enumerate() {
+                let drive = Sample64::from_f64(drive_os[i] as _);
+                let input = *s * drive;
+                let [output] = if self.params.model.value() {
+                    self.clipper_model.process([input])
+                } else {
+                    self.clipper_nr.process([input])
+                };
+                *s = output / drive.simd_asinh();
             }
+            os_buffer.finish(simd_buffer);
+            simd_array_to_block(simd_buffer, &mut block, |f| *f as f32);
         }
+
+        apply(buffer, &mut self.dc_couple_out);
 
         ProcessStatus::Normal
     }
