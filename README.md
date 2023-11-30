@@ -20,7 +20,7 @@ Library of musical filters and reusable blocks for musical DSP.
 
 ## Download
 
-You can download the plugins and examples from the permalink [here](https://nightly.link/SolarLiner/valib/workflows/build/master).
+You can download the plugins and examples from the permalink [here](https://nightly.link/SolarLiner/valib/workflows/build/main).
 
 ## Licensing
 
