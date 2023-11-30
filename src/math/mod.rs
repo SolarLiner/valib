@@ -20,6 +20,9 @@ pub fn nr_step<T: Scalar, const N: usize>(
 ) -> Option<SVector<T, N>> where T::Element: Float {
     let ret = eq.j_inv(input).map(|jinv| jinv * eq.eval(input))?;
     let all_finite = ret.iter().copied().flat_map(|v| v.into_iter()).all(|v| v.is_finite());
+
+    debug_assert!(all_finite);
+
     all_finite.then_some(ret)
 }
 

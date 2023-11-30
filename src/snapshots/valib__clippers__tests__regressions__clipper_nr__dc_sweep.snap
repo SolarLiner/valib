@@ -1,6 +1,5 @@
 ---
 source: src/clippers.rs
-assertion_line: 672
 expression: results
 ---
 -10.0523
@@ -4803,7 +4802,7 @@ expression: results
 -0.015
 -0.01
 -0.005
--0.0
+0.0
 0.005
 0.01
 0.015

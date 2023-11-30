@@ -201,7 +201,7 @@ impl Plugin for ClipperPlugin {
                     } else {
                         *s = self.clipper_nr[ch].process([*s * drive])[0];
                     }
-                    *s = self.dc_couple_out[ch].process([*s * 2. / drive])[0];
+                    *s = self.dc_couple_out[ch].process([*s * 2. / drive.asinh()])[0];
                 }
                 os_buffer.finish(buffer);
             }

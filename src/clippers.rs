@@ -5,6 +5,7 @@ use std::{fmt, ops::Not};
 use nalgebra::{ComplexField, SMatrix, SVector};
 use num_traits::Float;
 use numeric_literals::replace_float_literals;
+use simba::simd::{SimdBool, SimdComplexField, SimdValue};
 
 use crate::{dsp::DSP, math::newton_rhapson_tol_max_iter};
 use crate::{math::RootEq, saturators::Saturator, Scalar};
@@ -36,8 +37,11 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
         let vout = input[0];
         let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
-        let expn = T::simd_exp(expin / self.num_diodes_fwd);
-        let expm = T::simd_exp(-expin / self.num_diodes_bwd);
+        if vout.simd_gt(16.0).any() {
+            println!();
+        }
+        let expn = T::simd_exp(expin / self.num_diodes_fwd).simd_min(1e35);
+        let expm = T::simd_exp(-expin / self.num_diodes_bwd).simd_min(1e35);
         let res = self.isat * (expn - expm) + 2. * vout - self.vin;
         SVector::<_, 1>::new(res)
     }
@@ -49,11 +53,15 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
         let vout = input[0];
         let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
-        let expn = T::simd_exp(expin / self.num_diodes_fwd);
-        let expm = T::simd_exp(-expin / self.num_diodes_bwd);
+        if vout.simd_gt(16.0).any() {
+            println!();
+        }
+        let expn = T::simd_exp(expin / self.num_diodes_fwd).simd_min(1e35);
+        let expm = T::simd_exp(-expin / self.num_diodes_bwd).simd_min(1e35);
         let res = v * self.isat * (expn / self.num_diodes_fwd + expm / self.num_diodes_bwd) + 2.;
         // Biasing to prevent divisions by zero, less accurate around zero
-        Some(SMatrix::<_, 1, 1>::new((res + 1e-6).simd_recip()))
+        let ret = (1e-6).select(res.simd_abs().simd_lt(1e-6), res).simd_recip();
+        Some(SMatrix::<_, 1, 1>::new(ret))
     }
 }
 
@@ -104,7 +112,7 @@ impl<T: Scalar> DiodeClipper<T> {
     }
 }
 
-impl<T: Scalar + fmt::Debug> DSP<1, 1> for DiodeClipper<T>
+impl<T: Scalar + fmt::Display> DSP<1, 1> for DiodeClipper<T>
 where
     T::Element: Float,
 {
@@ -167,6 +175,8 @@ impl<T: Scalar> Saturator<T> for DiodeClipperModel<T> {
 
 #[cfg(test)]
 mod tests {
+    use std::hint;
+
     use crate::dsp::DSP;
     use simba::simd::SimdValue;
 
@@ -188,7 +198,10 @@ mod tests {
         let output = sine_it
             .zip(amp)
             .map(|(a, b)| a * b)
-            .map(|v| dsp.process([v as f32])[0]);
+            .map(|v| {
+                let out = dsp.process([v as f32])[0];
+                hint::black_box(out)
+            });
         let results = Vec::from_iter(output.map(|v| v.extract(0)));
         let full_name = format!("{name}/drive_test");
         insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
