@@ -2,15 +2,19 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
+use valib::biquad::Biquad;
 use valib::clippers::DiodeClipperModel;
+use valib::dsp::DSP;
 use valib::oversample::Oversample;
 use valib::saturators::Dynamic;
+use valib::simd::{AutoF32x2, AutoSimd, SimdComplexField, SimdValue};
 use valib::util::lerp_block;
-use valib::biquad::Biquad;
-use valib::dsp::DSP;
+use valib::Scalar;
 
 const OVERSAMPLE: usize = 2;
 const MAX_BLOCK_SIZE: usize = 512;
+
+type Sample = AutoF32x2;
 
 #[derive(Debug, Enum, Eq, PartialEq)]
 enum FilterType {
@@ -28,7 +32,7 @@ enum NLType {
 }
 
 impl NLType {
-    pub fn as_dynamic_saturator(&self) -> Dynamic<f32> {
+    pub fn as_dynamic_saturator(&self) -> Dynamic<Sample> {
         match self {
             Self::Linear => Dynamic::Linear,
             Self::Clipped => Dynamic::HardClipper,
@@ -99,26 +103,28 @@ impl Default for PluginParams {
 #[derive(Debug)]
 struct Plugin {
     params: Arc<PluginParams>,
-    biquad: [Biquad<f32, Dynamic<f32>>; 2],
-    oversample: [Oversample<f32>; 2],
+    biquad: Biquad<Sample, Dynamic<Sample>>,
+    oversample: Oversample<Sample>,
+}
+
+fn get_biquad(params: &PluginParams, samplerate: f32) -> Biquad<Sample, Dynamic<Sample>> {
+    let fc = params.fc.value() / samplerate;
+    let fc = Sample::splat(fc);
+    let q = params.fc.value();
+    let q = Sample::splat(q);
+    match params.filter_type.value() {
+        FilterType::Lowpass => Biquad::lowpass(fc, q),
+        FilterType::Bandpass => Biquad::bandpass_peak0(fc, q),
+        FilterType::Highpass => Biquad::highpass(fc, q),
+    }
 }
 
 impl Plugin {
-    fn reset_filters(&mut self, samplerate: f32) {
-        let fc = self.params.fc.value() / samplerate;
-        let q = self.params.fc.value();
+    fn set_filters(&mut self, samplerate: f32) {
+        let biquad = get_biquad(&self.params, samplerate);
         let nltype = self.params.nonlinearity.value().as_dynamic_saturator();
-        for x in &mut self.biquad {
-            *x = match self.params.filter_type.value() {
-                FilterType::Lowpass => Biquad::lowpass(fc, q),
-                FilterType::Bandpass => Biquad::bandpass_peak0(fc, q),
-                FilterType::Highpass => Biquad::highpass(fc, q),
-            };
-            x.set_saturators(nltype, nltype);
-        }
-        for os in &mut self.oversample {
-            os.reset();
-        }
+        self.biquad.update_coefficients(&biquad);
+        self.biquad.set_saturators(nltype, nltype);
     }
 }
 
@@ -127,8 +133,51 @@ impl Default for Plugin {
         let params = Arc::new(PluginParams::default());
         Self {
             params,
-            biquad: std::array::from_fn(move |_| Biquad::new(Default::default(), Default::default())),
-            oversample: std::array::from_fn(|_| Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE)),
+            biquad: Biquad::new([Sample::from([0.0; 2]); 3], [Sample::from([0.0; 2]); 2]),
+            oversample: Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE),
+        }
+    }
+}
+
+fn block_to_simd_array<T, const N: usize>(
+    block: &mut nih_plug::buffer::Block,
+    output: &mut [AutoSimd<[T; N]>],
+    cast: impl Fn(f32) -> T,
+) -> usize {
+    let mut i = 0;
+    for samples in block.iter_samples().take(output.len()) {
+        let mut it = samples.into_iter();
+        output[i] = AutoSimd(std::array::from_fn(|_| cast(it.next().copied().unwrap())));
+        i += 1;
+    }
+    i
+}
+
+fn simd_array_to_block<T, const N: usize>(
+    input: &[AutoSimd<[T; N]>],
+    block: &mut nih_plug::buffer::Block,
+    uncast: impl Fn(&T) -> f32,
+) {
+    for (inp, mut out_samples) in input.iter().zip(block.iter_samples()) {
+        for i in 0..N {
+            *out_samples.get_mut(i).unwrap() = uncast(&inp.0[i]);
+        }
+    }
+}
+
+fn apply<P: DSP<1, 1, Sample = AutoSimd<[f32; N]>>, const N: usize>(
+    buffer: &mut Buffer,
+    dsp: &mut P,
+) where
+    AutoSimd<[f32; N]>: SimdValue,
+    <P::Sample as SimdValue>::Element: Copy,
+{
+    for mut samples in buffer.iter_samples() {
+        let mut it = samples.iter_mut();
+        let input = AutoSimd(std::array::from_fn(|_| it.next().copied().unwrap()));
+        let [output] = dsp.process([input]);
+        for (out, inp) in samples.into_iter().zip(output.0.into_iter()) {
+            *out = inp;
         }
     }
 }
@@ -139,15 +188,19 @@ impl nih_plug::prelude::Plugin for Plugin {
     const URL: &'static str = "https://github.com/SolarLiner/valib";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = "0.0.0";
-    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
-        AudioIOLayout { main_input_channels: Some(new_nonzero_u32(2)), main_output_channels: Some(new_nonzero_u32(2)), aux_input_ports: &[], aux_output_ports: &[], names: PortNames {
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
+        main_input_channels: Some(new_nonzero_u32(2)),
+        main_output_channels: Some(new_nonzero_u32(2)),
+        aux_input_ports: &[],
+        aux_output_ports: &[],
+        names: PortNames {
             layout: Some("Stereo"),
             main_input: Some("Input"),
             main_output: Some("Output"),
             aux_inputs: &[],
             aux_outputs: &[],
-        } }
-    ];
+        },
+    }];
     type BackgroundTask = ();
     type SysExMessage = ();
 
@@ -161,14 +214,13 @@ impl nih_plug::prelude::Plugin for Plugin {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        self.reset_filters(buffer_config.sample_rate);
+        self.set_filters(buffer_config.sample_rate);
         true
     }
 
     fn reset(&mut self) {
-        for f in &mut self.biquad {
-            f.reset();
-        }
+        self.biquad.reset();
+        self.oversample.reset();
     }
 
     fn process(
@@ -177,6 +229,7 @@ impl nih_plug::prelude::Plugin for Plugin {
         _aux: &mut AuxiliaryBuffers,
         ctx: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        let params = self.params.clone();
         let os_samplerate = ctx.transport().sample_rate * OVERSAMPLE as f32;
         let mut fc = [0.; MAX_BLOCK_SIZE];
         let mut q = [0.; MAX_BLOCK_SIZE];
@@ -197,27 +250,21 @@ impl nih_plug::prelude::Plugin for Plugin {
             lerp_block(&mut os_q[..os_len], &q[..len]);
             lerp_block(&mut os_drive[..os_len], &drive[..len]);
 
-            for ch in 0..2 {
-                let buffer = block.get_mut(ch).unwrap();
-                let mut os_buffer = self.oversample[ch].oversample(buffer);
-                for (i, s) in os_buffer.iter_mut().enumerate() {
-                    let fc = os_fc[i] / os_samplerate;
-                    let q = os_q[i];
-                    let drive = os_drive[i];
-                    let f = &mut self.biquad[ch];
-                    let filter = match self.params.filter_type.value() {
-                        FilterType::Lowpass => Biquad::lowpass(fc, q),
-                        FilterType::Bandpass => Biquad::bandpass_peak0(fc, q),
-                        FilterType::Highpass => Biquad::highpass(fc, q),
-                    };
-
-                    let nltype = self.params.nonlinearity.value().as_dynamic_saturator();
-                    f.update_coefficients(&filter);
-                    f.set_saturators(nltype, nltype);
-                    *s = f.process([*s * drive])[0] / drive;
-                }
-                os_buffer.finish(buffer);
+            let mut simd_block = [Sample::from_f64(0.0); MAX_BLOCK_SIZE];
+            let actual_len =
+                block_to_simd_array(&mut block, &mut simd_block, std::convert::identity);
+            let simd_block = &mut simd_block[..actual_len];
+            let mut os_buffer = self.oversample.oversample(simd_block);
+            for (i, s) in os_buffer.iter_mut().enumerate() {
+                let drive = Sample::splat(os_drive[i]);
+                self.biquad.update_coefficients(&get_biquad(&params, os_samplerate));
+                let nltype = params.nonlinearity.value().as_dynamic_saturator();
+                self.biquad.set_saturators(nltype, nltype);
+                *s = self.biquad.process([*s * drive])[0] / drive.simd_asinh();
             }
+
+            os_buffer.finish(simd_block);
+            simd_array_to_block(simd_block, &mut block, |&v| v);
         }
 
         ProcessStatus::Normal
