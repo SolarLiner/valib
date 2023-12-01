@@ -12,7 +12,6 @@ use valib::oversample::Oversample;
 use valib::{
     biquad::Biquad,
     clippers::DiodeClipper,
-    dsp::process_block,
     saturators::Linear,
     simd::{AutoF32x2, AutoF64x2, AutoSimd, SimdComplexField, SimdValue},
     Scalar,
