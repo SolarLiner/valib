@@ -1,6 +1,6 @@
 mod diode_clipper_model_data;
 
-use std::fmt;
+use std::{fmt, ops::Not};
 
 use nalgebra::{ComplexField, SMatrix, SVector};
 use num_traits::FromPrimitive;

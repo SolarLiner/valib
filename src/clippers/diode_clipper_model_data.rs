@@ -1,6 +1,6 @@
+use num_traits::FromPrimitive;
 use numeric_literals::replace_float_literals;
 
-use crate::Scalar;
 
 use super::DiodeClipperModel;
 
@@ -8,8 +8,8 @@ use super::DiodeClipperModel;
 // combinations of up to 5 diodes in series each way.
 //
 // See the `clippers.ipynb` Notebook to see the rationale and working out process.
-impl<T: Scalar> DiodeClipperModel<T> {
-    #[replace_float_literals(T::from_f64(literal))]
+impl<T: FromPrimitive> DiodeClipperModel<T> {
+    #[replace_float_literals(T::from_f64(literal).unwrap())]
     pub fn new_silicon(nf: u8, nb: u8) -> Self {
         let [a, b, si, so] = match (nf, nb) {
             // RMS error: -54.7 dB
@@ -193,7 +193,7 @@ impl<T: Scalar> DiodeClipperModel<T> {
         Self { a, b, si, so }
     }
 
-    #[replace_float_literals(T::from_f64(literal))]
+    #[replace_float_literals(T::from_f64(literal).unwrap())]
     pub fn new_germanium(nf: u8, nb: u8) -> Self {
         let [a, b, si, so] = match (nf, nb) {
             // RMS error: -55.8 dB
@@ -377,7 +377,7 @@ impl<T: Scalar> DiodeClipperModel<T> {
         Self { a, b, si, so }
     }
 
-    #[replace_float_literals(T::from_f64(literal))]
+    #[replace_float_literals(T::from_f64(literal).unwrap())]
     pub fn new_led(nf: u8, nb: u8) -> Self {
         let [a, b, si, so] = match (nf, nb) {
             // RMS error: -47.7 dB
