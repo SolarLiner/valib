@@ -133,7 +133,7 @@ enum KnobModelEvent {
 }
 
 impl Model for KnobModel {
-    fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
+    fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
         event.map(|ev, _| match ev {
             &KnobModelEvent::SetDisplayTextbox(disp) => {
                 self.display_textbox = disp;

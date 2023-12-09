@@ -31,7 +31,7 @@ impl<T: Scalar> DSP<1, 1> for Integrator<T> {
 
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let in0 = x[0] + self.0;
-        self.0 = self.0 + in0;
+        self.0 += in0;
         [self.0]
     }
 }

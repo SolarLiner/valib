@@ -119,7 +119,7 @@ mod tests {
 
     #[test]
     fn oversample_no_dc_offset() {
-        let mut csv = csv::WriterBuilder::new()
+        let _csv = csv::WriterBuilder::new()
             .delimiter(b'\t')
             .from_path("oversample.tsv")
             .unwrap();

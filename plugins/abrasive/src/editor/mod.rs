@@ -8,9 +8,9 @@ use nih_plug::prelude::*;
 #[cfg(not(feature = "example"))]
 use nih_plug_vizia::widgets::ResizeHandle;
 #[cfg(not(feature = "example"))]
-use nih_plug_vizia::{assets, create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
+use nih_plug_vizia::{create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
 #[cfg(not(feature = "example"))]
-use resource::{resource, resource_str, Resource};
+use resource::{resource};
 #[cfg(not(feature = "example"))]
 use triple_buffer::Output;
 

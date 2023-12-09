@@ -1,6 +1,6 @@
-use az::{Az, Cast, CastFrom};
+use az::{CastFrom};
 use num_traits::Zero;
-use simba::simd::{AutoSimd, PrimitiveSimdValue, SimdRealField, SimdValue};
+use simba::simd::{AutoSimd, SimdRealField, SimdValue};
 
 pub use simba::simd;
 

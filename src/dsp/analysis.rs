@@ -1,4 +1,4 @@
-use nalgebra::{Complex, zero};
+use nalgebra::{Complex};
 use simba::simd::SimdComplexField;
 use numeric_literals::replace_float_literals;
 use simba::scalar::RealField;
