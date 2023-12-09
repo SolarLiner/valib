@@ -193,7 +193,7 @@ impl<T: Scalar> DiodeClipperModel<T> {
         Self { a, b, si, so }
     }
 
-    #[replace_float_literals(T::from_f64(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     pub fn new_germanium(nf: u8, nb: u8) -> Self {
         let [a, b, si, so] = match (nf, nb) {
             // RMS error: -55.8 dB
@@ -377,7 +377,7 @@ impl<T: Scalar> DiodeClipperModel<T> {
         Self { a, b, si, so }
     }
 
-    #[replace_float_literals(T::from_f64(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     pub fn new_led(nf: u8, nb: u8) -> Self {
         let [a, b, si, so] = match (nf, nb) {
             // RMS error: -47.7 dB
