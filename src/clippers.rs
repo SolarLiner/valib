@@ -1,8 +1,8 @@
 mod diode_clipper_model_data;
 
-use std::{fmt, ops::Not};
+use std::{fmt};
 
-use nalgebra::{ComplexField, SMatrix, SVector};
+use nalgebra::{SMatrix, SVector};
 use num_traits::Float;
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdBool, SimdComplexField, SimdValue};
