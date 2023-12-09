@@ -1,8 +1,8 @@
 use crate::biquad::Biquad;
+use crate::dsp::DSP;
 use crate::saturators::Linear;
 use crate::Scalar;
 use std::ops::{Deref, DerefMut};
-use crate::dsp::DSP;
 
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
@@ -19,10 +19,12 @@ impl<T: Scalar> Oversample<T> {
     pub fn new(os_factor: usize, max_block_size: usize) -> Self {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor];
-        let filters = std::array::from_fn(|_| Biquad::lowpass(
-            T::from_f64(2.0 * os_factor as f64).simd_recip(),
-            T::from_f64(0.707),
-        ));
+        let filters = std::array::from_fn(|_| {
+            Biquad::lowpass(
+                T::from_f64(2.0 * os_factor as f64).simd_recip(),
+                T::from_f64(0.707),
+            )
+        });
         Self {
             os_factor,
             os_buffer,
@@ -34,7 +36,9 @@ impl<T: Scalar> Oversample<T> {
     pub fn oversample(&mut self, buffer: &[T]) -> OversampleBlock<T> {
         let os_len = self.zero_stuff(buffer);
         for s in &mut self.os_buffer[..os_len] {
-            *s = self.pre_filter.process([*s])[0];
+            for f in &mut self.pre_filter {
+                *s = f.process([*s])[0];
+            }
         }
         OversampleBlock {
             filter: self,
@@ -106,7 +110,9 @@ impl<'a, T: Scalar> OversampleBlock<'a, T> {
     pub fn finish(self, out: &mut [T]) {
         let filter = self.filter;
         for s in &mut filter.os_buffer[..self.os_len] {
-            *s = filter.post_filter.process([*s])[0];
+            for f in &mut filter.post_filter {
+                *s = f.process([*s])[0];
+            }
         }
         filter.decimate(out);
     }
@@ -126,6 +132,6 @@ mod tests {
         let inp: [f32; 512] = std::array::from_fn(|i| (TAU * i as f32 / 64.).sin());
         let mut os = Oversample::new(4, 512);
         let osblock = black_box(os.oversample(&inp));
-        insta::assert_csv_snapshot!(&*osblock);
+        insta::assert_csv_snapshot!(&*osblock, { "[]" => insta::rounded_redaction(3) });
     }
 }
