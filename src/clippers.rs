@@ -60,7 +60,9 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
         let expm = T::simd_exp(-expin / self.num_diodes_bwd).simd_min(1e35);
         let res = v * self.isat * (expn / self.num_diodes_fwd + expm / self.num_diodes_bwd) + 2.;
         // Biasing to prevent divisions by zero, less accurate around zero
-        let ret = (1e-6).select(res.simd_abs().simd_lt(1e-6), res).simd_recip();
+        let ret = (1e-6)
+            .select(res.simd_abs().simd_lt(1e-6), res)
+            .simd_recip();
         Some(SMatrix::<_, 1, 1>::new(ret))
     }
 }
@@ -167,9 +169,8 @@ impl<T: Scalar> Saturator<T> for DiodeClipperModel<T> {
     #[inline]
     #[replace_float_literals(T::from_f64(literal))]
     fn saturate(&self, x: T) -> T {
-        let x = self.si / self.so * x;
-        let out = self.eval(x);
-        out * self.so / self.si
+        let out = self.eval(x / self.si);
+        out / self.so
     }
 }
 
@@ -195,13 +196,10 @@ mod tests {
     fn drive_test(name: &str, mut dsp: impl DSP<1, 1, Sample = f32>) {
         let sine_it = (0..).map(|i| i as f64 / 10.).map(f64::sin);
         let amp = (0..5000).map(|v| v as f64 / 5000. * 500.);
-        let output = sine_it
-            .zip(amp)
-            .map(|(a, b)| a * b)
-            .map(|v| {
-                let out = dsp.process([v as f32])[0];
-                hint::black_box(out)
-            });
+        let output = sine_it.zip(amp).map(|(a, b)| a * b).map(|v| {
+            let out = dsp.process([v as f32])[0];
+            hint::black_box(out)
+        });
         let results = Vec::from_iter(output.map(|v| v.extract(0)));
         let full_name = format!("{name}/drive_test");
         insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
