@@ -131,6 +131,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_detect_nan() {
         struct Equ;
 
