@@ -63,6 +63,8 @@ jobs:
           # The macOS AArch64/universal build is done from an x86_64 macOS CI
           # runner, so it needs to be cross compiled
           target: ${{ matrix.cross-target }}
+      - name: Build valib
+        run: cargo build -p valib --release
       - name: Package all targets from bundler.toml
         # Instead of hardcoding which targets to build and package, we'll
         # package everything that's got en entry in the `bundler.toml` file

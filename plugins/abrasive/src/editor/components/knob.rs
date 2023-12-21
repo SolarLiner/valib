@@ -1,7 +1,6 @@
 use std::f32::consts::{FRAC_PI_2, TAU};
 
 use nih_plug::{nih_log, prelude::Param};
-use nih_plug_vizia::vizia::vg::Solidity;
 use nih_plug_vizia::{
     vizia::{prelude::*, vg},
     widgets::param_base::ParamWidgetBase,
@@ -114,9 +113,9 @@ impl View for Ring {
             unmodulated.min(modulated),
             unmodulated.max(modulated),
             if (unmodulated - modulated).abs() < 0.5 {
-                Solidity::Solid
+                vg::Solidity::Solid
             } else {
-                Solidity::Hole
+                vg::Solidity::Hole
             },
         );
         canvas.stroke_path(&path, &get_stroke(ctx));
@@ -134,7 +133,7 @@ enum KnobModelEvent {
 }
 
 impl Model for KnobModel {
-    fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
+    fn event(&mut self, _cx: &mut EventContext, event: &mut Event) {
         event.map(|ev, _| match ev {
             &KnobModelEvent::SetDisplayTextbox(disp) => {
                 self.display_textbox = disp;
@@ -213,10 +212,12 @@ impl View for Knob {
                     self.widget_base.unmodulated_normalized_value(),
                 ));
                 self.widget_base.begin_set_parameter(cx);
+                cx.capture();
                 cx.set_active(true);
             }
             WindowEvent::MouseUp(MouseButton::Left) => {
                 self.drag_start = None;
+                cx.release();
                 self.widget_base.end_set_parameter(cx);
             }
             &WindowEvent::MouseMove(_, y) => {
@@ -253,6 +254,10 @@ impl View for Knob {
                     .set_normalized_value(cx, self.widget_base.default_normalized_value());
                 self.widget_base.end_set_parameter(cx);
             }
+            WindowEvent::KeyUp(Code::Escape, _) => {
+                cx.emit(KnobModelEvent::SetDisplayTextbox(false));
+                cx.release();
+            }
             _ => {}
         });
         event.map(|event, _| {
@@ -261,6 +266,7 @@ impl View for Knob {
                 KnobEvents::EnterValuePlain(value) => {
                     if let Some(normalized) = self.widget_base.string_to_normalized_value(value) {
                         cx.emit(KnobEvents::SetValueNormalized(normalized));
+                        cx.emit(KnobModelEvent::SetDisplayTextbox(false));
                     }
                 }
                 &KnobEvents::SetValueNormalized(value) => {

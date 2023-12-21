@@ -1,7 +1,6 @@
 use std::{
     cell::Cell,
     fmt::{self, Formatter},
-    marker::Destruct,
     sync::{atomic::Ordering::Relaxed, Arc},
 };
 

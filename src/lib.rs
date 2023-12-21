@@ -1,181 +1,140 @@
-use dasp_sample::FloatSample;
-use nalgebra::{Complex, ComplexField, RealField};
-use num_traits::{Float, FloatConst, Zero};
-use numeric_literals::replace_float_literals;
-use std::marker::PhantomData;
+use az::{CastFrom};
+use num_traits::Zero;
+use simba::simd::{AutoSimd, SimdRealField, SimdValue};
+
+pub use simba::simd;
 
 // pub mod ladder;
 // pub mod sallenkey;
 pub mod biquad;
 pub mod clippers;
+pub mod dsp;
 pub mod math;
 pub mod oversample;
 pub mod saturators;
 pub mod svf;
 pub mod util;
-mod wdf;
+#[cfg(feature = "unstable-wdf")]
+pub mod wdf;
 
-pub trait Scalar: Float + FloatConst + FloatSample {}
+pub trait Scalar: Copy + SimdRealField {
+    fn from_f64(value: f64) -> Self;
 
-impl<T: Float + FloatConst + FloatSample> Scalar for T {}
+    fn values<const N: usize>(self) -> [Self::Element; N] {
+        assert_eq!(N, Self::lanes());
+        std::array::from_fn(|i| self.extract(i))
+    }
 
-pub trait DSP<const I: usize, const O: usize> {
-    type Sample: Scalar;
-
-    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O];
-}
-
-pub trait DspAnalysis<const I: usize, const O: usize>: DSP<I, O> {
-    fn h_z(&self, z: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O];
-    fn freq_response(&self, jw: [Self::Sample; I]) -> [Complex<Self::Sample>; O]
-    where
-        Self::Sample: RealField,
-    {
-        let z = jw.map(|jw| Complex::exp(Complex::i() * jw));
-        self.h_z(z)
+    fn into_iter(self) -> impl ExactSizeIterator<Item=Self::Element> {
+        (0..Self::lanes()).map(move |i| self.extract(i))
     }
 }
 
-pub trait DspAnalog<const I: usize, const O: usize>: DSP<I, O> {
-    fn h_s(&self, s: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O];
-}
-
-impl<const I: usize, const O: usize, D: DspAnalog<I, O>> DspAnalysis<I, O> for D {
-    #[replace_float_literals(Complex::from(<D::Sample as num_traits::NumCast>::from(literal).unwrap()))]
-    #[inline(always)]
-    fn h_z(&self, z: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O] {
-        self.h_s(z.map(|z| 2. * (z - 1.) / (z + 1.)))
-    }
-
-    #[inline(always)]
-    fn freq_response(&self, jw: [Self::Sample; I]) -> [Complex<Self::Sample>; O]
-    where
-        Self::Sample: RealField,
-    {
-        self.h_s(jw.map(|jw| Complex::new(D::Sample::zero(), jw)))
+impl<T: Copy + SimdRealField> Scalar for T {
+    fn from_f64(value: f64) -> Self {
+        Self::from_subset(&value)
     }
 }
 
-#[derive(Debug, Copy, Clone, Default)]
-pub struct Bypass<S>(PhantomData<S>);
-
-impl<S: Scalar, const N: usize> DSP<N, N> for Bypass<S> {
-    type Sample = S;
-
-    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        x
-    }
+pub trait SimdCast<E>: SimdValue {
+    type Output: SimdValue<Element = E>;
+    fn cast(self) -> Self::Output;
 }
 
-/// Freestanding integrator, discretized with TPT
-#[derive(Debug, Copy, Clone)]
-pub struct Integrator<T>(T);
+impl<E1, E2, const N: usize> SimdCast<E2> for simba::simd::AutoSimd<[E1; N]>
+where
+    Self: SimdValue<Element=E1>,
+    simba::simd::AutoSimd<[E2; N]>: SimdValue<Element = E2>,
+    E2: CastFrom<E1>,
+{
+    type Output = simba::simd::AutoSimd<[E2; N]>;
 
-impl<T: Scalar> Default for Integrator<T> {
-    fn default() -> Self {
-        Self(T::EQUILIBRIUM)
-    }
-}
-
-impl<T: Scalar> DSP<1, 1> for Integrator<T> {
-    type Sample = T;
-
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let in0 = x[0] + self.0;
-        self.0 = self.0 + in0;
-        [self.0]
-    }
-}
-
-impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
-    #[replace_float_literals(Complex::from(T::from(literal).unwrap()))]
-    fn h_z(&self, z: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 1] {
-        [1. / 2. * (z[0] + 1.) / (z[0] - 1.)]
-    }
-}
-
-/// 6 dB/oct one-pole filter using the "one-sample trick" (fig. 3.31, eq. 3.32).
-/// Outputs modes as follows: [LP, HP, AP].
-#[derive(Debug, Copy, Clone)]
-pub struct P1<T> {
-    w_step: T,
-    fc: T,
-    s: T,
-}
-
-impl<T: Scalar> P1<T> {
-    pub fn new(samplerate: T, fc: T) -> Self {
-        Self {
-            w_step: T::PI() / samplerate,
-            fc,
-            s: T::EQUILIBRIUM,
+    fn cast(self) -> Self::Output {
+        assert_eq!(Self::Output::lanes(), N);
+        let mut ret: AutoSimd<[E2; N]> = unsafe { std::mem::zeroed() };
+        for i in 0..N {
+            ret.replace(i, E2::cast_from(self.extract(i)));
         }
-    }
-
-    pub fn reset(&mut self) {
-        self.s = T::EQUILIBRIUM;
-    }
-
-    pub fn set_samplerate(&mut self, samplerate: T) {
-        self.w_step = T::PI() / samplerate
-    }
-
-    pub fn set_fc(&mut self, fc: T) {
-        self.fc = fc;
+        ret
     }
 }
 
-impl<T: Scalar> DSP<1, 3> for P1<T> {
-    type Sample = T;
-
-    #[inline(always)]
-    #[replace_float_literals(T::from(literal).unwrap())]
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
-        // One-sample feedback trick over a transposed integrator, implementation following
-        // eq (3.32), page 77
-        let g = self.w_step * self.fc;
-        let k = g / (1. + g);
-        let v = k * (x[0] - self.s);
-        let lp = v + self.s;
-        self.s = lp + v;
-
-        let hp = x[0] - lp;
-        let ap = 2. * lp - x[0];
-        [lp, hp, ap]
-    }
-}
-
-impl<P: DSP<N, N>, const A: usize, const N: usize> DSP<N, N> for [P; A] {
-    type Sample = P::Sample;
-
-    #[inline(always)]
-    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        self.iter_mut().fold(x, |x, f| f.process(x))
-    }
-}
-
-macro_rules! series_tuple {
-    ($($p:ident),*) => {
-        impl<__Sample: Scalar, $($p: DSP<N, N, Sample = __Sample>),*, const N: usize> DSP<N, N> for ($($p),*) {
-            type Sample = __Sample;
-
-            #[allow(non_snake_case)]
-            #[inline(always)]
-            fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-                let ($($p),*) = self;
-                $(
-                let x = $p.process(x);
-                )*
-                x
+macro_rules! impl_simdcast_primitives {
+    ($ty:ty) => {
+        impl<E2: SimdValue<Element = E2>> SimdCast<E2> for $ty
+        where
+            E2: CastFrom<$ty>,
+        {
+            type Output = E2;
+            fn cast(self) -> Self::Output {
+                E2::cast_from(self)
             }
         }
     };
 }
 
-series_tuple!(A, B);
-series_tuple!(A, B, C);
-series_tuple!(A, B, C, D);
-series_tuple!(A, B, C, D, E);
-series_tuple!(A, B, C, D, E, F);
-series_tuple!(A, B, C, D, E, F, G);
-series_tuple!(A, B, C, D, E, F, G, H);
+impl_simdcast_primitives!(f32);
+impl_simdcast_primitives!(f64);
+impl_simdcast_primitives!(u8);
+impl_simdcast_primitives!(u16);
+impl_simdcast_primitives!(u32);
+impl_simdcast_primitives!(u64);
+impl_simdcast_primitives!(u128);
+impl_simdcast_primitives!(i8);
+impl_simdcast_primitives!(i16);
+impl_simdcast_primitives!(i32);
+impl_simdcast_primitives!(i64);
+impl_simdcast_primitives!(i128);
+
+macro_rules! impl_simdcast_wide {
+    ($name:ty : [$prim:ty; $lanes:literal]) => {
+        impl<E2> SimdCast<E2> for $name
+        where
+            E2: CastFrom<$prim>,
+            simba::simd::AutoSimd<[E2; $lanes]>: Zero + SimdValue<Element = E2>,
+        {
+            type Output = simba::simd::AutoSimd<[E2; $lanes]>;
+
+            fn cast(self) -> Self::Output {
+                let mut ret = <Self::Output as Zero>::zero();
+                for i in 0..$lanes {
+                    ret.replace(i, E2::cast_from(self.extract(i)));
+                }
+                ret
+            }
+        }
+    };
+}
+
+impl_simdcast_wide!(simba::simd::WideF32x4 : [f32; 4]);
+impl_simdcast_wide!(simba::simd::WideF32x8 : [f32; 8]);
+impl_simdcast_wide!(simba::simd::WideF64x4 : [f64; 4]);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const fn is_compatible<T: Scalar>() {}
+    const fn is_cast_compatible<From, To>()
+    where
+        From: SimdCast<To>,
+    {
+    }
+
+    #[test]
+    fn test_type_compatibility() {
+        is_compatible::<f32>();
+        is_compatible::<f64>();
+        is_compatible::<simba::simd::AutoF32x2>();
+        is_compatible::<simba::simd::AutoF32x4>();
+        is_compatible::<simba::simd::AutoF64x2>();
+        is_compatible::<simba::simd::AutoF64x4>();
+        is_compatible::<simba::simd::WideF32x4>();
+        is_compatible::<simba::simd::WideF64x4>();
+
+        is_cast_compatible::<f32, usize>();
+        is_cast_compatible::<f64, usize>();
+        is_cast_compatible::<simba::simd::AutoF32x4, usize>();
+        is_cast_compatible::<simba::simd::AutoF64x4, usize>();
+    }
+}

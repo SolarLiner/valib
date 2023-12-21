@@ -1,17 +1,16 @@
 mod diode_clipper_model_data;
 
-use std::{fmt, ops::Not};
+use std::{fmt};
 
-use nalgebra::{ComplexField, SMatrix, SVector};
-use num_traits::FromPrimitive;
+use nalgebra::{SMatrix, SVector};
+use num_traits::Float;
 use numeric_literals::replace_float_literals;
+use simba::simd::{SimdBool, SimdComplexField, SimdValue};
 
-use crate::{
-    math::{newton_rhapson_steps, RootEq},
-    saturators::Saturator,
-    Scalar, DSP,
-};
+use crate::{dsp::DSP, math::newton_rhapson_tol_max_iter};
+use crate::{math::RootEq, saturators::Saturator, Scalar};
 
+#[derive(Debug, Copy, Clone)]
 pub struct DiodeClipper<T> {
     pub isat: T,
     pub n: T,
@@ -21,87 +20,111 @@ pub struct DiodeClipper<T> {
     pub num_diodes_bwd: T,
     pub sim_tol: T,
     pub max_iter: usize,
+    last_vout: T,
+}
+
+impl<T: Copy> DiodeClipper<T> {
+    pub fn reset(&mut self) {
+        self.last_vout = self.vin;
+    }
 }
 
 impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
-    #[inline]
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[cfg_attr(test, inline(never))]
+    #[cfg_attr(not(test), inline)]
+    #[replace_float_literals(T::from_f64(literal))]
     fn eval(&self, input: &nalgebra::SVector<T, 1>) -> nalgebra::SVector<T, 1> {
         let vout = input[0];
-        let v = T::recip(self.n * self.vt);
+        let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
-        let expn = T::exp(expin / self.num_diodes_fwd);
-        let expm = T::exp(-expin / self.num_diodes_bwd);
+        if vout.simd_gt(16.0).any() {
+            println!();
+        }
+        let expn = T::simd_exp(expin / self.num_diodes_fwd).simd_min(1e35);
+        let expm = T::simd_exp(-expin / self.num_diodes_bwd).simd_min(1e35);
         let res = self.isat * (expn - expm) + 2. * vout - self.vin;
         SVector::<_, 1>::new(res)
     }
 
-    #[inline]
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[cfg_attr(test, inline(never))]
+    #[cfg_attr(not(test), inline)]
+    #[replace_float_literals(T::from_f64(literal))]
     fn j_inv(&self, input: &nalgebra::SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
         let vout = input[0];
-        let v = T::recip(self.n * self.vt);
+        let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
-        let expn = T::exp(expin / self.num_diodes_fwd);
-        let expm = T::exp(-expin / self.num_diodes_bwd);
+        if vout.simd_gt(16.0).any() {
+            println!();
+        }
+        let expn = T::simd_exp(expin / self.num_diodes_fwd).simd_min(1e35);
+        let expm = T::simd_exp(-expin / self.num_diodes_bwd).simd_min(1e35);
         let res = v * self.isat * (expn / self.num_diodes_fwd + expm / self.num_diodes_bwd) + 2.;
-        res.is_zero()
-            .not()
-            .then_some(SMatrix::<_, 1, 1>::new(res.recip()))
+        // Biasing to prevent divisions by zero, less accurate around zero
+        let ret = (1e-6)
+            .select(res.simd_abs().simd_lt(1e-6), res)
+            .simd_recip();
+        Some(SMatrix::<_, 1, 1>::new(ret))
     }
 }
 
-impl<T: FromPrimitive> DiodeClipper<T> {
-    #[replace_float_literals(T::from_f64(literal).unwrap())]
+impl<T: Scalar> DiodeClipper<T> {
+    #[replace_float_literals(T::from_f64(literal))]
     pub fn new_silicon(fwd: usize, bwd: usize, vin: T) -> Self {
         Self {
             isat: 4.352e-9,
             n: 1.906,
             vt: 23e-3,
-            num_diodes_fwd: T::from_usize(fwd).unwrap(),
-            num_diodes_bwd: T::from_usize(bwd).unwrap(),
+            num_diodes_fwd: T::from_f64(fwd as f64),
+            num_diodes_bwd: T::from_f64(bwd as f64),
             vin,
             sim_tol: 1e-3,
             max_iter: 50,
+            last_vout: vin,
         }
     }
 
-    #[replace_float_literals(T::from_f64(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     pub fn new_germanium(fwd: usize, bwd: usize, vin: T) -> Self {
         Self {
             isat: 200e-9,
             n: 2.109,
             vt: 23e-3,
-            num_diodes_fwd: T::from_usize(fwd).unwrap(),
-            num_diodes_bwd: T::from_usize(bwd).unwrap(),
+            num_diodes_fwd: T::from_f64(fwd as f64),
+            num_diodes_bwd: T::from_f64(bwd as f64),
             vin,
             sim_tol: 1e-3,
             max_iter: 50,
+            last_vout: vin,
         }
     }
 
-    #[replace_float_literals(T::from_f64(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     pub fn new_led(nf: usize, nb: usize, vin: T) -> DiodeClipper<T> {
         Self {
             isat: 2.96406e-12,
             n: 2.475312,
             vt: 23e-3,
             vin,
-            num_diodes_fwd: T::from_usize(nf).unwrap(),
-            num_diodes_bwd: T::from_usize(nb).unwrap(),
+            num_diodes_fwd: T::from_f64(nf as f64),
+            num_diodes_bwd: T::from_f64(nb as f64),
             sim_tol: 1e-3,
             max_iter: 50,
+            last_vout: vin,
         }
     }
 }
 
-impl<T: Scalar + ComplexField + fmt::Debug> DSP<1, 1> for DiodeClipper<T> {
+impl<T: Scalar + fmt::Display> DSP<1, 1> for DiodeClipper<T>
+where
+    T::Element: Float,
+{
     type Sample = T;
 
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         self.vin = x[0];
-        let mut vout = SVector::<_, 1>::new(<T as ComplexField>::tanh(x[0]));
-        newton_rhapson_steps(self, &mut vout, 4);
+        let mut vout = SVector::<_, 1>::new(self.last_vout);
+        newton_rhapson_tol_max_iter(self, &mut vout, self.sim_tol, self.max_iter);
+        self.last_vout = vout[0];
         [vout[0]]
     }
 }
@@ -114,30 +137,26 @@ pub struct DiodeClipperModel<T> {
     pub so: T,
 }
 
-
 impl<T: Scalar> DiodeClipperModel<T> {
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     #[inline]
     pub fn eval(&self, x: T) -> T {
         let x = self.si * x;
-        let out = if x < -self.a {
-            -T::ln(1. - x - self.a) - self.a
-        } else if x > self.b {
-            T::ln(1. + x - self.b) + self.b
-        } else {
-            x
-        };
-        out * self.so
+        let lower = x.simd_lt(-self.a);
+        let higher = x.simd_gt(self.b);
+        let case1 = -T::simd_ln(1. - x - self.a) - self.a;
+        let case2 = T::simd_ln(1. + x - self.b) + self.b;
+        case1.select(lower, case2.select(higher, x)) * self.so
     }
 }
 
-impl<T: FromPrimitive> Default for DiodeClipperModel<T> {
+impl<T: Scalar> Default for DiodeClipperModel<T> {
     fn default() -> Self {
         Self::new_silicon(1, 1)
     }
 }
 
-impl<T: Scalar + FromPrimitive> DSP<1, 1> for DiodeClipperModel<T> {
+impl<T: Scalar> DSP<1, 1> for DiodeClipperModel<T> {
     type Sample = T;
 
     #[inline(always)]
@@ -146,37 +165,57 @@ impl<T: Scalar + FromPrimitive> DSP<1, 1> for DiodeClipperModel<T> {
     }
 }
 
-impl<T: Scalar + FromPrimitive> Saturator<T> for DiodeClipperModel<T> {
+impl<T: Scalar> Saturator<T> for DiodeClipperModel<T> {
     #[inline]
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn saturate(&self, x: T) -> T {
-        let x = self.si / self.so * x;
-        let out = self.eval(x);
-        out * self.so / self.si
+        let out = self.eval(x / self.si);
+        out / self.so
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::fs::File;
-    use std::io::Write;
+    use std::hint;
 
-    use nalgebra::SVector;
+    use crate::dsp::DSP;
+    use simba::simd::SimdValue;
 
-    use crate::math::newton_rhapson_tolerance;
+    use super::{DiodeClipper, DiodeClipperModel};
 
-    use super::DiodeClipper;
+    fn dc_sweep(name: &str, mut dsp: impl DSP<1, 1, Sample = f32>) {
+        let results = Vec::from_iter(
+            (-4800..=4800)
+                .map(|i| i as f64 / 100.)
+                .map(|v| dsp.process([v as f32])[0]),
+        );
+        let full_name = format!("{name}/dc_sweep");
+        insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
+    }
+
+    fn drive_test(name: &str, mut dsp: impl DSP<1, 1, Sample = f32>) {
+        let sine_it = (0..).map(|i| i as f64 / 10.).map(f64::sin);
+        let amp = (0..5000).map(|v| v as f64 / 5000. * 500.);
+        let output = sine_it.zip(amp).map(|(a, b)| a * b).map(|v| {
+            let out = dsp.process([v as f32])[0];
+            hint::black_box(out)
+        });
+        let results = Vec::from_iter(output.map(|v| v.extract(0)));
+        let full_name = format!("{name}/drive_test");
+        insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
+    }
 
     #[test]
-    fn evaluate_diode_clipper() {
-        let mut clipper = DiodeClipper::new_led(3, 5, 0.);
-        let mut file = File::create("clipper.tsv").unwrap();
-        writeln!(file, "\"in\"\t\"out\"\t\"iter\"").unwrap();
-        for i in -4800..4800 {
-            clipper.vin = i as f64 / 100.;
-            let mut vout = SVector::<_, 1>::new(f64::tanh(clipper.vin));
-            let iter = newton_rhapson_tolerance(&clipper, &mut vout, 1e-3);
-            writeln!(file, "{}\t{}\t{}", clipper.vin, vout[0], iter).unwrap();
-        }
+    fn snapshot_diode_clipper() {
+        let clipper = DiodeClipper::new_led(3, 5, 0.0);
+        dc_sweep("regressions/clipper_nr", clipper);
+        drive_test("regressions/clipper_nr", clipper);
+    }
+
+    #[test]
+    fn snapshot_diode_clipper_model() {
+        let clipper = DiodeClipperModel::<f32>::new_led(3, 5);
+        dc_sweep("regressions/clipper_model", clipper);
+        drive_test("regressions/clipper_model", clipper);
     }
 }

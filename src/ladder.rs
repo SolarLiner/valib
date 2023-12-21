@@ -19,7 +19,7 @@ impl<T: Scalar + fmt::Debug, S: Saturator<T>, const N: usize> DSP<1, 1> for Ladd
     type Sample = T;
 
     #[inline(always)]
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let x = x[0];
         let y0 = x - self.k * self.s[3];

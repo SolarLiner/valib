@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf, DSP};
+use valib::{dsp::DSP, Scalar};
+use valib::simd::{AutoSimd, SimdValue};
+use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf};
 
 const MAX_BUFFER_SIZE: usize = 512;
 const OVERSAMPLE: usize = 2;
@@ -84,22 +86,25 @@ impl Default for PluginParams {
     }
 }
 
+type Sample = AutoSimd<[f32; 2]>;
+type Filter = Svf<Sample, DiodeClipperModel<Sample>>;
+
 #[derive(Debug)]
 struct Plugin {
     params: Arc<PluginParams>,
-    svf: [Svf<f32, DiodeClipperModel<f32>>; 2],
-    oversample: [Oversample<f32>; 2],
+    svf: Filter,
+    oversample: Oversample<Sample>,
 }
 
 impl Default for Plugin {
     fn default() -> Self {
         let params = Arc::new(PluginParams::default());
-        let fc = params.fc.default_plain_value();
-        let q = params.q.default_plain_value();
+        let fc = Sample::splat(params.fc.default_plain_value());
+        let q = Sample::splat(params.q.default_plain_value());
         Self {
             params,
-            svf: std::array::from_fn(move |_| Svf::new(1., fc, 1. - q)),
-            oversample: std::array::from_fn(|_| Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE)),
+            svf: Svf::new(Sample::from_f64(1.0), fc, Sample::from_f64(1.0) - q).with_saturators(DiodeClipperModel::new_germanium(3, 2), DiodeClipperModel::new_germanium(3, 2)),
+            oversample: Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE),
         }
     }
 }
@@ -110,21 +115,19 @@ impl nih_plug::prelude::Plugin for Plugin {
     const URL: &'static str = "https://github.com/SolarLiner/valib";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = "0.0.0";
-    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[
-        AudioIOLayout {
-            main_input_channels: Some(new_nonzero_u32(2)),
-            main_output_channels: Some(new_nonzero_u32(2)),
-            aux_input_ports: &[],
-            aux_output_ports: &[],
-            names: PortNames {
-                layout: Some("Stereo"),
-                main_input: Some("input"),
-                main_output: Some("output"),
-                aux_inputs: &[],
-                aux_outputs: &[],
-            }
-        }
-    ];
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
+        main_input_channels: Some(new_nonzero_u32(2)),
+        main_output_channels: Some(new_nonzero_u32(2)),
+        aux_input_ports: &[],
+        aux_output_ports: &[],
+        names: PortNames {
+            layout: Some("Stereo"),
+            main_input: Some("input"),
+            main_output: Some("output"),
+            aux_inputs: &[],
+            aux_outputs: &[],
+        },
+    }];
     type BackgroundTask = ();
     type SysExMessage = ();
 
@@ -138,16 +141,12 @@ impl nih_plug::prelude::Plugin for Plugin {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        for f in &mut self.svf {
-            f.set_samplerate(buffer_config.sample_rate * OVERSAMPLE as f32);
-        }
+        self.svf.set_samplerate(Sample::splat(buffer_config.sample_rate * OVERSAMPLE as f32));
         true
     }
 
     fn reset(&mut self) {
-        for f in &mut self.svf {
-            f.reset();
-        }
+        self.svf.reset();
     }
 
     fn process(
@@ -161,9 +160,14 @@ impl nih_plug::prelude::Plugin for Plugin {
         let mut lp_gain = [0.; MAX_BUFFER_SIZE];
         let mut bp_gain = [0.; MAX_BUFFER_SIZE];
         let mut hp_gain = [0.; MAX_BUFFER_SIZE];
+        let mut simd_slice = [Sample::from_f64(0.0); MAX_BUFFER_SIZE];
         for (_, mut block) in buffer.iter_blocks(MAX_BUFFER_SIZE) {
+            for (i, mut sample) in block.iter_samples().enumerate() {
+                simd_slice[i] = Sample::new(sample.get_mut(0).copied().unwrap(), sample.get_mut(1).copied().unwrap());
+            }
             let len = block.samples();
             let os_len = OVERSAMPLE * len;
+
             self.params.fc.smoothed.next_block_exact(&mut fc[..len]);
             self.params.q.smoothed.next_block_exact(&mut q[..len]);
             self.params
@@ -178,47 +182,40 @@ impl nih_plug::prelude::Plugin for Plugin {
                 .hp_gain
                 .smoothed
                 .next_block_exact(&mut hp_gain[..len]);
+
             let mut os_fc = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_q = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_lp_gain = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_bp_gain = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_hp_gain = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
+
             valib::util::lerp_block(&mut os_fc[..os_len], &fc[..len]);
             valib::util::lerp_block(&mut os_q[..os_len], &q[..len]);
             valib::util::lerp_block(&mut os_lp_gain[..os_len], &lp_gain[..len]);
             valib::util::lerp_block(&mut os_bp_gain[..os_len], &bp_gain[..len]);
             valib::util::lerp_block(&mut os_hp_gain[..os_len], &hp_gain[..len]);
-            for ch in 0..2 {
-                let buffer = block.get_mut(ch).unwrap();
-                let mut os_buffer = self.oversample[ch].oversample(buffer);
-                for (i, s) in os_buffer.iter_mut().enumerate() {
-                    let fc = os_fc[i];
-                    let q = os_q[i];
-                    let lp_gain = os_lp_gain[i];
-                    let bp_gain = os_bp_gain[i];
-                    let hp_gain = os_hp_gain[i];
 
-                    self.svf[ch].set_cutoff(fc);
-                    self.svf[ch].set_r(1. - q);
-                    let [lp, bp, hp] = self.svf[ch].process([*s]);
-                    *s = lp * lp_gain + bp * bp_gain + hp * hp_gain;
-                }
-                os_buffer.finish(buffer);
+            let buffer = &mut simd_slice[..len];
+            let mut os_buffer = self.oversample.oversample(buffer);
+            for (i, s) in os_buffer.iter_mut().enumerate() {
+                let fc = os_fc[i];
+                let q = os_q[i];
+                let lp_gain = Sample::splat(os_lp_gain[i]);
+                let bp_gain = Sample::splat(os_bp_gain[i]);
+                let hp_gain = Sample::splat(os_hp_gain[i]);
+
+                self.svf.set_cutoff(Sample::splat(fc));
+                self.svf.set_r(Sample::splat(1. - q));
+                let [lp, bp, hp] = self.svf.process([*s]);
+                *s = lp * lp_gain + bp * bp_gain + hp * hp_gain;
+            }
+            os_buffer.finish(buffer);
+
+            for (i, mut s) in block.iter_samples().enumerate() {
+                *s.get_mut(0).unwrap() = buffer[i].extract(0);
+                *s.get_mut(1).unwrap() = buffer[i].extract(1);
             }
         }
-        // for samples in buffer.iter_samples() {
-        //     let fc = self.params.fc.smoothed.next();
-        //     let q = self.params.q.smoothed.next();
-        //     let lp_gain = self.params.lp_gain.smoothed.next();
-        //     let bp_gain = self.params.bp_gain.smoothed.next();
-        //     let hp_gain = self.params.hp_gain.smoothed.next();
-        //     for (ch, f) in samples.into_iter().zip(&mut self.svf) {
-        //         f.set_cutoff(fc);
-        //         f.set_r(1. - q);
-        //         let [lp, bp, hp] = f.process([*ch]);
-        //         *ch = lp * lp_gain + bp * bp_gain + hp * hp_gain;
-        //     }
-        // }
 
         ProcessStatus::Normal
     }

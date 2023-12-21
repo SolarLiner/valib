@@ -1,12 +1,14 @@
 use crate::biquad::Biquad;
+use crate::dsp::DSP;
 use crate::saturators::Linear;
-use crate::{Scalar, DSP};
+use crate::Scalar;
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
     os_factor: usize,
     os_buffer: Vec<T>,
+    // TODO: Implement Series/Parallel for arrays and replace this
     pre_filter: [Biquad<T, Linear>; 8],
     post_filter: [Biquad<T, Linear>; 8],
     // pre_filter: Biquad<T, Linear>,
@@ -16,24 +18,27 @@ pub struct Oversample<T> {
 impl<T: Scalar> Oversample<T> {
     pub fn new(os_factor: usize, max_block_size: usize) -> Self {
         assert!(os_factor > 1);
-        let os_buffer = vec![T::EQUILIBRIUM; max_block_size * os_factor];
-        let filter = Biquad::lowpass(
-            T::one() / T::from(2 * os_factor).unwrap(),
-            T::from(0.707).unwrap(),
-        );
-        let filter = std::array::from_fn(|_| filter);
+        let os_buffer = vec![T::zero(); max_block_size * os_factor];
+        let filters = std::array::from_fn(|_| {
+            Biquad::lowpass(
+                T::from_f64(2.0 * os_factor as f64).simd_recip(),
+                T::from_f64(0.707),
+            )
+        });
         Self {
             os_factor,
             os_buffer,
-            pre_filter: filter,
-            post_filter: filter,
+            pre_filter: filters,
+            post_filter: filters,
         }
     }
 
     pub fn oversample(&mut self, buffer: &[T]) -> OversampleBlock<T> {
         let os_len = self.zero_stuff(buffer);
         for s in &mut self.os_buffer[..os_len] {
-            *s = self.pre_filter.process([*s])[0];
+            for f in &mut self.pre_filter {
+                *s = f.process([*s])[0];
+            }
         }
         OversampleBlock {
             filter: self,
@@ -42,7 +47,7 @@ impl<T: Scalar> Oversample<T> {
     }
 
     pub fn reset(&mut self) {
-        self.os_buffer.fill(T::EQUILIBRIUM);
+        self.os_buffer.fill(T::zero());
         // self.pre_filter.reset();
         // self.post_filter.reset();
         for f in self
@@ -58,9 +63,9 @@ impl<T: Scalar> Oversample<T> {
         let os_len = inp.len() * self.os_factor;
         assert!(self.os_buffer.len() >= os_len);
 
-        self.os_buffer[..os_len].fill(T::EQUILIBRIUM);
+        self.os_buffer[..os_len].fill(T::zero());
         for (i, s) in inp.iter().copied().enumerate() {
-            self.os_buffer[self.os_factor * i] = s * T::from(self.os_factor).unwrap();
+            self.os_buffer[self.os_factor * i] = s * T::from_f64(self.os_factor as f64);
         }
         os_len
     }
@@ -105,7 +110,9 @@ impl<'a, T: Scalar> OversampleBlock<'a, T> {
     pub fn finish(self, out: &mut [T]) {
         let filter = self.filter;
         for s in &mut filter.os_buffer[..self.os_len] {
-            *s = filter.post_filter.process([*s])[0];
+            for f in &mut filter.post_filter {
+                *s = f.process([*s])[0];
+            }
         }
         filter.decimate(out);
     }
@@ -118,15 +125,13 @@ mod tests {
 
     #[test]
     fn oversample_no_dc_offset() {
-        let mut csv = csv::WriterBuilder::new()
+        let _csv = csv::WriterBuilder::new()
             .delimiter(b'\t')
             .from_path("oversample.tsv")
             .unwrap();
         let inp: [f32; 512] = std::array::from_fn(|i| (TAU * i as f32 / 64.).sin());
         let mut os = Oversample::new(4, 512);
         let osblock = black_box(os.oversample(&inp));
-        for (i, s) in osblock.iter().copied().enumerate() {
-            csv.write_record([i.to_string(), s.to_string()]).unwrap();
-        }
+        insta::assert_csv_snapshot!(&*osblock, { "[]" => insta::rounded_redaction(3) });
     }
 }

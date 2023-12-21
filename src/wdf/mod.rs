@@ -1,3 +1,4 @@
+#![cfg(feature = "unstable-wdf")]
 use std::{
     any::Any,
     cell::{RefCell, RefMut},
@@ -40,13 +41,13 @@ impl<T: Scalar> Wave<T> {
         Self { a: T::zero(), b }
     }
 
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     #[inline]
     pub fn voltage(&self) -> T {
         0.5 * (self.a + self.b)
     }
 
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     #[inline]
     pub fn current(&self, rp: T) -> T {
         (self.a - self.b) * (0.5 / rp)
@@ -68,21 +69,21 @@ impl<T: Scalar> Impedance<T> {
     }
 
     pub fn from_resistance(r: T) -> Self {
-        Self { r, g: r.recip() }
+        Self { r, g: r.simd_recip()) }
     }
 
     pub fn from_admittance(g: T) -> Self {
-        Self { r: g.recip(), g }
+        Self { r: g.simd_recip()), g }
     }
 
     pub fn set_resistance(&mut self, r: T) {
         self.r = r;
-        self.g = r.recip();
+        self.g = r.simd_recip());
     }
 
     pub fn set_admittance(&mut self, g: T) {
         self.g = g;
-        self.r = g.recip();
+        self.r = g.simd_recip());
     }
 
     pub fn is_adaptable(&self) -> bool {
@@ -144,7 +145,7 @@ impl<T: 'static + Scalar> Wdf<T> for IdealVs<T> {
         Impedance::nonadaptable()
     }
 
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, rp: Impedance<T>, p: T, a: T) -> T {
         2. * rp.resistance().powf(p - 1.) * self.0 - a
     }
@@ -157,7 +158,7 @@ impl<T: 'static + Scalar> Wdf<T> for IdealIs<T> {
         Impedance::nonadaptable()
     }
 
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, rp: Impedance<T>, p: T, a: T) -> T {
         2. * rp.resistance().powf(p) + a
     }
@@ -173,7 +174,7 @@ impl<T: 'static + Scalar> Wdf<T> for ResistiveVs<T> {
         Impedance::from_resistance(self.r)
     }
 
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, port_impedance: Impedance<T>, p: T, _: T) -> T {
         self.vs * port_impedance.resistance().powf(p - 1.)
     }
@@ -189,7 +190,7 @@ impl<T: 'static + Scalar> Wdf<T> for ResistiveIs<T> {
         Impedance::from_resistance(self.r)
     }
 
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, port_impedance: Impedance<T>, p: T, _: T) -> T {
         self.is * port_impedance.resistance().powf(p)
     }
@@ -254,7 +255,7 @@ pub struct Capacitor<T> {
 }
 
 impl<T: Scalar> Default for Capacitor<T> {
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn default() -> Self {
         Self {
             fs: 44.1e3,
@@ -265,12 +266,12 @@ impl<T: Scalar> Default for Capacitor<T> {
 }
 
 impl<T: 'static + Scalar> Wdf<T> for Capacitor<T> {
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn impedance(&self) -> Impedance<T> {
         Impedance::from_admittance(2. * self.fs * self.c)
     }
 
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, port_impedance: Impedance<T>, p: T, a: T) -> T {
         std::mem::replace(&mut self.state, a)
     }
@@ -283,7 +284,7 @@ pub struct Inductor<T> {
 }
 
 impl<T: Scalar> Default for Inductor<T> {
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn default() -> Self {
         Self {
             fs: 44.1e3,
@@ -294,12 +295,12 @@ impl<T: Scalar> Default for Inductor<T> {
 }
 
 impl<T: 'static + Scalar> Wdf<T> for Inductor<T> {
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn impedance(&self) -> Impedance<T> {
         Impedance::from_resistance(2. * self.fs * self.l)
     }
 
-    #[replace_float_literals(T::from(literal).unwrap())]
+    #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, _: Impedance<T>, p: T, a: T) -> T {
         std::mem::replace(&mut self.state, -a)
     }

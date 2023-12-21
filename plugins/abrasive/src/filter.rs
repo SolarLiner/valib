@@ -7,7 +7,8 @@ use realfft::num_complex::Complex;
 use valib::clippers::DiodeClipperModel;
 use valib::saturators::{Blend, Dynamic, Saturator};
 use valib::svf::Svf;
-use valib::{DspAnalysis, DSP};
+use valib::dsp::analysis::DspAnalysis;
+use valib::dsp::DSP;
 
 #[derive(Debug, Copy, Clone, Enum, Eq, PartialEq)]
 pub enum FilterType {
