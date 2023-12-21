@@ -7,11 +7,11 @@
 Plugins: [Abrasive](plugins/abrasive)  
 Examples: [Diode Clipper](examples/diodeclipper) | [SVF Mixer](examples/svfmixer) | [Dirty Biquad](examples/dirty-biquad)
 
-Library of musical filters and reusable blocks for musical DSP.
+Library of reusable blocks for musical DSP.
 
 ## Features
 
-- Generic over scalars (transparent SIMD support planned)
+- Generic over scalars
 - Generic over saturators
 - Oversampling filter
 - Biquad filter
