@@ -10,6 +10,7 @@ dependencies = [
  "morphorm",
  "nih_plug",
  "nih_plug_vizia",
+ "numeric_literals",
  "once_cell",
  "realfft",
  "resource",
