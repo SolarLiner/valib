@@ -57,7 +57,7 @@ impl<S: Scalar> Saturator<S> for Clipper {
     #[inline(always)]
     #[replace_float_literals(S::from_f64(literal))]
     fn saturate(&self, x: S) -> S {
-        x.simd_min(1.0).simd_max(0.0)
+        x.simd_min(1.0).simd_max(-1.0)
     }
 
     #[inline(always)]

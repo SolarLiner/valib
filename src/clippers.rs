@@ -166,11 +166,9 @@ impl<T: Scalar> DSP<1, 1> for DiodeClipperModel<T> {
 }
 
 impl<T: Scalar> Saturator<T> for DiodeClipperModel<T> {
-    #[inline]
-    #[replace_float_literals(T::from_f64(literal))]
+    #[inline(always)]
     fn saturate(&self, x: T) -> T {
-        let out = self.eval(x / self.si);
-        out / self.so
+        self.eval(x) / (self.si * self.so)
     }
 }
 

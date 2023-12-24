@@ -216,3 +216,25 @@ where
         [num / den]
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::f64::consts::TAU;
+
+    use crate::{clippers::DiodeClipperModel, dsp::{DSPBlock, utils::{slice_to_mono_block, slice_to_mono_block_mut}}};
+
+    use super::*;
+
+    #[test]
+    fn test_lp_diode_clipper() {
+        let samplerate = 1000.0;
+        let sat = DiodeClipperModel::new_led(2, 3);
+        let mut biquad = Biquad::lowpass(10.0/samplerate, 20.0).with_saturators(Dynamic::DiodeClipper(sat), Dynamic::DiodeClipper(sat));
+
+        let input: [_; 512] = std::array::from_fn(|i| i as f64 / samplerate).map(|t| (10.0 * t).fract() * 2.0 - 1.0);
+        let mut output = [0.0; 512];
+        biquad.process_block(slice_to_mono_block(&input), slice_to_mono_block_mut(&mut output));
+
+        insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(4) });
+    }
+}
