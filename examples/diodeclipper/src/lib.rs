@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use nih_plug::{
-    buffer::{Block},
+    buffer::Block,
     prelude::*,
 };
 
