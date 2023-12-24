@@ -132,7 +132,7 @@ impl<T: Scalar> DSPBlock<1, 1> for Fir<T> {
         convolution(inputs, &self.kernel, &mut self.output_buffer, &mut self.staging_buffer);
         let size = inputs.len();
         let start = size / 2;
-        let end = start + size;
+        let _end = start + size;
         outputs.copy_from_slice(&self.output_buffer)
     }
 }

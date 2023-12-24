@@ -176,7 +176,7 @@ where
     fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
         let inputs = mono_block_to_slice(inputs);
         let mut os_block = self.oversampling.oversample(inputs);
-        let inner_outputs = slice_to_mono_block_mut(&mut *os_block);
+        let inner_outputs = slice_to_mono_block_mut(&mut os_block);
         self.staging_buffer[..inner_outputs.len()].copy_from_slice(inner_outputs);
         self.inner
             .process_block(&self.staging_buffer, inner_outputs);

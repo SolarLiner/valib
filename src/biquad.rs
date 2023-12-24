@@ -219,7 +219,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::f64::consts::TAU;
+    
 
     use crate::{clippers::DiodeClipperModel, dsp::{DSPBlock, utils::{slice_to_mono_block, slice_to_mono_block_mut}}};
 

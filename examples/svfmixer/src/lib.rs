@@ -3,7 +3,7 @@ use std::sync::Arc;
 use nih_plug::prelude::*;
 
 use valib::dsp::blocks::{ModMatrix, Series2};
-use valib::simd::{AutoSimd, SimdValue, SimdComplexField};
+use valib::simd::{AutoSimd, SimdValue};
 use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf};
 use valib::{dsp::DSP, Scalar};
 

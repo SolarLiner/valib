@@ -7,7 +7,7 @@ use valib::clippers::DiodeClipperModel;
 use valib::dsp::DSP;
 use valib::oversample::Oversample;
 use valib::saturators::Dynamic;
-use valib::simd::{AutoF32x2, AutoSimd, SimdComplexField, SimdValue};
+use valib::simd::{AutoF32x2, AutoSimd, SimdValue};
 use valib::util::lerp_block;
 use valib::Scalar;
 
