@@ -1,5 +1,5 @@
 use num_traits::{FromPrimitive, Num, One, Zero};
-use numeric_literals::{replace_float_literals};
+use numeric_literals::replace_float_literals;
 use simba::simd::{SimdPartialOrd, SimdValue};
 
 use crate::{Scalar, SimdCast};

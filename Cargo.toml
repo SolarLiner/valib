@@ -37,6 +37,9 @@ serde = "*"
 [features]
 unstable-wdf = []
 
+[features]
+unstable-wdf = []
+
 [profile.dev]
 opt-level = 1
 
