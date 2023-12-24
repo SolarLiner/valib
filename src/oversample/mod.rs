@@ -1,22 +1,24 @@
-use crate::{biquad::Biquad, dsp::{blocks::Series, DSP}};
+use crate::dsp::DSP;
 use crate::saturators::Linear;
 use crate::Scalar;
+use crate::{
+    biquad::Biquad,
+    dsp::{blocks::Series, DSPBlock},
+};
 use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
     os_factor: usize,
-    os_buffer: Vec<T>,
+    os_buffer: Box<[T]>,
     pre_filter: Series<[Biquad<T, Linear>; 8]>,
     post_filter: Series<[Biquad<T, Linear>; 8]>,
-    // pre_filter: Biquad<T, Linear>,
-    // post_filter: Biquad<T, Linear>,
 }
 
 impl<T: Scalar> Oversample<T> {
     pub fn new(os_factor: usize, max_block_size: usize) -> Self {
         assert!(os_factor > 1);
-        let os_buffer = vec![T::zero(); max_block_size * os_factor];
+        let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
         let filters = std::array::from_fn(|_| {
             Biquad::lowpass(
                 T::from_f64(2.0 * os_factor as f64).simd_recip(),
@@ -29,6 +31,14 @@ impl<T: Scalar> Oversample<T> {
             pre_filter: Series(filters),
             post_filter: Series(filters),
         }
+    }
+
+    pub fn latency(&self) -> usize {
+        2 * self.os_factor + DSP::latency(&self.pre_filter) + DSP::latency(&self.post_filter)
+    }
+
+    pub fn max_block_size(&self) -> usize {
+        self.os_buffer.len() / self.os_factor
     }
 
     pub fn oversample(&mut self, buffer: &[T]) -> OversampleBlock<T> {
@@ -44,8 +54,20 @@ impl<T: Scalar> Oversample<T> {
 
     pub fn reset(&mut self) {
         self.os_buffer.fill(T::zero());
-        self.pre_filter.reset();
-        self.post_filter.reset();
+        DSP::reset(&mut self.pre_filter);
+        DSP::reset(&mut self.post_filter);
+    }
+
+    pub fn with_dsp<P: DSPBlock<1, 1>>(self, dsp: P) -> Oversampled<T, P> {
+        let max_block_size = dsp.max_block_size().unwrap_or(self.os_buffer.len());
+        // Verify that we satisfy the inner DSPBlock instance's requirement on maximum block size
+        assert!(self.os_buffer.len() <= max_block_size);
+        let staging_buffer = vec![[T::zero(); 1]; max_block_size].into_boxed_slice();
+        Oversampled {
+            oversampling: self,
+            staging_buffer,
+            inner: dsp,
+        }
     }
 
     fn zero_stuff(&mut self, inp: &[T]) -> usize {
@@ -105,20 +127,105 @@ impl<'a, T: Scalar> OversampleBlock<'a, T> {
     }
 }
 
+pub struct Oversampled<T, P> {
+    oversampling: Oversample<T>,
+    staging_buffer: Box<[[T; 1]]>,
+    pub inner: P,
+}
+
+impl<T, P> Oversampled<T, P> {
+    pub fn into_inner(self) -> P {
+        self.inner
+    }
+}
+
+impl<T, P> DSPBlock<1, 1> for Oversampled<T, P>
+where
+    T: Scalar,
+    P: DSPBlock<1, 1, Sample = T>,
+{
+    type Sample = T;
+
+    fn latency(&self) -> usize {
+        self.oversampling.latency() + self.inner.latency()
+    }
+
+    fn max_block_size(&self) -> Option<usize> {
+        Some(self.oversampling.max_block_size())
+    }
+
+    fn reset(&mut self) {
+        self.oversampling.reset();
+        self.inner.reset();
+    }
+
+    fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
+        // Safety: all &[T; 1] <-> &T transmutes are valid as they have the same representation
+        let inputs = unsafe { std::mem::transmute(inputs) };
+        let mut os_block = self.oversampling.oversample(inputs);
+        let inner_outputs: &mut [[T; 1]] = unsafe { std::mem::transmute(&mut *os_block) };
+        self.staging_buffer[..os_block.len()].copy_from_slice(inner_outputs);
+        self.inner
+            .process_block(&self.staging_buffer, inner_outputs);
+        os_block.finish(unsafe { std::mem::transmute(outputs) });
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use numeric_literals::replace_float_literals;
+
+    use crate::{Scalar, dsp::DSPBlock as _};
+
     use super::Oversample;
     use std::{f32::consts::TAU, hint::black_box};
 
     #[test]
     fn oversample_no_dc_offset() {
-        let _csv = csv::WriterBuilder::new()
-            .delimiter(b'\t')
-            .from_path("oversample.tsv")
-            .unwrap();
         let inp: [f32; 512] = std::array::from_fn(|i| (TAU * i as f32 / 64.).sin());
+        let mut out = [0.0; 512];
         let mut os = Oversample::new(4, 512);
+
         let osblock = black_box(os.oversample(&inp));
-        insta::assert_csv_snapshot!(&*osblock, { "[]" => insta::rounded_redaction(3) });
+        insta::assert_csv_snapshot!("os block", &*osblock, { "[]" => insta::rounded_redaction(3) });
+
+        osblock.finish(&mut out);
+        insta::assert_csv_snapshot!("post os", &out as &[_], { "[]" => insta::rounded_redaction(3) });
+    }
+
+    #[test]
+    fn oversampled_dsp_block() {
+        struct NaiveSquare<T> {
+            samplerate: T,
+            frequency: T,
+            phase: T,
+        }
+
+        impl<T: Scalar> crate::dsp::DSP<1, 1> for NaiveSquare<T> {
+            type Sample = T;
+
+            #[replace_float_literals(T::from_f64(literal))]
+            fn process(&mut self, _: [Self::Sample; 1]) -> [Self::Sample; 1] {
+                let step = self.frequency / self.samplerate;
+                let out = (1.0).select(self.phase.simd_gt(0.5), -1.0);
+                self.phase += step;
+                self.phase = (self.phase - 1.0).select(self.phase.simd_gt(1.0), self.phase);
+                [out]
+            }
+        }
+
+        let samplerate = 1000f32;
+        let freq = 10f32;
+        let dsp = NaiveSquare {
+            samplerate,
+            frequency: freq,
+            phase: 0.0, 
+        };
+        let mut os = Oversample::<f32>::new(4, 64).with_dsp(dsp);
+        
+        let input = [[0.0]; 64];
+        let mut output = [[0.0]; 64];
+        os.process_block(&input, &mut output);
+        insta::assert_csv_snapshot!(&output as &[_], { "[][]" => insta::rounded_redaction(3) });
     }
 }
