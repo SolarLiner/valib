@@ -1,5 +1,4 @@
-use crate::biquad::Biquad;
-use crate::dsp::DSP;
+use crate::{biquad::Biquad, dsp::{blocks::Series, DSP}};
 use crate::saturators::Linear;
 use crate::Scalar;
 use std::ops::{Deref, DerefMut};
@@ -8,9 +7,8 @@ use std::ops::{Deref, DerefMut};
 pub struct Oversample<T> {
     os_factor: usize,
     os_buffer: Vec<T>,
-    // TODO: Implement Series/Parallel for arrays and replace this
-    pre_filter: [Biquad<T, Linear>; 8],
-    post_filter: [Biquad<T, Linear>; 8],
+    pre_filter: Series<[Biquad<T, Linear>; 8]>,
+    post_filter: Series<[Biquad<T, Linear>; 8]>,
     // pre_filter: Biquad<T, Linear>,
     // post_filter: Biquad<T, Linear>,
 }
@@ -28,17 +26,15 @@ impl<T: Scalar> Oversample<T> {
         Self {
             os_factor,
             os_buffer,
-            pre_filter: filters,
-            post_filter: filters,
+            pre_filter: Series(filters),
+            post_filter: Series(filters),
         }
     }
 
     pub fn oversample(&mut self, buffer: &[T]) -> OversampleBlock<T> {
         let os_len = self.zero_stuff(buffer);
         for s in &mut self.os_buffer[..os_len] {
-            for f in &mut self.pre_filter {
-                *s = f.process([*s])[0];
-            }
+            *s = self.pre_filter.process([*s])[0];
         }
         OversampleBlock {
             filter: self,
@@ -48,15 +44,8 @@ impl<T: Scalar> Oversample<T> {
 
     pub fn reset(&mut self) {
         self.os_buffer.fill(T::zero());
-        // self.pre_filter.reset();
-        // self.post_filter.reset();
-        for f in self
-            .pre_filter
-            .iter_mut()
-            .chain(self.post_filter.iter_mut())
-        {
-            f.reset();
-        }
+        self.pre_filter.reset();
+        self.post_filter.reset();
     }
 
     fn zero_stuff(&mut self, inp: &[T]) -> usize {
@@ -110,9 +99,7 @@ impl<'a, T: Scalar> OversampleBlock<'a, T> {
     pub fn finish(self, out: &mut [T]) {
         let filter = self.filter;
         for s in &mut filter.os_buffer[..self.os_len] {
-            for f in &mut filter.post_filter {
-                *s = f.process([*s])[0];
-            }
+            *s = filter.post_filter.process([*s])[0];
         }
         filter.decimate(out);
     }

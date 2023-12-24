@@ -1,9 +1,9 @@
-use numeric_literals::replace_float_literals;
-use nalgebra::Complex;
-use std::marker::PhantomData;
 use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::DSP;
 use crate::Scalar;
+use nalgebra::Complex;
+use numeric_literals::replace_float_literals;
+use std::marker::PhantomData;
 
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Bypass<S>(PhantomData<S>);
@@ -124,6 +124,24 @@ series_tuple!(A, B, C, D, E, F);
 series_tuple!(A, B, C, D, E, F, G);
 series_tuple!(A, B, C, D, E, F, G, H);
 
+impl<P: DSP<N, N>, const N: usize, const C: usize> DSP<N, N> for Series<[P; C]> {
+    type Sample = P::Sample;
+
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        self.0.iter_mut().fold(x, |x, dsp| dsp.process(x))
+    }
+
+    fn latency(&self) -> usize {
+        self.0.iter().map(|dsp| dsp.latency()).sum()
+    }
+
+    fn reset(&mut self) {
+        for dsp in self.0.iter_mut() {
+            dsp.reset();
+        }
+    }
+}
+
 /// Process inner DSP blocks in parallel. Input is fanned out to all inner blocks, then summed back out.
 #[derive(Debug, Copy, Clone)]
 pub struct Parallel<T>(pub T);
@@ -157,3 +175,26 @@ parallel_tuple!(A, B, C, D, E);
 parallel_tuple!(A, B, C, D, E, F);
 parallel_tuple!(A, B, C, D, E, F, G);
 parallel_tuple!(A, B, C, D, E, F, G, H);
+
+impl<P: DSP<I, O>, const I: usize, const O: usize, const N: usize> DSP<I, O> for Parallel<[P; N]> {
+    type Sample = P::Sample;
+
+    fn latency(&self) -> usize {
+        self.0.iter().fold(0, |max, dsp| max.max(dsp.latency()))
+    }
+
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+        self.0
+            .iter_mut()
+            .map(|dsp| dsp.process(x))
+            .fold([Self::Sample::from_f64(0.0); O], |out, dsp| {
+                std::array::from_fn(|i| out[i] + dsp[i])
+            })
+    }
+
+    fn reset(&mut self) {
+        for dsp in self.0.iter_mut() {
+            dsp.reset();
+        }
+    }
+}
