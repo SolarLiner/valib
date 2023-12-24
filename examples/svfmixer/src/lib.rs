@@ -3,7 +3,7 @@ use std::sync::Arc;
 use nih_plug::prelude::*;
 
 use valib::dsp::blocks::{ModMatrix, Series2};
-use valib::simd::{AutoSimd, SimdValue};
+use valib::simd::{AutoSimd, SimdValue, SimdComplexField};
 use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf};
 use valib::{dsp::DSP, Scalar};
 
@@ -12,6 +12,8 @@ const OVERSAMPLE: usize = 2;
 
 #[derive(Debug, Params)]
 struct PluginParams {
+    #[id = "drive"]
+    drive: FloatParam,
     #[id = "fc"]
     fc: FloatParam,
     #[id = "q"]
@@ -27,6 +29,15 @@ struct PluginParams {
 impl Default for PluginParams {
     fn default() -> Self {
         Self {
+            drive: FloatParam::new(
+                "Drive",
+                1.0,
+                FloatRange::Skewed {
+                    min: 1.0,
+                    max: 100.0,
+                    factor: FloatRange::gain_skew_factor(0.0, 40.0),
+                }
+            ).with_value_to_string(formatters::v2s_f32_gain_to_db(2)).with_string_to_value(formatters::s2v_f32_gain_to_db()).with_smoother(SmoothingStyle::Exponential(10.)),
             fc: FloatParam::new(
                 "Frequency",
                 300.,
@@ -105,8 +116,8 @@ impl Default for Plugin {
         let q = Sample::splat(params.q.default_plain_value());
         let filter = Svf::new(Sample::from_f64(1.0), fc, Sample::from_f64(1.0) - q)
             .with_saturators(
-                DiodeClipperModel::new_germanium(1, 2),
-                DiodeClipperModel::new_germanium(2, 1),
+                DiodeClipperModel::new_led(1, 2),
+                DiodeClipperModel::new_led(2, 1),
             );
         let mod_matrix = ModMatrix::default();
         Self {
@@ -165,6 +176,7 @@ impl nih_plug::prelude::Plugin for Plugin {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        let mut drive = [0.; MAX_BUFFER_SIZE];
         let mut fc = [0.; MAX_BUFFER_SIZE];
         let mut q = [0.; MAX_BUFFER_SIZE];
         let mut lp_gain = [0.; MAX_BUFFER_SIZE];
@@ -181,6 +193,7 @@ impl nih_plug::prelude::Plugin for Plugin {
             let len = block.samples();
             let os_len = OVERSAMPLE * len;
 
+            self.params.drive.smoothed.next_block_exact(&mut drive[..len]);
             self.params.fc.smoothed.next_block_exact(&mut fc[..len]);
             self.params.q.smoothed.next_block_exact(&mut q[..len]);
             self.params
@@ -196,12 +209,14 @@ impl nih_plug::prelude::Plugin for Plugin {
                 .smoothed
                 .next_block_exact(&mut hp_gain[..len]);
 
+            let mut os_drive = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_fc = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_q = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_lp_gain = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_bp_gain = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_hp_gain = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
 
+            valib::util::lerp_block(&mut os_drive[..os_len], &drive[..len]);
             valib::util::lerp_block(&mut os_fc[..os_len], &fc[..len]);
             valib::util::lerp_block(&mut os_q[..os_len], &q[..len]);
             valib::util::lerp_block(&mut os_lp_gain[..os_len], &lp_gain[..len]);
@@ -214,13 +229,14 @@ impl nih_plug::prelude::Plugin for Plugin {
                 let fc = os_fc[i];
                 let q = os_q[i];
                 let filter = self.dsp.left_mut();
+                let drive = Sample::splat(os_drive[i]);
                 filter.set_cutoff(Sample::splat(fc));
                 filter.set_r(Sample::splat(1. - q));
                 let mod_matrix = self.dsp.right_mut();
                 mod_matrix.weights[(0, 0)] = Sample::splat(os_lp_gain[i]);
                 mod_matrix.weights[(0, 1)] = Sample::splat(os_bp_gain[i]);
                 mod_matrix.weights[(0, 2)] = Sample::splat(os_hp_gain[i]);
-                *s = self.dsp.process([*s])[0];
+                *s = self.dsp.process([*s * drive])[0] / drive;
             }
             os_buffer.finish(buffer);
 
