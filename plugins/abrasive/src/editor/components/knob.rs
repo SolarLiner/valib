@@ -62,7 +62,7 @@ impl View for Arc {
             vg::Solidity::Hole
         };
         path.arc(ctx, cty, radius, start, end, solidity);
-        let (s, c) = (-end + FRAC_PI_2).simd_sin_cos();
+        let (s, c) = (-end + FRAC_PI_2).sin_cos();
         path.move_to(ctx, cty);
         path.line_to(ctx + radius * s, cty + radius * c);
         canvas.stroke_path(&path, &get_stroke(cx));
