@@ -1,5 +1,7 @@
 use crate::Scalar;
 
+use self::analysis::DspAnalysis;
+
 pub mod analog;
 pub mod analysis;
 pub mod blocks;
@@ -154,6 +156,14 @@ where
         self.inner.reset();
         self.input_filled = 0;
         self.output_filled = self.output_buffer.len();
+    }
+}
+
+impl<P, const I: usize, const O: usize> DspAnalysis<I, O> for PerSampleBlockAdapter<P, I, O>
+where P: DspAnalysis<I, O>
+{
+    fn h_z(&self, z: [nalgebra::Complex<Self::Sample>; I]) -> [nalgebra::Complex<Self::Sample>; O] {
+        self.inner.h_z(z)
     }
 }
 

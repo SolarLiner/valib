@@ -2,6 +2,7 @@ use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::DSP;
 use crate::Scalar;
 use nalgebra::Complex;
+use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
 use std::marker::PhantomData;
 
@@ -142,6 +143,16 @@ impl<P: DSP<N, N>, const N: usize, const C: usize> DSP<N, N> for Series<[P; C]> 
     }
 }
 
+impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
+where P: DspAnalysis<N, N> {
+    fn h_z(&self, z: [Complex<Self::Sample>; N]) -> [Complex<Self::Sample>; N] {
+        self.0.iter().fold([Complex::one(); N], |acc, f| {
+            let ret = f.h_z(z);
+            std::array::from_fn(|i| acc[i] * ret[i])
+        })
+    }
+}
+
 /// Process inner DSP blocks in parallel. Input is fanned out to all inner blocks, then summed back out.
 #[derive(Debug, Copy, Clone)]
 pub struct Parallel<T>(pub T);
@@ -196,5 +207,16 @@ impl<P: DSP<I, O>, const I: usize, const O: usize, const N: usize> DSP<I, O> for
         for dsp in self.0.iter_mut() {
             dsp.reset();
         }
+    }
+}
+
+impl<P, const I: usize, const O: usize, const N: usize> DspAnalysis<I, O> for Parallel<[P; N]>
+where P: DspAnalysis<I, O>
+{
+    fn h_z(&self, z: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O] {
+        self.0.iter().fold([Complex::zero(); O], |acc, f| {
+            let ret = f.h_z(z);
+            std::array::from_fn(|i| acc[i] + ret[i])
+        })
     }
 }
