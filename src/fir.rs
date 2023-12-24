@@ -1,8 +1,8 @@
-use std::ops;
+use std::{collections::VecDeque, ops};
 
 use numeric_literals::replace_float_literals;
 
-use crate::{dsp::{DSPBlock, utils::{mono_block_to_slice, mono_block_to_slice_mut}, PerSampleBlockAdapter}, Scalar};
+use crate::{dsp::DSP, Scalar};
 
 fn slice_add<T: Copy + ops::Add<T, Output = T>>(in1: &[T], in2: &[T], out: &mut [T]) {
     let len = in1.len().min(in2.len()).min(out.len());
@@ -29,6 +29,7 @@ fn slice_sub_to<T: Copy + ops::SubAssign<T>>(out: &mut [T], inp: &[T]) {
 /// out: output signal (of size 2n)
 /// buffer: staging buffer (of size 2n)
 #[replace_float_literals(T::from_f64(literal))]
+#[allow(unused)]
 fn convolution<T: Scalar>(in1: &[T], in2: &[T], out: &mut [T], buffer: &mut [T]) {
     let size = in1.len();
     debug_assert_eq!(size, in2.len());
@@ -86,72 +87,112 @@ fn convolution<T: Scalar>(in1: &[T], in2: &[T], out: &mut [T], buffer: &mut [T])
 
 pub struct Fir<T> {
     kernel: Box<[T]>,
-    staging_buffer: Box<[T]>,
-    output_buffer: Box<[T]>,
+    memory: VecDeque<T>,
     kernel_latency: usize,
-    out_index: usize,
 }
 
 impl<T: Scalar> Fir<T> {
+    pub fn lowpass(fc: T, bandwidth: f64) -> Self {
+        let kernel = Vec::from(kernels::windowed_sinc(fc, bandwidth));
+        let len = kernel.len();
+        Self::new(kernel, len / 2)
+    }
+
     pub fn new(kernel: impl IntoIterator<Item = T>, kernel_latency: usize) -> Self {
         let kernel = Box::from_iter(kernel);
-        let size = kernel.len();
-        let staging_buffer = Box::from_iter(std::iter::repeat(T::from_f64(0.0)).take(2 * size));
-        let output_buffer = staging_buffer.clone();
-
+        let memory = VecDeque::from(vec![T::from_f64(0.0); kernel.len()]);
         Self {
             kernel,
-            out_index: 0,
-            staging_buffer,
-            output_buffer,
+            memory,
             kernel_latency,
         }
     }
-
-    pub fn stable_buffers(self) -> PerSampleBlockAdapter<Self, 1, 1> {
-        PerSampleBlockAdapter::new(self)
-    }
 }
 
-impl<T: Scalar> DSPBlock<1, 1> for Fir<T> {
+impl<T: Scalar> DSP<1, 1> for Fir<T> {
     type Sample = T;
 
     fn latency(&self) -> usize {
         self.kernel_latency
     }
 
-    fn max_block_size(&self) -> Option<usize> {
-        Some(self.kernel.len())
+    fn reset(&mut self) {
+        self.memory = VecDeque::from(vec![T::from_f64(0.0); self.kernel.len()]);
     }
 
-    fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
-        let inputs = mono_block_to_slice(inputs);
-        let outputs = mono_block_to_slice_mut(outputs);
-        assert_eq!(inputs.len(), self.kernel.len());
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        let [x] = x;
+        self.memory.pop_front();
+        self.memory.push_back(x);
+        let y = self
+            .kernel
+            .iter()
+            .copied()
+            .zip(self.memory.iter().copied())
+            .fold(T::from_f64(0.0), |acc, (a, b)| acc + a * b);
+        [y]
+    }
+}
 
-        convolution(inputs, &self.kernel, &mut self.output_buffer, &mut self.staging_buffer);
-        let size = inputs.len();
-        let start = size / 2;
-        let _end = start + size;
-        outputs.copy_from_slice(&self.output_buffer)
+pub mod kernels {
+    use numeric_literals::replace_float_literals;
+
+    use crate::Scalar;
+
+    #[replace_float_literals(T::from_f64(literal))]
+    pub fn windowed_sinc_in_place<T: Scalar>(fc: T, slice:&mut [T]) {
+        debug_assert_eq!(slice.len() % 2, 1);
+        let width = T::from_f64(slice.len() as _);
+        let half_width = 0.5 * width;
+        for (i, s) in slice.iter_mut().enumerate() {
+            let i = T::from_f64(i as _);
+            *s = T::simd_sin(T::simd_two_pi() * fc * (i - half_width)) / (i - half_width);
+            *s *= 0.42 - 0.5 * T::simd_cos(T::simd_two_pi() * i / width) + 0.08 * T::simd_cos(2.0 * T::simd_two_pi() * i / width);
+        }
+        // Normalization
+        let magnitude = slice.iter().copied().fold(0.0, |a, b| a + b);
+        for s in slice {
+            *s /= magnitude;
+        }
+    }
+
+    pub fn windowed_sinc<T: Scalar>(fc: T, bandwidth: f64) -> Box<[T]> {
+        let mut length = (4.0 / bandwidth) as usize;
+        if length % 2 == 0 {
+            length += 1;
+        }
+
+        let mut data = vec![T::from_f64(0.0); length];
+        windowed_sinc_in_place(fc, &mut data[..]);
+        data.into_boxed_slice()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
+    use crate::dsp::{
+        utils::{slice_to_mono_block, slice_to_mono_block_mut},
+        DSPBlock,
+    };
 
     use super::*;
 
     #[test]
-    #[should_panic] // Block-based convolution is bugged
     fn test_fir_direct() {
         let input = Box::from_iter([1.0, 0.0, 0.0, 0.0].into_iter().cycle().take(16));
         let mut output = input.clone();
-        let mut fir = Fir::new([0.25, 0.5, 0.25], 1).stable_buffers();
+        let mut fir = Fir::new([0.25, 0.5, 0.25], 1);
 
         output.fill(0.0);
-        fir.process_block(slice_to_mono_block(&input), slice_to_mono_block_mut(&mut output));
+        fir.process_block(
+            slice_to_mono_block(&input),
+            slice_to_mono_block_mut(&mut output),
+        );
         insta::assert_csv_snapshot!(&output, { "[]" => insta::rounded_redaction(4) })
+    }
+
+    #[test]
+    fn test_kernel_lowpass() {
+        insta::assert_csv_snapshot!(&kernels::windowed_sinc(0.1, 0.1), { "[]" => insta::rounded_redaction(5) });
     }
 }
