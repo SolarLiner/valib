@@ -331,3 +331,44 @@ where
         std::array::from_fn(|i| res[i])
     }
 }
+pub struct Feedback<P, const N: usize> where P: DSP<N, N> {
+    memory: [P::Sample; N],
+    pub inner: P,
+    pub mix: [P::Sample; N],
+}
+
+impl<P, const N: usize> DSP<N, N> for Feedback<P, N>
+where P: DSP<N, N>
+{
+    type Sample = P::Sample;
+
+    fn latency(&self) -> usize {
+        self.inner.latency()
+    }
+
+    fn reset(&mut self) {
+        self.memory.fill(P::Sample::from_f64(0.0));
+        self.inner.reset();
+    }
+
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        let x = std::array::from_fn(|i| self.memory[i] * self.mix[i] + x[i]);
+        let y = self.inner.process(x);
+        self.memory = y;
+        y
+    }
+}
+
+impl<P: DSP<N, N>, const N: usize> Feedback<P, N> {
+    pub fn new(dsp: P) -> Self {
+        Self {
+            memory: [P::Sample::from_f64(0.0); N],
+            inner: dsp,
+            mix: [P::Sample::from_f64(0.0); N],
+        }
+    }
+
+    pub fn into_inner(self) -> P {
+        self.inner
+    }
+}
