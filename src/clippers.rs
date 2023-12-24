@@ -5,7 +5,7 @@ use std::{fmt};
 use nalgebra::{SMatrix, SVector};
 use num_traits::Float;
 use numeric_literals::replace_float_literals;
-use simba::simd::{SimdBool, SimdComplexField, SimdValue};
+use simba::simd::SimdBool;
 
 use crate::{dsp::DSP, math::newton_rhapson_tol_max_iter};
 use crate::{math::RootEq, saturators::Saturator, Scalar};
@@ -79,7 +79,7 @@ impl<T: Scalar> DiodeClipper<T> {
             vin,
             sim_tol: 1e-3,
             max_iter: 50,
-            last_vout: vin,
+            last_vout: vin.simd_tanh(),
         }
     }
 
@@ -94,7 +94,7 @@ impl<T: Scalar> DiodeClipper<T> {
             vin,
             sim_tol: 1e-3,
             max_iter: 50,
-            last_vout: vin,
+            last_vout: vin.simd_tanh(),
         }
     }
 
@@ -109,7 +109,7 @@ impl<T: Scalar> DiodeClipper<T> {
             num_diodes_bwd: T::from_f64(nb as f64),
             sim_tol: 1e-3,
             max_iter: 50,
-            last_vout: vin,
+            last_vout: vin.simd_tanh(),
         }
     }
 }
