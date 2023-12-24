@@ -1,10 +1,12 @@
-use crate::dsp::analysis::DspAnalysis;
-use crate::dsp::DSP;
-use crate::Scalar;
-use nalgebra::Complex;
+use std::marker::PhantomData;
+
+use nalgebra::{Complex, SMatrix, SVector};
 use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
-use std::marker::PhantomData;
+
+use crate::dsp::analysis::DspAnalysis;
+use crate::dsp::{DSPBlock, DSP};
+use crate::Scalar;
 
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Bypass<S>(PhantomData<S>);
@@ -41,6 +43,30 @@ impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
     #[replace_float_literals(Complex::from(T::from_f64(literal)))]
     fn h_z(&self, z: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 1] {
         [1. / 2. * (z[0] + 1.) / (z[0] - 1.)]
+    }
+}
+
+/// Sum inputs into a single output
+#[derive(Debug, Copy, Clone, Default)]
+pub struct Sum<T, const N: usize>(PhantomData<[T; N]>);
+
+impl<T, const N: usize> DSP<N, 1> for Sum<T, N>
+where
+    T: Scalar,
+{
+    type Sample = T;
+
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; 1] {
+        [x.into_iter().fold(T::zero(), |a, b| a + b)]
+    }
+}
+
+impl<T, const N: usize> DspAnalysis<N, 1> for Sum<T, N>
+where
+    Self: DSP<N, 1>,
+{
+    fn h_z(&self, z: [Complex<Self::Sample>; N]) -> [Complex<Self::Sample>; 1] {
+        [z.into_iter().fold(Complex::zero(), |a, b| a + b)]
     }
 }
 
@@ -125,6 +151,60 @@ series_tuple!(A, B, C, D, E, F);
 series_tuple!(A, B, C, D, E, F, G);
 series_tuple!(A, B, C, D, E, F, G, H);
 
+#[derive(Debug, Copy, Clone)]
+pub struct Series2<A, B, const INNER: usize>(A, PhantomData<[(); INNER]>, B);
+
+impl<A, B, const INNER: usize> Series2<A, B, INNER> {
+    pub const fn new<const I: usize, const O: usize>(a: A, b: B) -> Self
+    where
+        A: DSP<I, INNER>,
+        B: DSP<INNER, O>,
+    {
+        Self(a, PhantomData, b)
+    }
+
+    pub const fn left(&self) -> &A {
+        &self.0
+    }
+
+    pub fn left_mut(&mut self) -> &mut A {
+        &mut self.0
+    }
+
+    pub const fn right(&self) -> &B {
+        &self.2
+    }
+
+    pub fn right_mut(&mut self) -> &mut B {
+        &mut self.2
+    }
+}
+
+impl<A, B, const I: usize, const J: usize, const O: usize> DSP<I, O> for Series2<A, B, J>
+where
+    A: DSP<I, J>,
+    B: DSP<J, O, Sample = A::Sample>,
+{
+    type Sample = A::Sample;
+
+    fn latency(&self) -> usize {
+        let Self(a, _, b) = self;
+        a.latency() + b.latency()
+    }
+
+    fn reset(&mut self) {
+        let Self(a, _, b) = self;
+        a.reset();
+        b.reset();
+    }
+
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+        let Self(a, _, b) = self;
+        let j = a.process(x);
+        b.process(j)
+    }
+}
+
 impl<P: DSP<N, N>, const N: usize, const C: usize> DSP<N, N> for Series<[P; C]> {
     type Sample = P::Sample;
 
@@ -144,7 +224,9 @@ impl<P: DSP<N, N>, const N: usize, const C: usize> DSP<N, N> for Series<[P; C]> 
 }
 
 impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
-where P: DspAnalysis<N, N> {
+where
+    P: DspAnalysis<N, N>,
+{
     fn h_z(&self, z: [Complex<Self::Sample>; N]) -> [Complex<Self::Sample>; N] {
         self.0.iter().fold([Complex::one(); N], |acc, f| {
             let ret = f.h_z(z);
@@ -211,12 +293,41 @@ impl<P: DSP<I, O>, const I: usize, const O: usize, const N: usize> DSP<I, O> for
 }
 
 impl<P, const I: usize, const O: usize, const N: usize> DspAnalysis<I, O> for Parallel<[P; N]>
-where P: DspAnalysis<I, O>
+where
+    P: DspAnalysis<I, O>,
 {
     fn h_z(&self, z: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O] {
         self.0.iter().fold([Complex::zero(); O], |acc, f| {
             let ret = f.h_z(z);
             std::array::from_fn(|i| acc[i] + ret[i])
         })
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ModMatrix<T, const I: usize, const O: usize> {
+    pub weights: SMatrix<T, O, I>,
+}
+
+impl<T, const I: usize, const O: usize> Default for ModMatrix<T, I, O>
+where
+    T: Scalar,
+{
+    fn default() -> Self {
+        Self {
+            weights: SMatrix::from([[T::from_f64(0.0); O]; I]),
+        }
+    }
+}
+
+impl<T, const I: usize, const O: usize> DSP<I, O> for ModMatrix<T, I, O>
+where
+    T: Scalar,
+{
+    type Sample = T;
+
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+        let res = self.weights * SVector::from(x);
+        std::array::from_fn(|i| res[i])
     }
 }

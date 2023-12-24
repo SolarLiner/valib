@@ -1,11 +1,15 @@
-use crate::dsp::{DSP, utils::{mono_block_to_slice, slice_to_mono_block_mut, mono_block_to_slice_mut}};
+use std::ops::{Deref, DerefMut};
+
+use crate::dsp::{
+    utils::{mono_block_to_slice, mono_block_to_slice_mut, slice_to_mono_block_mut},
+    DSP,
+};
 use crate::saturators::Linear;
 use crate::Scalar;
 use crate::{
     biquad::Biquad,
     dsp::{blocks::Series, DSPBlock},
 };
-use std::ops::{Deref, DerefMut};
 
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
@@ -133,7 +137,17 @@ pub struct Oversampled<T, P> {
     pub inner: P,
 }
 
-impl<T, P> Oversampled<T, P> {
+impl<T, P> Oversampled<T, P>
+where
+    T: Scalar,
+{
+    #[deprecated = "Use Oversample::with_dsp"]
+    pub fn new(oversampling: Oversample<T>, inner: P) -> Self
+    where
+        P: DSP<1, 1, Sample = T>,
+    {
+        oversampling.with_dsp(inner)
+    }
     pub fn into_inner(self) -> P {
         self.inner
     }
@@ -160,7 +174,6 @@ where
     }
 
     fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
-        // Safety: all &[T; 1] <-> &T transmutes are valid as they have the same representation
         let inputs = mono_block_to_slice(inputs);
         let mut os_block = self.oversampling.oversample(inputs);
         let inner_outputs = slice_to_mono_block_mut(&mut *os_block);
@@ -173,12 +186,13 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::{f32::consts::TAU, hint::black_box};
+
     use numeric_literals::replace_float_literals;
 
-    use crate::{Scalar, dsp::DSPBlock as _};
+    use crate::{dsp::DSPBlock as _, Scalar};
 
     use super::Oversample;
-    use std::{f32::consts::TAU, hint::black_box};
 
     #[test]
     fn oversample_no_dc_offset() {
@@ -219,10 +233,10 @@ mod tests {
         let dsp = NaiveSquare {
             samplerate,
             frequency: freq,
-            phase: 0.0, 
+            phase: 0.0,
         };
         let mut os = Oversample::<f32>::new(4, 64).with_dsp(dsp);
-        
+
         let input = [[0.0]; 64];
         let mut output = [[0.0]; 64];
         os.process_block(&input, &mut output);

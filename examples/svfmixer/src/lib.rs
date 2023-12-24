@@ -2,9 +2,10 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::{dsp::DSP, Scalar};
+use valib::dsp::blocks::{ModMatrix, Series2};
 use valib::simd::{AutoSimd, SimdValue};
 use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf};
+use valib::{dsp::DSP, Scalar};
 
 const MAX_BUFFER_SIZE: usize = 512;
 const OVERSAMPLE: usize = 2;
@@ -88,12 +89,13 @@ impl Default for PluginParams {
 
 type Sample = AutoSimd<[f32; 2]>;
 type Filter = Svf<Sample, DiodeClipperModel<Sample>>;
+type Dsp = Series2<Filter, ModMatrix<Sample, 3, 1>, 3>;
 
 #[derive(Debug)]
 struct Plugin {
     params: Arc<PluginParams>,
-    svf: Filter,
     oversample: Oversample<Sample>,
+    dsp: Dsp,
 }
 
 impl Default for Plugin {
@@ -101,9 +103,15 @@ impl Default for Plugin {
         let params = Arc::new(PluginParams::default());
         let fc = Sample::splat(params.fc.default_plain_value());
         let q = Sample::splat(params.q.default_plain_value());
+        let filter = Svf::new(Sample::from_f64(1.0), fc, Sample::from_f64(1.0) - q)
+            .with_saturators(
+                DiodeClipperModel::new_germanium(1, 2),
+                DiodeClipperModel::new_germanium(2, 1),
+            );
+        let mod_matrix = ModMatrix::default();
         Self {
             params,
-            svf: Svf::new(Sample::from_f64(1.0), fc, Sample::from_f64(1.0) - q).with_saturators(DiodeClipperModel::new_germanium(3, 2), DiodeClipperModel::new_germanium(3, 2)),
+            dsp: Series2::new(filter, mod_matrix),
             oversample: Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE),
         }
     }
@@ -141,12 +149,14 @@ impl nih_plug::prelude::Plugin for Plugin {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        self.svf.set_samplerate(Sample::splat(buffer_config.sample_rate * OVERSAMPLE as f32));
+        self.dsp
+            .left_mut()
+            .set_samplerate(Sample::splat(buffer_config.sample_rate * OVERSAMPLE as f32));
         true
     }
 
     fn reset(&mut self) {
-        self.svf.reset();
+        self.dsp.reset();
     }
 
     fn process(
@@ -163,7 +173,10 @@ impl nih_plug::prelude::Plugin for Plugin {
         let mut simd_slice = [Sample::from_f64(0.0); MAX_BUFFER_SIZE];
         for (_, mut block) in buffer.iter_blocks(MAX_BUFFER_SIZE) {
             for (i, mut sample) in block.iter_samples().enumerate() {
-                simd_slice[i] = Sample::new(sample.get_mut(0).copied().unwrap(), sample.get_mut(1).copied().unwrap());
+                simd_slice[i] = Sample::new(
+                    sample.get_mut(0).copied().unwrap(),
+                    sample.get_mut(1).copied().unwrap(),
+                );
             }
             let len = block.samples();
             let os_len = OVERSAMPLE * len;
@@ -200,14 +213,14 @@ impl nih_plug::prelude::Plugin for Plugin {
             for (i, s) in os_buffer.iter_mut().enumerate() {
                 let fc = os_fc[i];
                 let q = os_q[i];
-                let lp_gain = Sample::splat(os_lp_gain[i]);
-                let bp_gain = Sample::splat(os_bp_gain[i]);
-                let hp_gain = Sample::splat(os_hp_gain[i]);
-
-                self.svf.set_cutoff(Sample::splat(fc));
-                self.svf.set_r(Sample::splat(1. - q));
-                let [lp, bp, hp] = self.svf.process([*s]);
-                *s = lp * lp_gain + bp * bp_gain + hp * hp_gain;
+                let filter = self.dsp.left_mut();
+                filter.set_cutoff(Sample::splat(fc));
+                filter.set_r(Sample::splat(1. - q));
+                let mod_matrix = self.dsp.right_mut();
+                mod_matrix.weights[(0, 0)] = Sample::splat(os_lp_gain[i]);
+                mod_matrix.weights[(0, 1)] = Sample::splat(os_bp_gain[i]);
+                mod_matrix.weights[(0, 2)] = Sample::splat(os_hp_gain[i]);
+                *s = self.dsp.process([*s])[0];
             }
             os_buffer.finish(buffer);
 
