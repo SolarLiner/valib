@@ -9,6 +9,3 @@ name = "Abrasive EQ"
 
 [diodeclipper]
 name = "Diode Clipper"
-
-[refuzz]
-name = "Refuzz"
