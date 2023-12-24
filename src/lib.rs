@@ -6,6 +6,8 @@ pub use simba::simd;
 
 pub use simba::simd;
 
+pub use simba::simd;
+
 // pub mod ladder;
 // pub mod sallenkey;
 pub mod biquad;
