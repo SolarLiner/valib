@@ -3,6 +3,7 @@ use crate::Scalar;
 pub mod analog;
 pub mod analysis;
 pub mod blocks;
+pub mod utils;
 
 pub trait DSP<const I: usize, const O: usize> {
     type Sample: Scalar;
@@ -96,7 +97,12 @@ impl<P, const I: usize, const O: usize> PerSampleBlockAdapter<P, I, O>
 where
     P: DSPBlock<I, O>,
 {
-    pub fn new(max_buffer_size: usize, dsp_block: P) -> Self {
+    pub const DEFAULT_BUFFER_SIZE: usize = 64;
+    pub fn new(dsp_block: P) -> Self {
+        Self::new_with_max_buffer_size(dsp_block, Self::DEFAULT_BUFFER_SIZE)
+    }
+
+    pub fn new_with_max_buffer_size(dsp_block: P, max_buffer_size: usize) -> Self {
         let buffer_size = dsp_block
             .max_block_size()
             .map(|mbs| mbs.min(max_buffer_size))
@@ -181,7 +187,7 @@ mod tests {
             }
         }
 
-        let mut adaptor = PerSampleBlockAdapter::new(4, Echo::<f32>::new());
+        let mut adaptor = PerSampleBlockAdapter::new_with_max_buffer_size(Echo::<f32>::new(), 4);
         assert_eq!(3, DSP::latency(&adaptor));
 
         let expected = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 1.0].map(|v| [v]);

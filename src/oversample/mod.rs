@@ -1,4 +1,4 @@
-use crate::dsp::DSP;
+use crate::dsp::{DSP, utils::{mono_block_to_slice, slice_to_mono_block_mut, mono_block_to_slice_mut}};
 use crate::saturators::Linear;
 use crate::Scalar;
 use crate::{
@@ -161,13 +161,13 @@ where
 
     fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
         // Safety: all &[T; 1] <-> &T transmutes are valid as they have the same representation
-        let inputs = unsafe { std::mem::transmute(inputs) };
+        let inputs = mono_block_to_slice(inputs);
         let mut os_block = self.oversampling.oversample(inputs);
-        let inner_outputs: &mut [[T; 1]] = unsafe { std::mem::transmute(&mut *os_block) };
-        self.staging_buffer[..os_block.len()].copy_from_slice(inner_outputs);
+        let inner_outputs = slice_to_mono_block_mut(&mut *os_block);
+        self.staging_buffer[..inner_outputs.len()].copy_from_slice(inner_outputs);
         self.inner
             .process_block(&self.staging_buffer, inner_outputs);
-        os_block.finish(unsafe { std::mem::transmute(outputs) });
+        os_block.finish(mono_block_to_slice_mut(outputs));
     }
 }
 
