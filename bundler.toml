@@ -12,6 +12,3 @@ name = "Slew"
 
 [abrasive]
 name = "Abrasive EQ"
-
-[refuzz]
-name = "Refuzz"
