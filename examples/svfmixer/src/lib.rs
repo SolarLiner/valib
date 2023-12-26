@@ -2,9 +2,12 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::dsp::blocks::{ModMatrix, Series2};
 use valib::simd::{AutoSimd, SimdValue};
-use valib::{clippers::DiodeClipperModel, oversample::Oversample, svf::Svf};
+use valib::{oversample::Oversample, svf::Svf};
+use valib::{
+    dsp::blocks::{ModMatrix, Series2},
+    saturators::{Clipper, Saturator, Slew},
+};
 use valib::{dsp::DSP, Scalar};
 
 const MAX_BUFFER_SIZE: usize = 512;
@@ -36,8 +39,11 @@ impl Default for PluginParams {
                     min: 1.0,
                     max: 100.0,
                     factor: FloatRange::gain_skew_factor(0.0, 40.0),
-                }
-            ).with_value_to_string(formatters::v2s_f32_gain_to_db(2)).with_string_to_value(formatters::s2v_f32_gain_to_db()).with_smoother(SmoothingStyle::Exponential(10.)),
+                },
+            )
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_smoother(SmoothingStyle::Exponential(10.)),
             fc: FloatParam::new(
                 "Frequency",
                 300.,
@@ -98,27 +104,54 @@ impl Default for PluginParams {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct OpAmp<T>(Clipper, Slew<T>);
+
+impl<T: Scalar> Default for OpAmp<T> {
+    fn default() -> Self {
+        Self(Default::default(), Default::default())
+    }
+}
+
+impl<T: Scalar> Saturator<T> for OpAmp<T>
+where
+    Clipper: Saturator<T>,
+    Slew<T>: Saturator<T>,
+{
+    fn saturate(&self, x: T) -> T {
+        self.1.saturate(self.0.saturate(x))
+    }
+
+    fn sat_diff(&self, x: T) -> T {
+        self.0.sat_diff(x) * self.1.sat_diff(self.0.saturate(x))
+    }
+
+    fn update_state(&mut self, x: T, y: T) {
+        let xc = self.0.saturate(x);
+        self.0.update_state(x, xc);
+        self.1.update_state(xc, y);
+    }
+}
+
 type Sample = AutoSimd<[f32; 2]>;
-type Filter = Svf<Sample, DiodeClipperModel<Sample>>;
+type Filter = Svf<Sample, OpAmp<Sample>>;
 type Dsp = Series2<Filter, ModMatrix<Sample, 3, 1>, 3>;
 
 #[derive(Debug)]
-struct Plugin {
+struct SvfMixerPlugin {
     params: Arc<PluginParams>,
     oversample: Oversample<Sample>,
     dsp: Dsp,
 }
 
-impl Default for Plugin {
+impl Default for SvfMixerPlugin {
     fn default() -> Self {
         let params = Arc::new(PluginParams::default());
         let fc = Sample::splat(params.fc.default_plain_value());
         let q = Sample::splat(params.q.default_plain_value());
+        let sat = OpAmp(Clipper, Slew::new(Sample::splat(util::db_to_gain(60.0))));
         let filter = Svf::new(Sample::from_f64(1.0), fc, Sample::from_f64(1.0) - q)
-            .with_saturators(
-                DiodeClipperModel::new_led(1, 2),
-                DiodeClipperModel::new_led(2, 1),
-            );
+            .with_saturators(sat, sat);
         let mod_matrix = ModMatrix::default();
         Self {
             params,
@@ -128,7 +161,7 @@ impl Default for Plugin {
     }
 }
 
-impl nih_plug::prelude::Plugin for Plugin {
+impl nih_plug::prelude::Plugin for SvfMixerPlugin {
     const NAME: &'static str = "SVF Mixer";
     const VENDOR: &'static str = "SolarLiner";
     const URL: &'static str = "https://github.com/SolarLiner/valib";
@@ -193,7 +226,10 @@ impl nih_plug::prelude::Plugin for Plugin {
             let len = block.samples();
             let os_len = OVERSAMPLE * len;
 
-            self.params.drive.smoothed.next_block_exact(&mut drive[..len]);
+            self.params
+                .drive
+                .smoothed
+                .next_block_exact(&mut drive[..len]);
             self.params.fc.smoothed.next_block_exact(&mut fc[..len]);
             self.params.q.smoothed.next_block_exact(&mut q[..len]);
             self.params
@@ -250,7 +286,7 @@ impl nih_plug::prelude::Plugin for Plugin {
     }
 }
 
-impl ClapPlugin for Plugin {
+impl ClapPlugin for SvfMixerPlugin {
     const CLAP_ID: &'static str = "com.github.SolarLiner.valib.SVFMixer";
     const CLAP_DESCRIPTION: Option<&'static str> = None;
     const CLAP_MANUAL_URL: Option<&'static str> = None;
@@ -262,7 +298,7 @@ impl ClapPlugin for Plugin {
     ];
 }
 
-impl Vst3Plugin for Plugin {
+impl Vst3Plugin for SvfMixerPlugin {
     const VST3_CLASS_ID: [u8; 16] = *b"VaLibSvfMixerSLN";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
         Vst3SubCategory::Fx,
@@ -271,5 +307,5 @@ impl Vst3Plugin for Plugin {
     ];
 }
 
-nih_export_clap!(Plugin);
-nih_export_vst3!(Plugin);
+nih_export_clap!(SvfMixerPlugin);
+nih_export_vst3!(SvfMixerPlugin);

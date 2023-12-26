@@ -3393,6 +3393,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "slew"
+version = "0.1.0"
+dependencies = [
+ "nih_plug",
+ "valib",
+]
+
+[[package]]
 name = "slotmap"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
