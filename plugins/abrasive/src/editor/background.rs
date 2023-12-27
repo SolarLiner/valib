@@ -20,6 +20,6 @@ impl View for Background {
         let mut bg_path = vg::Path::new();
         let bounds = cx.bounds();
         bg_path.rect(bounds.x, bounds.y, bounds.w, bounds.h);
-        canvas.fill_path(&mut bg_path, &paint);
+        canvas.fill_path(&bg_path, &paint);
     }
 }

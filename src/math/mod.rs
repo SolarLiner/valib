@@ -100,8 +100,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::ComplexField;
-
     use super::*;
 
     struct SqrtNumerical {

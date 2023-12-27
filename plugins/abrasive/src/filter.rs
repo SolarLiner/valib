@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use nih_plug::buffer::Block;
+
 use nih_plug::prelude::*;
-use nih_plug_vizia::vizia::prelude::Role::Complementary;
+
 use numeric_literals::replace_float_literals;
 use realfft::num_complex::Complex;
 
 use valib::{saturators::clippers::DiodeClipperModel, dsp::analog::DspAnalog};
-use valib::saturators::{Blend, Dynamic, Saturator};
+use valib::saturators::{Dynamic, Saturator};
 use valib::svf::Svf;
-use valib::dsp::analysis::DspAnalysis;
-use valib::dsp::blocks::Series;
+
+
 use valib::dsp::DSP;
 use valib::Scalar;
 use valib::simd::SimdValue;
@@ -41,7 +41,7 @@ impl FilterType {
         let amp = Complex::from(T::splat(amp));
         let [lp, bp, hp] = filter.h_s([jw]);
         match self {
-            Self::Bypass => Complex::from(1.0),
+            Self::Bypass => 1.0,
             Self::Lowpass => lp,
             Self::Bandpass => bp,
             Self::Highpass => hp,
@@ -51,7 +51,7 @@ impl FilterType {
                 1. + bp * g
             }
             Self::Notch => 1. - bp,
-            Self::Allpass => Complex::from(1.),
+            Self::Allpass => 1.,
             Self::Lowshelf => 1. + lp * (amp - 1.),
             Self::Highshelf => 1. + hp * (amp - 1.),
         }

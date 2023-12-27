@@ -1,6 +1,5 @@
 use crate::dsp::DSP;
 use numeric_literals::replace_float_literals;
-use simba::simd::SimdValue;
 
 use clippers::DiodeClipperModel;
 

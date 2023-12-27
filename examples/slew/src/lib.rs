@@ -75,9 +75,9 @@ impl Plugin for SlewPlugin {
 
     fn initialize(
             &mut self,
-            audio_io_layout: &AudioIOLayout,
+            _audio_io_layout: &AudioIOLayout,
             buffer_config: &BufferConfig,
-            context: &mut impl InitContext<Self>,
+            _context: &mut impl InitContext<Self>,
         ) -> bool {
         self.dsp.set_max_diff(Sample::splat(self.params.rate.value()), Sample::splat(buffer_config.sample_rate));
         true
@@ -90,7 +90,7 @@ impl Plugin for SlewPlugin {
     fn process(
         &mut self,
         buffer: &mut Buffer,
-        aux: &mut AuxiliaryBuffers,
+        _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         let sample_rate = Sample::splat(context.transport().sample_rate);

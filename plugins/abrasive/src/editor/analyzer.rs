@@ -53,7 +53,7 @@ impl SpectrumAnalyzer {
         }
 
         canvas.scissor(bounds.x, bounds.y, bounds.w, bounds.h);
-        canvas.stroke_path(&mut path, &line_paint);
+        canvas.stroke_path(&path, &line_paint);
     }
 }
 

@@ -5,7 +5,7 @@ use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
 
 use crate::dsp::analysis::DspAnalysis;
-use crate::dsp::{DSPBlock, DSP};
+use crate::dsp::DSP;
 use crate::Scalar;
 
 #[derive(Debug, Copy, Clone, Default)]

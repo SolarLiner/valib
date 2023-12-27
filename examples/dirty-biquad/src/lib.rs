@@ -174,6 +174,7 @@ fn simd_array_to_block<T, const N: usize>(
     }
 }
 
+#[cfg(never)] // Not used but nice to keep around
 fn apply<P: DSP<1, 1, Sample = AutoSimd<[f32; N]>>, const N: usize>(
     buffer: &mut Buffer,
     dsp: &mut P,

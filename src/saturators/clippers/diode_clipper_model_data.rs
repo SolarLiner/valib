@@ -1,4 +1,3 @@
-use num_traits::FromPrimitive;
 use numeric_literals::replace_float_literals;
 
 use super::DiodeClipperModel;

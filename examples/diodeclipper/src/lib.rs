@@ -26,7 +26,7 @@ const MAX_BLOCK_SIZE: usize = 512;
 enum DiodeType {
     Silicon,
     Germanium,
-    LED,
+    Led,
 }
 
 impl DiodeType {
@@ -35,7 +35,7 @@ impl DiodeType {
         match self {
             Self::Silicon => DiodeClipper::new_silicon(nf, nb, T::from_f64(0.)),
             Self::Germanium => DiodeClipper::new_germanium(nf, nb, T::from_f64(0.)),
-            Self::LED => DiodeClipper::new_led(nf, nb, T::from_f64(0.)),
+            Self::Led => DiodeClipper::new_led(nf, nb, T::from_f64(0.)),
         }
     }
     #[inline]
@@ -43,7 +43,7 @@ impl DiodeType {
         match self {
             Self::Silicon => DiodeClipperModel::new_silicon(nf, nb),
             Self::Germanium => DiodeClipperModel::new_germanium(nf, nb),
-            Self::LED => DiodeClipperModel::new_led(nf, nb),
+            Self::Led => DiodeClipperModel::new_led(nf, nb),
         }
     }
 }
