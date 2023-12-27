@@ -10,6 +10,7 @@ dependencies = [
  "morphorm",
  "nih_plug",
  "nih_plug_vizia",
+ "numeric_literals",
  "once_cell",
  "realfft",
  "resource",
@@ -3389,6 +3390,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f92a496fb766b417c996b9c5e57daf2f7ad3b0bebe1ccfca4856390e3d3bb67"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "slew"
+version = "0.1.0"
+dependencies = [
+ "nih_plug",
+ "valib",
 ]
 
 [[package]]

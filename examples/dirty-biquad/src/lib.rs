@@ -7,7 +7,7 @@ use valib::clippers::DiodeClipperModel;
 use valib::dsp::DSP;
 use valib::oversample::Oversample;
 use valib::saturators::Dynamic;
-use valib::simd::{AutoF32x2, AutoSimd, SimdComplexField, SimdValue};
+use valib::simd::{AutoF32x2, AutoSimd, SimdValue};
 use valib::util::lerp_block;
 use valib::Scalar;
 
@@ -37,7 +37,7 @@ impl NLType {
             Self::Linear => Dynamic::Linear,
             Self::Clipped => Dynamic::HardClipper,
             Self::Tanh => Dynamic::Tanh,
-            Self::Diode => Dynamic::DiodeClipper(DiodeClipperModel::new_silicon(1, 1)),
+            Self::Diode => Dynamic::DiodeClipper(DiodeClipperModel::new_germanium(2, 3)),
         }
     }
 }
@@ -107,12 +107,16 @@ struct Plugin {
     oversample: Oversample<Sample>,
 }
 
-fn get_biquad(params: &PluginParams, samplerate: f32) -> Biquad<Sample, Dynamic<Sample>> {
-    let fc = params.fc.value() / samplerate;
+fn get_biquad(
+    samplerate: f32,
+    fc: f32,
+    q: f32,
+    filter_type: FilterType,
+) -> Biquad<Sample, Dynamic<Sample>> {
+    let fc = fc / samplerate;
     let fc = Sample::splat(fc);
-    let q = params.fc.value();
     let q = Sample::splat(q);
-    match params.filter_type.value() {
+    match filter_type {
         FilterType::Lowpass => Biquad::lowpass(fc, q),
         FilterType::Bandpass => Biquad::bandpass_peak0(fc, q),
         FilterType::Highpass => Biquad::highpass(fc, q),
@@ -121,7 +125,12 @@ fn get_biquad(params: &PluginParams, samplerate: f32) -> Biquad<Sample, Dynamic<
 
 impl Plugin {
     fn set_filters(&mut self, samplerate: f32) {
-        let biquad = get_biquad(&self.params, samplerate);
+        let biquad = get_biquad(
+            samplerate,
+            self.params.fc.value(),
+            self.params.q.value(),
+            self.params.filter_type.value(),
+        );
         let nltype = self.params.nonlinearity.value().as_dynamic_saturator();
         self.biquad.update_coefficients(&biquad);
         self.biquad.set_saturators(nltype, nltype);
@@ -256,11 +265,16 @@ impl nih_plug::prelude::Plugin for Plugin {
             let simd_block = &mut simd_block[..actual_len];
             let mut os_buffer = self.oversample.oversample(simd_block);
             for (i, s) in os_buffer.iter_mut().enumerate() {
-                let drive = Sample::splat(os_drive[i]);
-                self.biquad.update_coefficients(&get_biquad(&params, os_samplerate));
                 let nltype = params.nonlinearity.value().as_dynamic_saturator();
+                self.biquad.update_coefficients(&get_biquad(
+                    os_samplerate,
+                    os_fc[i],
+                    os_q[i],
+                    self.params.filter_type.value(),
+                ));
                 self.biquad.set_saturators(nltype, nltype);
-                *s = self.biquad.process([*s * drive])[0] / drive.simd_asinh();
+                let drive = Sample::splat(os_drive[i]);
+                *s = self.biquad.process([*s * drive])[0] / drive;
             }
 
             os_buffer.finish(simd_block);

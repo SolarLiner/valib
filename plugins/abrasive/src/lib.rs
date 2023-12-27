@@ -10,12 +10,20 @@ use crate::{
 use atomic_float::AtomicF32;
 use nih_plug::{params::persist::PersistentField, prelude::*};
 use std::sync::{Arc, Mutex};
+use valib::dsp::blocks::Series;
+use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
+use valib::dsp::DSPBlock;
+use valib::simd::{AutoF32x2, SimdValue};
+use valib::Scalar;
 
 pub mod editor;
 mod filter;
 mod spectrum;
 
 pub const NUM_BANDS: usize = 5;
+pub const OVERSAMPLE: usize = 2;
+
+type Sample = AutoF32x2;
 
 #[cfg(not(feature = "example"))]
 #[derive(Debug, Params)]
@@ -68,9 +76,9 @@ impl<const N: usize> Default for AbrasiveParams<N> {
 }
 
 #[cfg(not(feature = "example"))]
-pub struct Abrasive<const CHANNELS: usize, const N: usize> {
+pub struct Abrasive<const N: usize> {
     params: Arc<AbrasiveParams<N>>,
-    filters: [Filter<CHANNELS>; N],
+    filters: Series<[Filter; N]>,
     samplerate: Arc<AtomicF32>,
     analyzer_in: Analyzer,
     analyzer_input: editor::SpectrumUI,
@@ -79,21 +87,21 @@ pub struct Abrasive<const CHANNELS: usize, const N: usize> {
 }
 
 #[cfg(not(feature = "example"))]
-impl<const CHANNELS: usize, const N: usize> Default for Abrasive<CHANNELS, N> {
+impl<const N: usize> Default for Abrasive<N> {
     fn default() -> Self {
         let params = AbrasiveParams::default();
         let filters = params
             .params
             .each_ref()
             .map(|p| Filter::new(44.1e3, p.clone()));
-        let (analyzer_in, spectrum_in) = spectrum::Analyzer::new(44.1e3, CHANNELS, 2048);
+        let (analyzer_in, spectrum_in) = spectrum::Analyzer::new(44.1e3, 2, 2048);
         let analyzer_input = Arc::new(Mutex::new(spectrum_in));
-        let (analyzer_out, spectrum_out) = spectrum::Analyzer::new(44.1e3, CHANNELS, 2048);
+        let (analyzer_out, spectrum_out) = spectrum::Analyzer::new(44.1e3, 2, 2048);
         let analyzer_output = Arc::new(Mutex::new(spectrum_out));
         let samplerate = Arc::new(AtomicF32::new(44.1e3));
         Self {
             params: Arc::new(params),
-            filters,
+            filters: Series(filters),
             samplerate,
             analyzer_in,
             analyzer_input,
@@ -104,7 +112,7 @@ impl<const CHANNELS: usize, const N: usize> Default for Abrasive<CHANNELS, N> {
 }
 
 #[cfg(not(feature = "example"))]
-impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
+impl Plugin for Abrasive<NUM_BANDS> {
     const NAME: &'static str = "Abrasive";
     const VENDOR: &'static str = "SolarLiner";
     const URL: &'static str = "https://github.com/solarliner/abrasive";
@@ -154,6 +162,7 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        _context.set_latency_samples(self.filters.latency() as _);
         self.analyzer_in
             .set_decay(self.params.analyzer_smooth.value());
         self.analyzer_out
@@ -174,9 +183,9 @@ impl<const CHANNELS: usize> Plugin for Abrasive<CHANNELS, NUM_BANDS> {
 }
 
 #[cfg(not(feature = "example"))]
-impl<const CHANNELS: usize> Abrasive<CHANNELS, NUM_BANDS> {
+impl Abrasive<NUM_BANDS> {
     fn set_filterbank_samplerate(&mut self, sr: f32) {
-        for filter in self.filters.iter_mut() {
+        for filter in self.filters.0.iter_mut() {
             filter.reset(sr);
         }
     }
@@ -185,34 +194,36 @@ impl<const CHANNELS: usize> Abrasive<CHANNELS, NUM_BANDS> {
         let mut drive = [0.; BLOCK_SIZE];
         let mut scale = drive;
 
-        self.params.drive.smoothed.next_block_exact(&mut drive);
-        self.params.scale.smoothed.next_block_exact(&mut scale);
-
         for (_, mut block) in buffer.iter_blocks(BLOCK_SIZE) {
-            for (samples, drive) in block.iter_samples().zip(drive) {
-                for sample in samples.into_iter() {
-                    *sample *= drive;
-                }
+            let len = block.samples();
+
+            self.params.drive.smoothed.next_block_exact(&mut drive[..len]);
+            self.params.scale.smoothed.next_block_exact(&mut scale[..len]);
+            let mut simd_input = [Sample::from_f64(0.0); BLOCK_SIZE];
+            let mut simd_output = simd_input;
+            for (i, mut samples) in block.iter_samples().enumerate() {
+                simd_input[i] =
+                    Sample::from([*samples.get_mut(0).unwrap(), *samples.get_mut(1).unwrap()]);
+                simd_input[i] *= Sample::splat(drive[i]);
             }
 
-            for filt in &mut self.filters {
-                filt.process_block::<BLOCK_SIZE>(&mut block, scale);
-            }
-            for (samples, drive) in block.iter_samples().zip(drive) {
-                for sample in samples {
-                    if !sample.is_finite() {
-                        // Set sample to zero on infinities
-                        *sample = 0.;
-                    }
-                    *sample /= drive;
-                }
+            self.filters.process_block(
+                slice_to_mono_block(&simd_input[..len]),
+                slice_to_mono_block_mut(&mut simd_output[..len]),
+            );
+
+            for (i, mut samples) in block.iter_samples().enumerate() {
+                let drive = Sample::splat(drive[i]);
+                simd_output[i] /= drive;
+                *samples.get_mut(0).unwrap() = simd_output[i].extract(0);
+                *samples.get_mut(1).unwrap() = simd_output[i].extract(1);
             }
         }
     }
 }
 
 #[cfg(not(feature = "example"))]
-impl<const CHANNELS: usize> ClapPlugin for Abrasive<CHANNELS, NUM_BANDS> {
+impl ClapPlugin for Abrasive<NUM_BANDS> {
     const CLAP_ID: &'static str = "com.github.SolarLiner.valib.Abrasive";
     const CLAP_DESCRIPTION: Option<&'static str> =
         Some("Configurable colorful parametric equalizer");
@@ -228,7 +239,7 @@ impl<const CHANNELS: usize> ClapPlugin for Abrasive<CHANNELS, NUM_BANDS> {
 }
 
 #[cfg(not(feature = "example"))]
-impl<const CHANNELS: usize> Vst3Plugin for Abrasive<CHANNELS, NUM_BANDS> {
+impl Vst3Plugin for Abrasive<NUM_BANDS> {
     const VST3_CLASS_ID: [u8; 16] = *b"ValibAbrasiveSLN";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
         Vst3SubCategory::Fx,
@@ -240,6 +251,6 @@ impl<const CHANNELS: usize> Vst3Plugin for Abrasive<CHANNELS, NUM_BANDS> {
 }
 
 #[cfg(not(feature = "example"))]
-nih_export_clap!(Abrasive<2, NUM_BANDS>);
+nih_export_clap!(Abrasive<NUM_BANDS>);
 #[cfg(not(feature = "example"))]
-nih_export_vst3!(Abrasive<2, NUM_BANDS>);
+nih_export_vst3!(Abrasive<NUM_BANDS>);

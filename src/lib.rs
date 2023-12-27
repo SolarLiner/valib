@@ -1,4 +1,4 @@
-use az::{CastFrom};
+use az::CastFrom;
 use num_traits::Zero;
 use simba::simd::{AutoSimd, SimdRealField, SimdValue};
 
@@ -16,6 +16,7 @@ pub mod svf;
 pub mod util;
 #[cfg(feature = "unstable-wdf")]
 pub mod wdf;
+pub mod fir;
 
 pub trait Scalar: Copy + SimdRealField {
     fn from_f64(value: f64) -> Self;

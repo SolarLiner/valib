@@ -18,6 +18,7 @@ morphorm = "*"
 nih_plug = { workspace = true, features = ["standalone"] }
 nih_plug_vizia = { workspace = true }
 realfft = "3.3.0"
+numeric_literals = "0.2.0"
 triple_buffer = "7.0.0"
 valib = { path = "../.." }
 resource = "0.5.0"

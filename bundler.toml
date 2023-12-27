@@ -4,8 +4,11 @@ name = "SVF Mixer"
 [dirty-biquad]
 name = "Dirty Biquad"
 
-[abrasive]
-name = "Abrasive EQ"
-
 [diodeclipper]
 name = "Diode Clipper"
+
+[slew]
+name = "Slew"
+
+[abrasive]
+name = "Abrasive EQ"

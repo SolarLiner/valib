@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::{sync::Arc};
+use std::sync::Arc;
 
 use nih_plug::{
-    buffer::{Block},
+    buffer::Block,
     prelude::*,
 };
 
@@ -17,7 +17,11 @@ use valib::{
     Scalar,
 };
 
+#[cfg(debug_assertions)]
 const OVERSAMPLE: usize = 4;
+#[cfg(not(debug_assertions))]
+const OVERSAMPLE: usize = 16;
+
 const MAX_BLOCK_SIZE: usize = 512;
 
 #[derive(Debug, Enum, Eq, PartialEq)]
@@ -217,6 +221,12 @@ impl Plugin for ClipperPlugin {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        let clipper_latency = match self.params.model.value() {
+            true => self.clipper_model.latency(),
+            false => self.clipper_nr.latency(),
+        };
+        let latency = self.dc_couple_in.latency() + self.dc_couple_out.latency() + self.oversample.latency() + clipper_latency;
+        _context.set_latency_samples(latency as _);
         if self.force_reset.load(Ordering::Acquire) {
             self.force_reset.store(false, Ordering::Release);
             self.reset();

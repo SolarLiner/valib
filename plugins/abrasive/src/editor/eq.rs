@@ -57,7 +57,7 @@ impl<const N: usize> View for EqData<N> {
             let y = (0..N)
                 .map(|i| {
                     let ftype = self.params.params[i].ftype.value();
-                    ftype.freq_response(
+                    ftype.h_s(
                         &filters[i],
                         if self.modulated {
                             util::db_to_gain(
@@ -74,7 +74,7 @@ impl<const N: usize> View for EqData<N> {
                                     ),
                             )
                         },
-                        jw,
+                        Complex::new(0.0, jw),
                     )
                 })
                 .product::<Complex<f32>>()
@@ -88,7 +88,7 @@ impl<const N: usize> View for EqData<N> {
         }
 
         canvas.scissor(bounds.x, bounds.y, bounds.w, bounds.h);
-        canvas.stroke_path(&mut path, &paint);
+        canvas.stroke_path(&path, &paint);
     }
 }
 

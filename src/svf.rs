@@ -45,8 +45,8 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
             self.sats[0].saturate(s1 / 10.) * 10.,
             self.sats[1].saturate(s2 / 10.) * 10.,
         ];
-        self.sats[0].update_state(s1 / 10.);
-        self.sats[1].update_state(s2 / 10.);
+        self.sats[0].update_state(s1 / 10., self.s[0]);
+        self.sats[1].update_state(s2 / 10., self.s[1]);
         [lp, bp, hp]
     }
 }

@@ -1,0 +1,17 @@
+[package]
+name = "slew"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+nih_plug = { workspace = true }
+valib = { path = "../.." }

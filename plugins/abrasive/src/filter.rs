@@ -2,16 +2,24 @@ use std::sync::Arc;
 
 use nih_plug::buffer::Block;
 use nih_plug::prelude::*;
+use nih_plug_vizia::vizia::prelude::Role::Complementary;
+use numeric_literals::replace_float_literals;
 use realfft::num_complex::Complex;
 
 use valib::clippers::DiodeClipperModel;
+use valib::dsp::analog::DspAnalog;
 use valib::saturators::{Blend, Dynamic, Saturator};
 use valib::svf::Svf;
 use valib::dsp::analysis::DspAnalysis;
+use valib::dsp::blocks::Series;
 use valib::dsp::DSP;
+use valib::Scalar;
+use valib::simd::SimdValue;
+use crate::Sample;
 
 #[derive(Debug, Copy, Clone, Enum, Eq, PartialEq)]
 pub enum FilterType {
+    Bypass,
     Lowpass,
     Bandpass,
     Highpass,
@@ -24,14 +32,17 @@ pub enum FilterType {
 }
 
 impl FilterType {
-    pub(crate) fn freq_response<S: Saturator<f32>>(
+    #[replace_float_literals(Complex::from(T::from_f64(literal)))]
+    pub(crate) fn h_s<T: Scalar, S: Saturator<T>>(
         &self,
-        filter: &Svf<f32, S>,
-        amp: f32,
-        jw: f32,
-    ) -> Complex<f32> {
-        let [lp, bp, hp] = filter.freq_response([jw]);
+        filter: &Svf<T, S>,
+        amp: <T as SimdValue>::Element,
+        jw: Complex<T>,
+    ) -> Complex<T> {
+        let amp = Complex::from(T::splat(amp));
+        let [lp, bp, hp] = filter.h_s([jw]);
         match self {
+            Self::Bypass => Complex::from(1.0),
             Self::Lowpass => lp,
             Self::Bandpass => bp,
             Self::Highpass => hp,
@@ -47,8 +58,10 @@ impl FilterType {
         }
     }
 
-    fn mix(&self, amp: f32, x: f32, [lp, bp, hp]: [f32; 3]) -> f32 {
+    #[replace_float_literals(Sample::from_f64(literal))]
+    fn mix(&self, amp: Sample, x: Sample, [lp, bp, hp]: [Sample; 3]) -> Sample {
         match self {
+            Self::Bypass => x,
             Self::Lowpass => lp,
             Self::Bandpass => bp,
             Self::Highpass => hp,
@@ -72,33 +85,27 @@ impl Default for FilterType {
 }
 
 #[derive(Debug, Copy, Clone, Enum, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum ResonanceClip {
-    None,
-    Diode,
-    Buffer,
+    Clean,
+    I,
+    II,
+    III,
 }
 
 impl Default for ResonanceClip {
     fn default() -> Self {
-        Self::Diode
+        Self::I
     }
 }
 
 impl ResonanceClip {
-    pub fn as_dynamic_type(&self) -> Dynamic<f32> {
+    pub fn as_dynamic_type(&self) -> Dynamic<Sample> {
         match self {
-            Self::None => Dynamic::Linear,
-            Self::Diode => Dynamic::DiodeClipper(DiodeClipperModel::default()),
-            Self::Buffer => Dynamic::SoftClipper(Blend::default()),
-        }
-    }
-
-    #[inline(always)]
-    pub fn equal_loudness(&self) -> f32 {
-        match self {
-            Self::None => 1.,
-            Self::Diode => util::db_to_gain(-40.),
-            Self::Buffer => util::db_to_gain(-20.),
+            Self::Clean => Dynamic::Linear,
+            Self::I => Dynamic::DiodeClipper(DiodeClipperModel::new_led(2, 3)),
+            Self::II => Dynamic::DiodeClipper(DiodeClipperModel::new_germanium(1, 2)),
+            Self::III => Dynamic::DiodeClipper(DiodeClipperModel::new_silicon(2, 1)),
         }
     }
 }
@@ -167,72 +174,93 @@ impl FilterParams {
 }
 
 #[derive(Debug, Clone)]
-pub struct Filter<const N: usize> {
+pub struct Filter {
     pub params: Arc<FilterParams>,
-    svf: [Svf<f32, Dynamic<f32>>; N],
+    pub scale: <Sample as SimdValue>::Element,
+    svf: Svf<Sample, Dynamic<Sample>>,
+    clippers: [Dynamic<Sample>; 3],
+    last_resclip: ResonanceClip,
 }
 
-impl<const N: usize> Filter<N> {
+impl DspAnalog<1, 1> for Filter {
+    fn h_s(&self, s: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 1] {
+        [self.params.ftype.value().h_s(&self.svf, self.scale, s[0])]
+    }
+}
+
+impl DSP<1, 1> for Filter {
+    type Sample = Sample;
+
+    fn latency(&self) -> usize {
+        self.svf.latency()
+    }
+
+    fn reset(&mut self) {
+        self.svf.reset();
+    }
+
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        let mut x = x[0];
+        self.update_coefficients_sample();
+        let amps = Sample::splat(util::db_to_gain(util::gain_to_db(self.params.amp.smoothed.next()) * self.scale));
+        let filter_out = self.svf.process([x]);
+        let filter_out = std::array::from_fn(|i| self.clippers[i].saturate(filter_out[i]));
+        x = self
+            .params
+            .ftype
+            .value()
+            .mix(amps, x, filter_out);
+        [x]
+    }
+}
+
+impl Filter {
     pub fn new(samplerate: f32, params: Arc<FilterParams>) -> Self {
-        let fc = params.cutoff.default_plain_value();
-        let q = params.q.default_plain_value();
+        let samplerate = Sample::splat(samplerate);
+        let fc = Sample::splat(params.cutoff.default_plain_value());
+        let q = Sample::splat(params.q.default_plain_value());
+        let clippers = [params.resclip.default_plain_value().as_dynamic_type(); 3];
+        let last_resclip = params.resclip.value();
         Self {
             params,
-            svf: std::array::from_fn(|_| Svf::new(samplerate, fc, 1. - q)),
+            scale: 1.0,
+            svf: Svf::new(samplerate, fc, Sample::from_f64(1.0) - q),
+            clippers,
+            last_resclip,
         }
     }
 
+    #[replace_float_literals(Sample::from_f64(literal))]
     pub fn reset(&mut self, samplerate: f32) {
-        let fc = self.params.cutoff.smoothed.next();
-        let q = self.params.q.value();
+        let samplerate = Sample::splat(samplerate);
+        let fc = Sample::splat(self.params.cutoff.smoothed.next());
+        let q = Sample::splat(self.params.q.value());
         let nl = self.params.resclip.value().as_dynamic_type();
-        for f in &mut self.svf {
-            f.reset();
-            f.set_cutoff(fc);
-            f.set_r(1. - q);
-            f.set_samplerate(samplerate);
-            f.set_saturators(nl, nl);
-        }
+        let f = &mut self.svf;
+        f.reset();
+        f.set_cutoff(fc);
+        f.set_r(1. - q);
+        f.set_samplerate(samplerate);
+        f.set_saturators(nl, nl);
     }
 
+    #[replace_float_literals(Sample::from_f64(literal))]
     pub fn update_coefficients_sample(&mut self) {
-        let fc = self.params.cutoff.smoothed.next();
+        let fc = Sample::splat(self.params.cutoff.smoothed.next());
         let q = if let FilterType::Notch = self.params.ftype.value() {
-            0.5
+            0.707
         } else {
-            self.params.q.smoothed.next()
+            Sample::splat(self.params.q.smoothed.next())
         };
-        let nl = self.params.resclip.value().as_dynamic_type();
-        for f in &mut self.svf {
-            f.set_cutoff(fc);
-            f.set_r(1. - q);
-            f.set_saturators(nl, nl);
+        let resclip = self.params.resclip.value();
+        if self.last_resclip != resclip {
+            let nl = resclip.as_dynamic_type();
+            self.clippers = [nl, nl, nl];
+            self.svf.set_saturators(nl, nl);
+            self.last_resclip = resclip;
         }
-    }
-
-    #[inline(always)]
-    pub fn process_block<const SIZE: usize>(&mut self, block: &mut Block, scale: [f32; SIZE]) {
-        for (samples, scale) in block.iter_samples().zip(scale) {
-            self.process_sample(samples, scale);
-        }
-    }
-
-    pub fn process_sample<'a>(
-        &mut self,
-        samples: impl IntoIterator<Item = &'a mut f32>,
-        scale: f32,
-    ) {
-        self.update_coefficients_sample();
-        let equal_loudness = self.params.resclip.value().equal_loudness();
-        let amps = util::db_to_gain(util::gain_to_db(self.params.amp.smoothed.next()) * scale);
-        for (sample, filt) in samples.into_iter().zip(&mut self.svf) {
-            *sample *= equal_loudness;
-            *sample = self
-                .params
-                .ftype
-                .value()
-                .mix(amps, *sample, filt.process([*sample]))
-                / equal_loudness;
-        }
+        let f = &mut self.svf;
+        f.set_cutoff(fc);
+        f.set_r(1. - q);
     }
 }
