@@ -6,13 +6,11 @@ use nih_plug::{
     prelude::*,
 };
 
-use valib::clippers::DiodeClipperModel;
 use valib::dsp::DSP;
 use valib::oversample::Oversample;
 use valib::{
     biquad::Biquad,
-    clippers::DiodeClipper,
-    saturators::Linear,
+    saturators::{Linear, clippers::{DiodeClipper, DiodeClipperModel}},
     simd::{AutoF32x2, AutoF64x2, AutoSimd, SimdComplexField, SimdValue},
     Scalar,
 };

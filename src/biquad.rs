@@ -224,7 +224,7 @@ where
 mod tests {
     
 
-    use crate::{clippers::DiodeClipperModel, dsp::{DSPBlock, utils::{slice_to_mono_block, slice_to_mono_block_mut}}};
+    use crate::{saturators::clippers::DiodeClipperModel, dsp::{DSPBlock, utils::{slice_to_mono_block, slice_to_mono_block_mut}}};
 
     use super::*;
 

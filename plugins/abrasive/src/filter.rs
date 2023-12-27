@@ -6,8 +6,7 @@ use nih_plug_vizia::vizia::prelude::Role::Complementary;
 use numeric_literals::replace_float_literals;
 use realfft::num_complex::Complex;
 
-use valib::clippers::DiodeClipperModel;
-use valib::dsp::analog::DspAnalog;
+use valib::{saturators::clippers::DiodeClipperModel, dsp::analog::DspAnalog};
 use valib::saturators::{Blend, Dynamic, Saturator};
 use valib::svf::Svf;
 use valib::dsp::analysis::DspAnalysis;

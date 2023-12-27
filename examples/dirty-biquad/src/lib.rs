@@ -3,7 +3,7 @@ use std::sync::Arc;
 use nih_plug::prelude::*;
 
 use valib::biquad::Biquad;
-use valib::clippers::DiodeClipperModel;
+use valib::saturators::clippers::DiodeClipperModel;
 use valib::dsp::DSP;
 use valib::oversample::Oversample;
 use valib::saturators::Dynamic;

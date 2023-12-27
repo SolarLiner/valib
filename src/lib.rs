@@ -7,7 +7,6 @@ pub use simba::simd;
 // pub mod ladder;
 // pub mod sallenkey;
 pub mod biquad;
-pub mod clippers;
 pub mod dsp;
 pub mod math;
 pub mod oversample;

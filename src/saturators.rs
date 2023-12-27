@@ -1,8 +1,12 @@
-use crate::{clippers::DiodeClipperModel, dsp::DSP};
+use crate::dsp::DSP;
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdValue;
 
+use clippers::DiodeClipperModel;
+
 use crate::Scalar;
+
+pub mod clippers;
 
 #[allow(unused_variables)]
 pub trait Saturator<T: Scalar>: Default {
