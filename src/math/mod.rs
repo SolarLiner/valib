@@ -1,4 +1,5 @@
 pub mod interpolation;
+pub mod lut;
 
 use std::hint;
 
