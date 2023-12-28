@@ -1,0 +1,10 @@
+---
+source: src/oscillators/blit.rs
+expression: "&blit"
+---
+Blit {
+    p: 0.0,
+    dp: 1.0,
+    pmax: 409.6,
+    x: 0.0,
+}

@@ -21,7 +21,7 @@ impl<S: Scalar, const N: usize> DSP<N, N> for Bypass<S> {
 
 /// Freestanding integrator, discretized with TPT
 #[derive(Debug, Copy, Clone)]
-pub struct Integrator<T>(T);
+pub struct Integrator<T>(pub T);
 
 impl<T: Scalar> Default for Integrator<T> {
     fn default() -> Self {

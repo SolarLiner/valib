@@ -7,6 +7,7 @@ pub use simba::simd;
 pub mod filters;
 pub mod dsp;
 pub mod math;
+pub mod oscillators;
 pub mod oversample;
 pub mod saturators;
 pub mod util;

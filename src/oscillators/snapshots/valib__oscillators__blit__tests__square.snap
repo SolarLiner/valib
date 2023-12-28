@@ -1,0 +1,20 @@
+---
+source: src/oscillators/blit.rs
+expression: "&square"
+---
+Square {
+    blit_pos: Blit {
+        p: 0.0,
+        dp: 1.0,
+        pmax: 409.6,
+        x: 0.0,
+    },
+    blit_neg: Blit {
+        p: 409.6,
+        dp: 1.0,
+        pmax: 409.6,
+        x: 0.0,
+    },
+    pw: 0.0,
+    integrator_state: 0.5,
+}
