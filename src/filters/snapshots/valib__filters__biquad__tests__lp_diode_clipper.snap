@@ -1,5 +1,5 @@
 ---
-source: src/biquad.rs
+source: src/filters/biquad.rs
 expression: "&output as &[_]"
 ---
 -0.001

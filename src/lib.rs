@@ -4,14 +4,11 @@ use simba::simd::{AutoSimd, SimdRealField, SimdValue};
 
 pub use simba::simd;
 
-// pub mod ladder;
-// pub mod sallenkey;
-pub mod biquad;
+pub mod filters;
 pub mod dsp;
 pub mod math;
 pub mod oversample;
 pub mod saturators;
-pub mod svf;
 pub mod util;
 #[cfg(feature = "unstable-wdf")]
 pub mod wdf;

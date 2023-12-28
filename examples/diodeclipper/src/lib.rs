@@ -9,7 +9,7 @@ use nih_plug::{
 use valib::dsp::DSP;
 use valib::oversample::Oversample;
 use valib::{
-    biquad::Biquad,
+    filters::biquad::Biquad,
     saturators::{Linear, clippers::{DiodeClipper, DiodeClipperModel}},
     simd::{AutoF32x2, AutoF64x2, AutoSimd, SimdComplexField, SimdValue},
     Scalar,

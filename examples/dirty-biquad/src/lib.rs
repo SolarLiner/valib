@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::biquad::Biquad;
+use valib::filters::biquad::Biquad;
 use valib::saturators::clippers::DiodeClipperModel;
 use valib::dsp::DSP;
 use valib::oversample::Oversample;

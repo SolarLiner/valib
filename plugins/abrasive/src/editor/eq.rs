@@ -6,7 +6,7 @@ use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::{context::DrawContext, prelude::*, vg};
 use realfft::num_complex::Complex;
 
-use valib::{saturators::Linear, svf::Svf};
+use valib::{saturators::Linear, filters::svf::Svf};
 
 use crate::filter::FilterParams;
 use crate::AbrasiveParams;

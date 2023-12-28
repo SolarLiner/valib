@@ -3,7 +3,7 @@ use std::sync::Arc;
 use nih_plug::prelude::*;
 
 use valib::simd::{AutoSimd, SimdValue};
-use valib::{oversample::Oversample, svf::Svf};
+use valib::{oversample::Oversample, filters::svf::Svf};
 use valib::{
     dsp::blocks::{ModMatrix, Series2},
     saturators::{Clipper, Saturator, Slew},

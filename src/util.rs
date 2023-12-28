@@ -1,4 +1,4 @@
-use num_traits::{FromPrimitive, Num, One, Zero};
+use num_traits::{FromPrimitive, Num, One, Zero, AsPrimitive};
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdPartialOrd, SimdValue};
 
@@ -19,13 +19,13 @@ where
     ret
 }
 
-pub fn simd_index_simd<Simd: Zero + SimdValue, Index: SimdValue<Element = usize>>(
+pub fn simd_index_simd<Simd: Zero + SimdValue, Index: SimdValue>(
     values: &[Simd],
     index: Index,
-) -> Simd {
+) -> Simd where <Index as SimdValue>::Element: AsPrimitive<usize> {
     let mut ret = Simd::zero();
     for i in 0..Index::lanes() {
-        let ix = index.extract(i);
+        let ix = index.extract(i).as_();
         ret.replace(i, values[ix].extract(i));
     }
     ret

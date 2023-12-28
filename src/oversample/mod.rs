@@ -7,7 +7,7 @@ use crate::dsp::{
 use crate::saturators::Linear;
 use crate::Scalar;
 use crate::{
-    biquad::Biquad,
+    filters::biquad::Biquad,
     dsp::{blocks::Series, DSPBlock},
 };
 

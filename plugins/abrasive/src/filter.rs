@@ -8,7 +8,7 @@ use realfft::num_complex::Complex;
 
 use valib::{saturators::clippers::DiodeClipperModel, dsp::analog::DspAnalog};
 use valib::saturators::{Dynamic, Saturator};
-use valib::svf::Svf;
+use valib::filters::svf::Svf;
 
 
 use valib::dsp::DSP;
