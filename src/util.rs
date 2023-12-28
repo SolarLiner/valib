@@ -1,4 +1,4 @@
-use num_traits::{FromPrimitive, Num, One, Zero, AsPrimitive};
+use num_traits::{AsPrimitive, FromPrimitive, Num, One, Zero};
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdPartialOrd, SimdValue};
 
@@ -22,7 +22,10 @@ where
 pub fn simd_index_simd<Simd: Zero + SimdValue, Index: SimdValue>(
     values: &[Simd],
     index: Index,
-) -> Simd where <Index as SimdValue>::Element: AsPrimitive<usize> {
+) -> Simd
+where
+    <Index as SimdValue>::Element: AsPrimitive<usize>,
+{
     let mut ret = Simd::zero();
     for i in 0..Index::lanes() {
         let ix = index.extract(i).as_();
@@ -32,6 +35,7 @@ pub fn simd_index_simd<Simd: Zero + SimdValue, Index: SimdValue>(
 }
 
 #[replace_float_literals(T::from_f64(literal))]
+#[deprecated = "Use math::interpolators"]
 pub fn lerp_block<T: Scalar + SimdCast<usize>>(out: &mut [T], inp: &[T])
 where
     <T as SimdCast<usize>>::Output: Copy + Num + FromPrimitive + SimdPartialOrd,
@@ -50,8 +54,19 @@ where
     }
 }
 
+#[deprecated = "Use math::interpolators"]
 pub fn lerp<T: Scalar>(t: T, a: T, b: T) -> T {
     a + t * (b - a)
+}
+
+#[replace_float_literals(T::from_f64(literal))]
+pub fn midi_to_freq<T: Scalar>(midi_note: u8) -> T {
+    440.0 * semitone_to_ratio(T::from_f64(midi_note as _) - 69.0)
+}
+
+#[replace_float_literals(T::from_f64(literal))]
+pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
+    2.0.simd_powf(semi / 12.0)
 }
 
 #[cfg(test)]

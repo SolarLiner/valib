@@ -5,6 +5,7 @@ use crate::{dsp::DSP, Scalar};
 pub mod blit;
 pub mod wavetable;
 
+#[derive(Debug, Clone, Copy)]
 pub struct Phasor<T> {
     phase: T,
     step: T,
