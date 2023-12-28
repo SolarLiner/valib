@@ -1,3 +1,5 @@
+pub mod interpolation;
+
 use std::hint;
 
 use nalgebra::{Dim, OVector, SMatrix, SVector};
