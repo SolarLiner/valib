@@ -343,48 +343,74 @@ where
 }
 
 /// Feedback adapter with a one-sample delay and integrated mixing and summing point.
-pub struct Feedback<P, const N: usize> where P: DSP<N, N> {
-    memory: [P::Sample; N],
+pub struct Feedback<FF, FB, const N: usize> where FF: DSP<N, N> {
+    memory: [FF::Sample; N],
     /// Inner DSP instance
-    pub inner: P,
+    pub feedforward: FF,
+    pub feedback: FB,
     /// Mixing vector, which is lanewise-multiplied from the output and summed back to the input at the next sample.
-    pub mix: [P::Sample; N],
+    pub mix: [FF::Sample; N],
 }
 
-impl<P, const N: usize> DSP<N, N> for Feedback<P, N>
-where P: DSP<N, N>
-{
-    type Sample = P::Sample;
+impl<FF: DSP<N, N>, const N: usize> DSP<N, N> for Feedback<FF, (), N> {
+    type Sample = FF::Sample;
 
     fn latency(&self) -> usize {
-        self.inner.latency()
+        self.feedforward.latency()
     }
 
     fn reset(&mut self) {
-        self.memory.fill(P::Sample::from_f64(0.0));
-        self.inner.reset();
+        self.memory.fill(Self::Sample::zero());
+        self.feedforward.reset();
     }
 
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
         let x = std::array::from_fn(|i| self.memory[i] * self.mix[i] + x[i]);
-        let y = self.inner.process(x);
+        let y = self.feedforward.process(x);
         self.memory = y;
         y
     }
 }
 
-impl<P: DSP<N, N>, const N: usize> Feedback<P, N> {
+impl<FF, FB, const N: usize> DSP<N, N> for Feedback<FF, FB, N>
+where
+    FF: DSP<N, N>,
+    FB: DSP<N, N, Sample = <FF as DSP<N, N>>::Sample>,
+{
+    type Sample = FF::Sample;
+
+    fn latency(&self) -> usize {
+        self.feedforward.latency()
+    }
+
+    fn reset(&mut self) {
+        self.memory.fill(FB::Sample::from_f64(0.0));
+        self.feedforward.reset();
+        self.feedback.reset();
+    }
+
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        let fb = self.feedback.process(self.memory);
+        let x = std::array::from_fn(|i| fb[i] * self.mix[i] + x[i]);
+        let y = self.feedforward.process(x);
+        self.memory = y;
+        y
+    }
+}
+
+impl<FF: DSP<N, N>, FB: DSP<N, N, Sample = <FF as DSP<N, N>>::Sample>, const N: usize> Feedback<FF, FB, N> {
     /// Create a new Feedback adapter with the provider inner DSP instance. Sets the mix to 0 by default.
-    pub fn new(dsp: P) -> Self {
+    pub fn new(feedforward: FF, feedback: FB) -> Self {
         Self {
-            memory: [P::Sample::from_f64(0.0); N],
-            inner: dsp,
-            mix: [P::Sample::from_f64(0.0); N],
+            memory: [FF::Sample::from_f64(0.0); N],
+            feedforward,
+            feedback,
+            mix: [FF::Sample::from_f64(0.0); N],
         }
     }
 
     /// Unwrap this adapter and give back the inner DSP instance.
-    pub fn into_inner(self) -> P {
-        self.inner
+    pub fn into_inner(self) -> (FF, FB) {
+        (self.feedforward, self.feedback)
     }
 }
