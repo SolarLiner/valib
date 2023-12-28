@@ -171,7 +171,9 @@ mod tests {
     fn test_interpolate_cubic() {
         let a = [0., 1., 1.];
         let mut actual = [0.; 12];
-        let expected = [0.0, 0.203125, 0.5, 0.796875, 1.0, 1.0703125, 1.0625, 1.0234375, 1.0, 1.0, 1.0, 1.0];
+        let expected = [
+            0.0, 0.203125, 0.5, 0.796875, 1.0, 1.0703125, 1.0625, 1.0234375, 1.0, 1.0, 1.0, 1.0,
+        ];
         Cubic::interpolate_slice(&mut actual, &a);
         assert_eq!(actual, expected);
     }

@@ -128,8 +128,23 @@ pub struct Series<T>(pub T);
 
 macro_rules! series_tuple {
     ($($p:ident),*) => {
+        #[allow(non_snake_case)]
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSP<N, N, Sample = __Sample>),*, const N: usize> DSP<N, N> for $crate::dsp::blocks::Series<($($p),*)> {
             type Sample = __Sample;
+
+            fn latency(&self) -> usize {
+                let Self(($($p),*)) = self;
+                0 $(
+                + $p.latency()
+                )*
+            }
+
+            fn reset(&mut self) {
+                let Self(($($p),*)) = self;
+                $(
+                $p.reset();
+                )*
+            }
 
             #[allow(non_snake_case)]
             #[inline(always)]
@@ -248,8 +263,25 @@ pub struct Parallel<T>(pub T);
 
 macro_rules! parallel_tuple {
     ($($p:ident),*) => {
+        #[allow(non_snake_case)]
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSP<N, N, Sample = __Sample>),*, const N: usize> $crate::dsp::DSP<N, N> for $crate::dsp::blocks::Parallel<($($p),*)> {
             type Sample = __Sample;
+
+            fn latency(&self) -> usize {
+                let Self(($($p),*)) = self;
+                let latency = 0;
+                $(
+                let latency = latency.max($p.latency());
+                )*
+                latency
+            }
+
+            fn reset(&mut self) {
+                let Self(($($p),*)) = self;
+                $(
+                $p.reset();
+                )*
+            }
 
             #[allow(non_snake_case)]
             #[inline(always)]
@@ -398,7 +430,7 @@ where
     }
 }
 
-impl<FF: DSP<N, N>, FB: DSP<N, N, Sample = <FF as DSP<N, N>>::Sample>, const N: usize> Feedback<FF, FB, N> {
+impl<FF: DSP<N, N>, FB, const N: usize> Feedback<FF, FB, N> {
     /// Create a new Feedback adapter with the provider inner DSP instance. Sets the mix to 0 by default.
     pub fn new(feedforward: FF, feedback: FB) -> Self {
         Self {
