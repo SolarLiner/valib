@@ -6,6 +6,8 @@ use numeric_literals::replace_float_literals;
 
 use crate::Scalar;
 
+use super::lut::Lut;
+
 /// Interpolation trait. Interpolators implement function that connect discrete points into a continuous function.
 /// Functions can have any number of taps, both in the forward and bacward directions. It's up to the called to provide
 /// either actual existing points or extrapolated values when the indices would be out of bounds.
@@ -50,6 +52,18 @@ pub trait Interpolate<T, const N: usize> {
             let t = T::from_f64(rate * i as f64);
             *o = Self::interpolate_on_slice(t, input);
         }
+    }
+}
+
+pub struct ZeroHold;
+
+impl<T> Interpolate<T, 1> for ZeroHold {
+    fn rel_indices() -> [isize; 1] {
+        [0]
+    }
+
+    fn interpolate(_: T, [x]: [T; 1]) -> T {
+        x
     }
 }
 
@@ -113,6 +127,21 @@ impl<T: Scalar> Interpolate<T, 4> for Hermite {
         let c2 = taps[0] - 2.5 * taps[1] + 2.0 * taps[2] - 0.5 * taps[3];
         let c3 = 1.5 * (taps[1] - taps[2]) + 0.5 * (taps[3] - taps[0]);
         ((c3 * t + c2) * t + c1) * t + c0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Sine;
+
+impl<T: Scalar> Interpolate<T, 2> for Sine {
+    fn rel_indices() -> [isize; 2] {
+        [0, 1]
+    }
+
+    #[replace_float_literals(T::from_f64(literal))]
+    fn interpolate(t: T, taps: [T; 2]) -> T {
+        let fac = T::simd_cos(t * T::simd_pi()) * 0.5 + 0.5;
+        Linear::interpolate(fac, taps)
     }
 }
 
