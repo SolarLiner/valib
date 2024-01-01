@@ -1,0 +1,3 @@
+[tasks.venv]
+command = "poetry"
+args = ["install", "--no-root"]

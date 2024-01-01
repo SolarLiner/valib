@@ -1,0 +1,31 @@
+[package]
+name = "ts404"
+version = "0.1.0"
+edition = "2021"
+authors = ["SolarLiner <me@solarliner.dev>"]
+license = "GPL-3.0-or-later"
+homepage = "https://solarliner.dev"
+description = "An inspired but fantasy screamer guitar pedal emulation"
+
+[workspace]
+members = ["xtask"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Remove the `assert_process_allocs` feature to allow allocations on the audio
+# thread in debug builds.
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["assert_process_allocs"] }
+# Uncomment the below line to disable the on-by-default VST3 feature to remove
+# the GPL compatibility requirement
+# nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default_features = false, features = ["assert_process_allocs"] }
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
+[profile.profiling]
+inherits = "release"
+debug = true
+strip = "none"
