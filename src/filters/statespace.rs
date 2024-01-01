@@ -5,10 +5,10 @@ use crate::Scalar;
 
 #[derive(Debug, Copy, Clone)]
 pub struct StateSpace<T: nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize> {
-    pub a: SMatrix<T, STATE, IN>,
-    pub b: SMatrix<T, STATE, STATE>,
-    pub c: SMatrix<T, OUT, IN>,
-    pub d: SMatrix<T, OUT, STATE>,
+    pub a: SMatrix<T, STATE, STATE>,
+    pub b: SMatrix<T, STATE, IN>,
+    pub c: SMatrix<T, OUT, STATE>,
+    pub d: SMatrix<T, OUT, IN>,
     state: SVector<T, STATE>,
 }
 
@@ -38,8 +38,8 @@ impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSP<IN, O
 
     fn process(&mut self, x: [Self::Sample; IN]) -> [Self::Sample; OUT] {
         let x = SVector::from(x);
-        let y = self.c * x + self.d * self.state;
-        self.state = self.a * x + self.b * self.state;
+        let y = self.c * self.state + self.d * x;
+        self.state = self.a * self.state + self.b * x;
         y.into()
     }
 }
@@ -66,10 +66,10 @@ mod tests {
         fn new(fc: T) -> Self {
             let new = SMatrix::<_, 1, 1>::new;
             Self(StateSpace {
-                a: new(1.0),
-                b: new(-(fc-2.0)/(fc+2.0)),
-                c: new(fc/(fc+2.0)),
-                d: new(-fc*(fc-2.0)/(fc+2.0).simd_powi(2) + fc/(fc+2.0)),
+                a: new(-(fc-2.0)/(fc+2.0)),
+                b: new(1.0),
+                c: new(-fc*(fc-2.0)/(fc+2.0).simd_powi(2) + fc/(fc+2.0)),
+                d: new(fc / (fc + 2.0)),
                 ..StateSpace::zeros()
             })
         }
