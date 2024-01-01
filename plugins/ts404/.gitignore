@@ -2,3 +2,6 @@
 .idea
 .venv
 /target
+
+# Generated in-tree source files
+src/gen.rs

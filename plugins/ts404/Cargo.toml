@@ -14,12 +14,13 @@ members = ["xtask"]
 crate-type = ["cdylib"]
 
 [dependencies]
-# Remove the `assert_process_allocs` feature to allow allocations on the audio
-# thread in debug builds.
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["assert_process_allocs"] }
-# Uncomment the below line to disable the on-by-default VST3 feature to remove
-# the GPL compatibility requirement
-# nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default_features = false, features = ["assert_process_allocs"] }
+nalgebra = "0.32.3"
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+num-traits = "0.2.17"
+valib = { git = "https://github.com/SolarLiner/valib.git" }
+
+[profile.dev]
+opt-level = 1
 
 [profile.release]
 lto = "thin"

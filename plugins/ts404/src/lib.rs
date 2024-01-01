@@ -1,30 +1,43 @@
 mod gen;
+mod dsp;
 
 use nih_plug::prelude::*;
 use std::sync::Arc;
+use nih_plug::prelude::SmoothingStyle::OversamplingAware;
+use num_traits::Zero;
+use valib::dsp::blocks::Series2;
+use valib::dsp::{DSP, DSPBlock};
+use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
+use valib::oversample::Oversample;
+use valib::simd::{AutoF64x2, SimdValue};
+use crate::dsp::{ClipperStage, ToneStage};
 
-// This is a shortened version of the gain example with most comments removed, check out
-// https://github.com/robbert-vdh/nih-plug/blob/master/plugins/examples/gain/src/lib.rs to get
-// started
+type Sample = AutoF64x2;
+type Dsp = Series2<ClipperStage<Sample>, ToneStage<Sample>, 1>;
+const OVERSAMPLE: usize = 4;
+const MAX_BLOCK_SIZE: usize = 512;
 
 struct Ts404 {
     params: Arc<Ts404Params>,
+    dsp: Dsp,
+    oversample: Oversample<Sample>,
 }
 
 #[derive(Params)]
 struct Ts404Params {
-    /// The parameter's ID is used to identify the parameter in the wrappred plugin API. As long as
-    /// these IDs remain constant, you can rename and reorder these fields as you wish. The
-    /// parameters are exposed to the host in the same order they were defined. In this case, this
-    /// gain parameter is stored as linear gain while the values are displayed in decibels.
-    #[id = "gain"]
-    pub gain: FloatParam,
+    #[id = "dist"]
+    dist: FloatParam,
+    #[id = "tone"]
+    tone: FloatParam,
 }
 
 impl Default for Ts404 {
     fn default() -> Self {
+        let samplerate = Sample::splat(OVERSAMPLE as f64 * 44100.0);
         Self {
             params: Arc::new(Ts404Params::default()),
+            dsp: Series2::new(ClipperStage::new(samplerate, Sample::splat(0.1)), ToneStage::new(samplerate, Sample::splat(0.5))),
+            oversample: Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE),
         }
     }
 }
@@ -32,29 +45,14 @@ impl Default for Ts404 {
 impl Default for Ts404Params {
     fn default() -> Self {
         Self {
-            // This gain is stored as linear gain. NIH-plug comes with useful conversion functions
-            // to treat these kinds of parameters as if we were dealing with decibels. Storing this
-            // as decibels is easier to work with, but requires a conversion for every sample.
-            gain: FloatParam::new(
-                "Gain",
-                util::db_to_gain(0.0),
-                FloatRange::Skewed {
-                    min: util::db_to_gain(-30.0),
-                    max: util::db_to_gain(30.0),
-                    // This makes the range appear as if it was linear when displaying the values as
-                    // decibels
-                    factor: FloatRange::gain_skew_factor(-30.0, 30.0),
-                },
-            )
-            // Because the gain parameter is stored as linear gain instead of storing the value as
-            // decibels, we need logarithmic smoothing
-            .with_smoother(SmoothingStyle::Logarithmic(50.0))
-            .with_unit(" dB")
-            // There are many predefined formatters we can use here. If the gain was stored as
-            // decibels instead of as a linear gain value, we could have also used the
-            // `.with_step_size(0.1)` function to get internal rounding.
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            dist: FloatParam::new("Distortion", 0.1, FloatRange::Linear {min: 0.0, max: 1.0})
+                .with_smoother(SmoothingStyle::Linear(50.0))
+                .with_value_to_string(formatters::v2s_f32_percentage(2))
+                .with_string_to_value(formatters::s2v_f32_percentage()),
+            tone: FloatParam::new("Tone", 0.5, FloatRange::Linear {min: 0.0, max: 1.0})
+                .with_smoother(SmoothingStyle::Linear(50.0))
+                .with_value_to_string(formatters::v2s_f32_percentage(2))
+                .with_string_to_value(formatters::s2v_f32_percentage())
         }
     }
 }
@@ -104,32 +102,48 @@ impl Plugin for Ts404 {
     fn initialize(
         &mut self,
         _audio_io_layout: &AudioIOLayout,
-        _buffer_config: &BufferConfig,
+        buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        // Resize buffers and perform other potentially expensive initialization operations here.
-        // The `reset()` function is always called right after this function. You can remove this
-        // function if you do not need it.
+        let samplerate = Sample::splat(buffer_config.sample_rate as _);
+        self.dsp.left_mut().set_params(samplerate, Sample::splat(self.params.dist.value() as _));
+        self.dsp.right_mut().update_params(samplerate, Sample::splat(self.params.tone.value() as _));
         true
     }
 
     fn reset(&mut self) {
-        // Reset buffers and envelopes here. This can be called from the audio thread and may not
-        // allocate. You can remove this function if you do not need it.
+        DSP::reset(&mut self.dsp);
     }
 
     fn process(
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<Self>,
+        context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        for channel_samples in buffer.iter_samples() {
-            // Smoothing is optionally built into the parameters themselves
-            let gain = self.params.gain.smoothed.next();
+        let samplerate = Sample::splat(context.transport().sample_rate as _);
+        self.dsp.left_mut().set_params(samplerate, Sample::splat(self.params.dist.value() as _));
+        self.dsp.right_mut().update_params(samplerate, Sample::splat(self.params.tone.value() as _));
+        context.set_latency_samples(DSP::latency(&self.dsp) as _);
 
-            for sample in channel_samples {
-                *sample *= gain;
+        let mut inner_buffer = [Sample::zero(); MAX_BLOCK_SIZE];
+        let mut os_block_copy = [Sample::zero(); OVERSAMPLE * MAX_BLOCK_SIZE];
+        for (_, mut block) in buffer.iter_blocks(MAX_BLOCK_SIZE) {
+            for (i, mut frame) in block.iter_samples().enumerate() {
+                let stereo = Sample::new(*frame.get_mut(0).unwrap() as _, *frame.get_mut(1).unwrap() as _);
+                inner_buffer[i] = stereo;
+            }
+
+            let inner_buffer = &mut inner_buffer[..block.samples()];
+            let os_block_copy = &mut os_block_copy[..block.samples() * OVERSAMPLE];
+            let mut os_block = self.oversample.oversample(inner_buffer);
+            os_block_copy.copy_from_slice(&*os_block);
+            self.dsp.process_block(slice_to_mono_block(os_block_copy), slice_to_mono_block_mut(&mut *os_block));
+            os_block.finish(inner_buffer);
+
+            for (i, s) in inner_buffer.iter().copied().enumerate() {
+                *block.get_mut(0).unwrap().get_mut(i).unwrap() = s.extract(0) as _;
+                *block.get_mut(1).unwrap().get_mut(i).unwrap() = s.extract(1) as _;
             }
         }
 

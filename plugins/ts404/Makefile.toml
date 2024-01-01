@@ -1,3 +1,25 @@
+[tasks.default]
+alias = "bundle"
+
 [tasks.venv]
-command = "poetry"
-args = ["install", "--no-root"]
+script_runner = "@shell"
+script = """
+poetry install --no-root
+"""
+
+[tasks.generate]
+script_runner = "@shell"
+script = """
+source .venv/bin/activate # shell2batch: call .\\.venv\\Scripts\\activate.bat
+python ./gen_statespace.py
+"""
+condition = { files_modified = { input = ["./gen_statespace.py"], output = ["./src/gen.rs"] } }
+
+[tasks.build]
+dependencies = ["generate"]
+
+[tasks.bundle]
+dependencies = ["build"]
+command = "cargo"
+args = ["xtask", "bundle", "ts404"]
+install_crate = false
