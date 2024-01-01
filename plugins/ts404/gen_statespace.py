@@ -1,12 +1,9 @@
 import os
-from pathlib import Path
 from typing import Iterable
 
-from lcapy import *
 import sympy as s
+from lcapy import *
 from sympy.core.evalf import evalf
-from sympy.core.numbers import One
-from sympy.printing.codeprinter import CodePrinter
 from sympy.printing.rust import RustCodePrinter
 from sympy.utilities.codegen import RustCodeGen
 
@@ -53,6 +50,7 @@ def statespace_tone():
     hs = lerp(tone_h_treble().as_expr(), tone_h_bass().as_expr(), tone)
     return create_discrete_statespace(hs)
 
+
 class MyRustPrinter(RustCodePrinter):
     def _print_Exp1(self, expr, _type=False):
         return "T::simd_e()"
@@ -74,6 +72,7 @@ class MyRustPrinter(RustCodePrinter):
     def _print_MatrixBase(self, A):
         values = ", ".join(self._print(x) for x in A)
         return f"SMatrix::<_, {A.rows}, {A.cols}>::new({values})"
+
 
 def write_codegen(prefix: str, name: str, state_space: DTStateSpace, params: dict):
     codegen = RustCodeGen(project="ts404", printer=MyRustPrinter())
@@ -99,6 +98,7 @@ def codegen_function(name: str, *exprs: s.Expr, public="pub(crate)") -> Iterable
         yield f"  let {printer.doprint(Assignment(var, e))}"
     yield "  " + printer.doprint(simpl)
     yield "}}"
+
 
 if __name__ == "__main__":
     OUT_DIR = "src/gen"
