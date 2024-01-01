@@ -1,13 +1,13 @@
 mod gen;
 mod dsp;
 
-use std::process::Output;
+
 use nih_plug::prelude::*;
 use std::sync::Arc;
-use nih_plug::prelude::SmoothingStyle::OversamplingAware;
+
 use nih_plug::util::{gain_to_db, MINUS_INFINITY_DB, MINUS_INFINITY_GAIN};
 use num_traits::Zero;
-use valib::dsp::blocks::{Series, Series2};
+use valib::dsp::blocks::{Series};
 use valib::dsp::{DSP, DSPBlock};
 use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
 use valib::oversample::Oversample;
@@ -163,8 +163,8 @@ impl Plugin for Ts404 {
             let inner_buffer = &mut inner_buffer[..block.samples()];
             let os_block_copy = &mut os_block_copy[..block.samples() * OVERSAMPLE];
             let mut os_block = self.oversample.oversample(inner_buffer);
-            os_block_copy.copy_from_slice(&*os_block);
-            self.dsp.process_block(slice_to_mono_block(os_block_copy), slice_to_mono_block_mut(&mut *os_block));
+            os_block_copy.copy_from_slice(&os_block);
+            self.dsp.process_block(slice_to_mono_block(os_block_copy), slice_to_mono_block_mut(&mut os_block));
             os_block.finish(inner_buffer);
 
             for (i, s) in inner_buffer.iter().copied().enumerate() {
