@@ -1,4 +1,6 @@
-# TS-404
+# Error 404: Screamer not found
+
+A guitar pedal plugin inspired by the most popular screamer pedal.
 
 ## Building
 
