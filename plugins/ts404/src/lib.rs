@@ -1,19 +1,21 @@
 mod gen;
 mod dsp;
 
+use std::process::Output;
 use nih_plug::prelude::*;
 use std::sync::Arc;
 use nih_plug::prelude::SmoothingStyle::OversamplingAware;
+use nih_plug::util::{gain_to_db, MINUS_INFINITY_DB, MINUS_INFINITY_GAIN};
 use num_traits::Zero;
-use valib::dsp::blocks::Series2;
+use valib::dsp::blocks::{Series, Series2};
 use valib::dsp::{DSP, DSPBlock};
 use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
 use valib::oversample::Oversample;
 use valib::simd::{AutoF64x2, SimdValue};
-use crate::dsp::{ClipperStage, ToneStage};
+use crate::dsp::{ClipperStage, InputStage, OutputStage, ToneStage};
 
 type Sample = AutoF64x2;
-type Dsp = Series2<ClipperStage<Sample>, ToneStage<Sample>, 1>;
+type Dsp = Series<(InputStage<Sample>, ClipperStage<Sample>, ToneStage<Sample>, OutputStage<Sample>)>;
 const OVERSAMPLE: usize = 4;
 const MAX_BLOCK_SIZE: usize = 512;
 
@@ -25,10 +27,14 @@ struct Ts404 {
 
 #[derive(Params)]
 struct Ts404Params {
+    #[id = "drive"]
+    drive: FloatParam,
     #[id = "dist"]
     dist: FloatParam,
     #[id = "tone"]
     tone: FloatParam,
+    #[id = "level"]
+    out_level: FloatParam,
 }
 
 impl Default for Ts404 {
@@ -36,7 +42,7 @@ impl Default for Ts404 {
         let samplerate = Sample::splat(OVERSAMPLE as f64 * 44100.0);
         Self {
             params: Arc::new(Ts404Params::default()),
-            dsp: Series2::new(ClipperStage::new(samplerate, Sample::splat(0.1)), ToneStage::new(samplerate, Sample::splat(0.5))),
+            dsp: Series((InputStage::new(samplerate, Sample::splat(1.0)), ClipperStage::new(samplerate, Sample::splat(0.1)), ToneStage::new(samplerate, Sample::splat(0.5)), OutputStage::new(samplerate, Sample::splat(1.0)))),
             oversample: Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE),
         }
     }
@@ -45,14 +51,27 @@ impl Default for Ts404 {
 impl Default for Ts404Params {
     fn default() -> Self {
         Self {
+            drive: FloatParam::new("Drive", 1.0, FloatRange::Skewed { min: 0.5, max: 100.0, factor: FloatRange::gain_skew_factor(gain_to_db(0.5), gain_to_db(100.0))})
+                .with_unit("dB")
+                .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+                .with_string_to_value(formatters::s2v_f32_gain_to_db())
+                .with_smoother(SmoothingStyle::Linear(50.0)),
             dist: FloatParam::new("Distortion", 0.1, FloatRange::Linear {min: 0.0, max: 1.0})
+                .with_unit("%")
                 .with_smoother(SmoothingStyle::Linear(50.0))
                 .with_value_to_string(formatters::v2s_f32_percentage(2))
                 .with_string_to_value(formatters::s2v_f32_percentage()),
             tone: FloatParam::new("Tone", 0.5, FloatRange::Linear {min: 0.0, max: 1.0})
+                .with_unit("%")
                 .with_smoother(SmoothingStyle::Linear(50.0))
                 .with_value_to_string(formatters::v2s_f32_percentage(2))
-                .with_string_to_value(formatters::s2v_f32_percentage())
+                .with_string_to_value(formatters::s2v_f32_percentage()),
+            out_level: FloatParam::new("Output Level", 1.0, FloatRange::Skewed {min: MINUS_INFINITY_GAIN, max: 2.0, factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, gain_to_db(2.0))})
+                .with_unit("dB")
+                .with_smoother(SmoothingStyle::Linear(50.0))
+                .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+                .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+
         }
     }
 }
@@ -106,8 +125,11 @@ impl Plugin for Ts404 {
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         let samplerate = Sample::splat(buffer_config.sample_rate as _);
-        self.dsp.left_mut().set_params(samplerate, Sample::splat(self.params.dist.value() as _));
-        self.dsp.right_mut().update_params(samplerate, Sample::splat(self.params.tone.value() as _));
+        let Series((input, clipping, tone, output)) = &mut self.dsp;
+        input.set_samplerate(samplerate);
+        clipping.set_params(samplerate, Sample::splat(self.params.dist.value() as _));
+        tone.update_params(samplerate, Sample::splat(self.params.tone.value() as _));
+        output.set_samplerate(samplerate);
         true
     }
 
@@ -122,8 +144,12 @@ impl Plugin for Ts404 {
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         let samplerate = Sample::splat(context.transport().sample_rate as _);
-        self.dsp.left_mut().set_params(samplerate, Sample::splat(self.params.dist.value() as _));
-        self.dsp.right_mut().update_params(samplerate, Sample::splat(self.params.tone.value() as _));
+        let Series((input, clipping, tone, output)) = &mut self.dsp;
+        input.gain = Sample::splat(self.params.drive.value() as _);
+        clipping.set_params(samplerate, Sample::splat(self.params.dist.value() as _));
+        tone.update_params(samplerate, Sample::splat(self.params.tone.value() as _));
+        output.gain = Sample::splat(self.params.out_level.value() as _);
+
         context.set_latency_samples(DSP::latency(&self.dsp) as _);
 
         let mut inner_buffer = [Sample::zero(); MAX_BLOCK_SIZE];

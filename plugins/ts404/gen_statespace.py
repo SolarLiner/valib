@@ -16,6 +16,13 @@ def create_discrete_statespace(hs: LaplaceDomainImpedance) -> DTStateSpace:
     return hz.ss
 
 
+def statespace_input():
+    pre = LSection(C(0.02e-6) + R(1e3), R(510e3) + V(4.5))
+    post = Shunt(R(10e3)).chain(Series(C(1e-6)))
+    h = (pre.Vtransfer.as_expr() * post.Vtransfer.as_expr()).simplify()
+    return create_discrete_statespace(h)
+
+
 def statespace_clipper():
     dist = symbol("pdist", real=True, positive=True)
     ff = LSection(C(1e-6), R(10e3)).Vtransfer.as_expr().simplify()
@@ -47,6 +54,13 @@ def statespace_tone():
     tone = symbol("ptone", real=True, positive=True)
     hs = lerp(tone_h_treble().as_expr(), tone_h_bass().as_expr(), tone)
     return create_discrete_statespace(hs)
+
+
+def statespace_output():
+    pre = LSection(C(0.1e-6), R(510e3) + V(4.5))
+    post = Shunt(R(10e3)).chain(Series(R(100) + C(1e-6))).chain(Shunt(R(10e3)))
+    h = (pre.Vtransfer.as_expr() * post.Vtransfer.as_expr()).simplify()
+    return create_discrete_statespace(h)
 
 
 class MyRustPrinter(RustCodePrinter):
@@ -99,6 +113,11 @@ def codegen_header() -> Iterable[str]:
 def codegen_statespace(name: str, state_space: DTStateSpace, public="pub(crate)") -> Iterable[str]:
     from sympy.codegen import Assignment
 
+    def postprocess_codegen(s: str) -> str:
+        # Replacing in string after printing because there's no easy way of doing it from the printer
+        return s.replace('.recip(', '.simd_recip(').replace('.powi(', '.simd_powf(').replace('.powf(', '.simd_powf(')
+
+
     nin = state_space.u.rows
     nstate = state_space.x.rows
     nout = state_space.y.rows
@@ -110,10 +129,12 @@ def codegen_statespace(name: str, state_space: DTStateSpace, public="pub(crate)"
     yield f"{public} fn {name}<T: Scalar>({args}) -> StateSpace<T, {nin}, {nstate}, {nout}> {{"
     for var, e in sub:
         # Replacing in string after printing because there's no easy way of doing it from the printer
-        yield f"  let {printer.doprint(Assignment(var, e)).replace('.recip(', '.simd_recip(').replace('.powi(', '.simd_powf(').replace('.powf(', '.simd_powf(')}"
+        pp = printer.doprint(Assignment(var, e))
+        yield f"  let {postprocess_codegen(pp)};"
     yield "  StateSpace::new("
     for e in simpl[0]:
-        yield f"    {printer.doprint(e)},"
+        pp = printer.doprint(e)
+        yield f"    {postprocess_codegen(pp)},"
     yield "  )"
     yield "}"
 
@@ -128,4 +149,5 @@ def codegen_full(*names: tuple[str, DTStateSpace], public="pub(crate)") -> Itera
 
 if __name__ == "__main__":
     OUT_FILE = Path("src/gen.rs")
-    OUT_FILE.write_text("\n".join(codegen_full(("clipper", statespace_clipper()), ("tone", statespace_tone()))))
+    OUT_FILE.write_text("\n".join(codegen_full(("input", statespace_input()), ("clipper", statespace_clipper()),
+                                               ("tone", statespace_tone()), ("output", statespace_output()))))
