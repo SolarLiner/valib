@@ -22,6 +22,16 @@ impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT:
             state: SVector::zeros(),
         }
     }
+
+    pub fn new(a: SMatrix<T, STATE, STATE>, b: SMatrix<T, STATE, IN>, c: SMatrix<T, OUT, STATE>, d: SMatrix<T, OUT, IN>) -> Self {
+        Self {
+            a,
+            b,
+            c,
+            d,
+            state: SVector::zeros(),
+        }
+    }
 }
 
 impl<T: Copy + nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize> StateSpace<T, IN, STATE, OUT> {
