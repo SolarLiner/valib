@@ -7,8 +7,8 @@ from sympy.printing.rust import RustCodePrinter
 from sympy.utilities.codegen import RustCodeGen
 
 
-def opamp_neg(fb: LaplaceDomainImpedance, gnd: LaplaceDomainImpedance) -> LaplaceDomainImpedance:
-    return impedance(1 + fb / gnd)
+def opamp_noninverting(zf, zg):
+    return 1 + zf / zg
 
 
 def create_discrete_statespace(hs: LaplaceDomainImpedance) -> DTStateSpace:
@@ -31,28 +31,35 @@ def statespace_clipper():
     fbg = C(0.047e-6) + R(4.7e3)
     fbg = fbg.Z.as_expr().simplify()
 
-    hs = (ff * opamp_neg(fb, fbg)).simplify()
+    # Explicitely applying gain (even through it should have been implicit in the complex impedances??)
+    hs = (ff * opamp_noninverting(fb, fbg)).simplify() * lerp(12, 118, dist)
     return create_discrete_statespace(hs)
 
 
 def tone_h_bass():
     bass_pre = LSection(R(1e3), C(0.22e-6)).chain(Shunt(C(0.22e-6) + R(220))).chain(Shunt(R(10e3) + V(4.5)))
-    return bass_pre.Vtransfer.as_expr() * opamp_neg(impedance(1e3), impedance(1)).as_expr()
+    return bass_pre.Vtransfer.as_expr() * opamp_noninverting(1e3, sm.oo).as_expr()
 
 
 def tone_h_treble():
     treble_pre = LSection(R(1e3), C(0.22e-6)).chain(Shunt(R(10e3) + V(4.5)))
     treble_gnd = C(0.22e-6) + R(220)
-    return treble_pre.Vtransfer.as_expr() * opamp_neg(impedance(1e3), treble_gnd.Z.as_expr()).as_expr()
+    return treble_pre.Vtransfer.as_expr() * opamp_noninverting(impedance(1e3), treble_gnd.Z.as_expr()).as_expr()
 
 
 def lerp(a, b, t):
     return a + (b - a) * t
 
 
+def g_taper(x):
+    x = 2 * x - 1
+    y = lerp(x, x ** 3, 0.75)
+    return (y + 1) / 2
+
+
 def statespace_tone():
     tone = symbol("ptone", real=True, positive=True)
-    hs = lerp(tone_h_treble().as_expr(), tone_h_bass().as_expr(), tone)
+    hs = lerp(tone_h_treble().as_expr(), tone_h_bass().as_expr(),g_taper(tone))
     return create_discrete_statespace(hs)
 
 
@@ -117,10 +124,9 @@ def codegen_statespace(name: str, state_space: DTStateSpace, public="pub(crate)"
         # Replacing in string after printing because there's no easy way of doing it from the printer
         return s.replace('.recip(', '.simd_recip(').replace('.powi(', '.simd_powf(').replace('.powf(', '.simd_powf(')
 
-
-    nin = state_space.u.rows
-    nstate = state_space.x.rows
-    nout = state_space.y.rows
+    nin = state_space.Nu
+    nstate = state_space.Nx
+    nout = state_space.Ny
 
     printer = MyRustPrinter()
     e = sm.Tuple(state_space.A, state_space.B, state_space.C, state_space.D)

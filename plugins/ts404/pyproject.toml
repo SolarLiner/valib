@@ -11,6 +11,9 @@ sympy = "^1.12"
 lcapy = "^1.20"
 
 
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.28.0"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

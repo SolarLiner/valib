@@ -1,10 +1,8 @@
-
+use numeric_literals::replace_float_literals;
 use valib::dsp::DSP;
-
 use valib::filters::statespace::StateSpace;
-use valib::saturators::{Slew};
+use valib::saturators::Slew;
 use valib::Scalar;
-
 
 #[derive(Debug, Copy, Clone)]
 pub struct InputStage<T: Scalar> {
@@ -16,7 +14,7 @@ impl<T: Scalar> DSP<1, 1> for InputStage<T> {
     type Sample = T;
 
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.state_space.process([x*self.gain])
+        self.state_space.process([x * self.gain])
     }
 
     fn latency(&self) -> usize {
@@ -37,7 +35,8 @@ impl<T: Scalar> InputStage<T> {
     }
 
     pub fn set_samplerate(&mut self, samplerate: T) {
-        self.state_space.update_matrices(&crate::gen::input(samplerate.simd_recip()));
+        self.state_space
+            .update_matrices(&crate::gen::input(samplerate.simd_recip()));
     }
 }
 
@@ -63,9 +62,10 @@ impl<T: Scalar> DSP<1, 1> for ClipperStage<T> {
 }
 
 impl<T: Scalar> ClipperStage<T> {
+    #[replace_float_literals(T::from_f64(literal))]
     pub fn new(samplerate: T, dist: T) -> Self {
         let dt = samplerate.simd_recip();
-        Self(crate::gen::clipper(dist, dt), Slew::new(T::from_f64(1e4) * dt))
+        Self(crate::gen::clipper(dist + 1e-3, dt), Slew::new(1e4 * dt))
     }
 
     pub fn set_params(&mut self, samplerate: T, dist: T) {
@@ -95,12 +95,15 @@ impl<T: Scalar> DSP<1, 1> for ToneStage<T> {
 }
 
 impl<T: Scalar> ToneStage<T> {
+    #[replace_float_literals(T::from_f64(literal))]
     pub fn new(samplerate: T, tone: T) -> Self {
-        Self(crate::gen::tone(tone, samplerate.simd_recip()))
+        Self(crate::gen::tone(tone + 1e-3, samplerate.simd_recip()))
     }
 
+    #[replace_float_literals(T::from_f64(literal))]
     pub fn update_params(&mut self, samplerate: T, tone: T) {
-        self.0.update_matrices(&crate::gen::tone(tone, samplerate.simd_recip()));
+        self.0
+            .update_matrices(&crate::gen::tone(tone + 1e-3, samplerate.simd_recip()));
     }
 }
 
@@ -118,7 +121,8 @@ impl<T: Scalar> OutputStage<T> {
         }
     }
     pub fn set_samplerate(&mut self, samplerate: T) {
-        self.inner.update_matrices(&crate::gen::output(samplerate.simd_recip()));
+        self.inner
+            .update_matrices(&crate::gen::output(samplerate.simd_recip()));
     }
 }
 
@@ -127,7 +131,7 @@ impl<T: Scalar> DSP<1, 1> for OutputStage<T> {
 
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let [y] = self.inner.process(x);
-        [y*self.gain]
+        [y * self.gain]
     }
 
     fn latency(&self) -> usize {

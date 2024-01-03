@@ -1,3 +1,6 @@
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = false
+
 [tasks.default]
 alias = "bundle"
 
@@ -7,7 +10,12 @@ script = """
 poetry install --no-root
 """
 
+[tasks.xtask-build]
+extend = "build"
+args = ["build", "-p", "xtask"]
+
 [tasks.generate]
+dependencies = ["venv"]
 script_runner = "@shell"
 script = """
 source .venv/bin/activate # shell2batch: call .\\.venv\\Scripts\\activate.bat
@@ -16,10 +24,11 @@ python ./gen_statespace.py
 condition = { files_modified = { input = ["./gen_statespace.py"], output = ["./src/gen.rs"] } }
 
 [tasks.build]
+args = ["build", "-p", "ts404"]
 dependencies = ["generate"]
 
 [tasks.bundle]
-dependencies = ["build"]
+dependencies = ["build", "xtask-build"]
 command = "cargo"
 args = ["xtask", "bundle", "ts404"]
 install_crate = false

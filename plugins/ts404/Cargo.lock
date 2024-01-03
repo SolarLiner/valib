@@ -806,6 +806,7 @@ dependencies = [
  "nalgebra",
  "nih_plug",
  "num-traits",
+ "numeric_literals",
  "valib",
 ]
 
