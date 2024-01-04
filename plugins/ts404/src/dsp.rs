@@ -65,13 +65,13 @@ impl<T: Scalar> ClipperStage<T> {
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new(samplerate: T, dist: T) -> Self {
         let dt = samplerate.simd_recip();
-        Self(crate::gen::clipper(dist + 1e-3, dt), Slew::new(1e4 * dt))
+        Self(crate::gen::clipper(dt, dist), Slew::new(1e4 * dt))
     }
 
     pub fn set_params(&mut self, samplerate: T, dist: T) {
         let dt = samplerate.simd_recip();
-        self.0.update_matrices(&crate::gen::clipper(dist, dt));
-        self.1.set_max_diff(T::from_f64(1e5), dt);
+        self.0.update_matrices(&crate::gen::clipper(dt, dist));
+        self.1.set_max_diff(T::from_f64(1e5), samplerate);
     }
 }
 
@@ -97,13 +97,13 @@ impl<T: Scalar> DSP<1, 1> for ToneStage<T> {
 impl<T: Scalar> ToneStage<T> {
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new(samplerate: T, tone: T) -> Self {
-        Self(crate::gen::tone(tone + 1e-3, samplerate.simd_recip()))
+        Self(crate::gen::tone(samplerate.simd_recip(), tone))
     }
 
     #[replace_float_literals(T::from_f64(literal))]
     pub fn update_params(&mut self, samplerate: T, tone: T) {
         self.0
-            .update_matrices(&crate::gen::tone(tone + 1e-3, samplerate.simd_recip()));
+            .update_matrices(&crate::gen::tone(samplerate.simd_recip(), tone));
     }
 }
 

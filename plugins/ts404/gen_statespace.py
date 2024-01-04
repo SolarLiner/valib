@@ -131,7 +131,7 @@ def codegen_statespace(name: str, state_space: DTStateSpace, public="pub(crate)"
     printer = MyRustPrinter()
     e = sm.Tuple(state_space.A, state_space.B, state_space.C, state_space.D)
     sub, simpl = sm.cse(e)
-    args = ", ".join(f"{name}: T" for name in e.atoms(sm.Symbol))
+    args = ", ".join(f"{name}: T" for name in sorted(e.atoms(sm.Symbol), key=lambda v: str(v)))
     yield f"{public} fn {name}<T: Scalar>({args}) -> StateSpace<T, {nin}, {nstate}, {nout}> {{"
     for var, e in sub:
         # Replacing in string after printing because there's no easy way of doing it from the printer
