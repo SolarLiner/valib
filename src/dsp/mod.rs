@@ -1,8 +1,9 @@
+use nalgebra::Complex;
+
 use crate::Scalar;
 
 use self::analysis::DspAnalysis;
 
-pub mod analog;
 pub mod analysis;
 pub mod blocks;
 pub mod utils;
@@ -196,8 +197,8 @@ where
 impl<P, const I: usize, const O: usize> DspAnalysis<I, O> for PerSampleBlockAdapter<P, I, O>
 where P: DspAnalysis<I, O>
 {
-    fn h_z(&self, z: [nalgebra::Complex<Self::Sample>; I]) -> [nalgebra::Complex<Self::Sample>; O] {
-        self.inner.h_z(z)
+    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [nalgebra::Complex<Self::Sample>; O] {
+        self.inner.h_z(samplerate, z)
     }
 }
 

@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use nalgebra::{Complex, SMatrix, SVector};
+use nalgebra::{Complex, SMatrix, SVector, ComplexField};
 use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
 
@@ -42,8 +42,12 @@ impl<T: Scalar> DSP<1, 1> for Integrator<T> {
 
 impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
     #[replace_float_literals(Complex::from(T::from_f64(literal)))]
-    fn h_z(&self, z: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 1] {
-        [1. / 2. * (z[0] + 1.) / (z[0] - 1.)]
+    fn h_z(
+        &self,
+        _samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [Complex<Self::Sample>; 1] {
+        [1. / 2. * (z + 1.) / (z - 1.)]
     }
 }
 
@@ -66,8 +70,12 @@ impl<T, const N: usize> DspAnalysis<N, 1> for Sum<T, N>
 where
     Self: DSP<N, 1>,
 {
-    fn h_z(&self, z: [Complex<Self::Sample>; N]) -> [Complex<Self::Sample>; 1] {
-        [z.into_iter().fold(Complex::zero(), |a, b| a + b)]
+    fn h_z(
+        &self,
+        _samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [Complex<Self::Sample>; 1] {
+        [Complex::one()]
     }
 }
 
@@ -80,6 +88,20 @@ pub struct P1<T> {
     s: T,
 }
 
+impl<T: Scalar> DspAnalysis<1, 3> for P1<T> where Self::Sample: nalgebra::RealField {
+    #[replace_float_literals(Complex::from_real(<T as Scalar>::from_f64(literal)))]
+    fn h_z(
+        &self,
+        _samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [Complex<Self::Sample>; 3] {
+        let lp = (z - 1.0) / (z + 1.0) * self.fc / 2.0;
+        let hp = 1.0 - lp;
+        let ap = 2.0 * lp - 1.0;
+        [lp, hp, ap]
+    }
+}
+
 impl<T: Scalar> P1<T> {
     pub fn new(samplerate: T, fc: T) -> Self {
         Self {
@@ -87,10 +109,6 @@ impl<T: Scalar> P1<T> {
             fc,
             s: T::zero(),
         }
-    }
-
-    pub fn reset(&mut self) {
-        self.s = T::zero();
     }
 
     pub fn set_samplerate(&mut self, samplerate: T) {
@@ -119,6 +137,14 @@ impl<T: Scalar> DSP<1, 3> for P1<T> {
         let hp = x[0] - lp;
         let ap = 2. * lp - x[0];
         [lp, hp, ap]
+    }
+
+    fn latency(&self) -> usize {
+        1
+    }
+
+    fn reset(&mut self) {
+        self.s = T::zero();
     }
 }
 
@@ -249,9 +275,9 @@ impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
 where
     P: DspAnalysis<N, N>,
 {
-    fn h_z(&self, z: [Complex<Self::Sample>; N]) -> [Complex<Self::Sample>; N] {
+    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [Complex<Self::Sample>; N] {
         self.0.iter().fold([Complex::one(); N], |acc, f| {
-            let ret = f.h_z(z);
+            let ret = f.h_z(samplerate, z);
             std::array::from_fn(|i| acc[i] * ret[i])
         })
     }
@@ -335,9 +361,9 @@ impl<P, const I: usize, const O: usize, const N: usize> DspAnalysis<I, O> for Pa
 where
     P: DspAnalysis<I, O>,
 {
-    fn h_z(&self, z: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O] {
+    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [Complex<Self::Sample>; O] {
         self.0.iter().fold([Complex::zero(); O], |acc, f| {
-            let ret = f.h_z(z);
+            let ret = f.h_z(samplerate, z);
             std::array::from_fn(|i| acc[i] + ret[i])
         })
     }
@@ -375,7 +401,10 @@ where
 }
 
 /// Feedback adapter with a one-sample delay and integrated mixing and summing point.
-pub struct Feedback<FF, FB, const N: usize> where FF: DSP<N, N> {
+pub struct Feedback<FF, FB, const N: usize>
+where
+    FF: DSP<N, N>,
+{
     memory: [FF::Sample; N],
     /// Inner DSP instance
     pub feedforward: FF,

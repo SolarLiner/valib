@@ -3,12 +3,12 @@
 //! All references in this module, unless specified otherwise, are taken from this book.
 
 use nalgebra::{Complex};
+use num_traits::One;
 use numeric_literals::replace_float_literals;
 
 use crate::{
-    saturators::{Linear, Saturator}, Scalar,
+    saturators::{Linear, Saturator}, Scalar, dsp::analysis::DspAnalysis,
 };
-use crate::dsp::analog::DspAnalog;
 use crate::dsp::DSP;
 
 /// SVF topology filter, with optional non-linearities.
@@ -52,18 +52,17 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
     }
 }
 
-impl<T: Scalar, S: Saturator<T>> DspAnalog<1, 3> for Svf<T, S> {
-    #[replace_float_literals(Complex::new(T::from_f64(literal), T::zero()))]
-    fn h_s(&self, s: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 3] {
-        let s = s[0];
-        let wc = 2. * T::simd_pi() * self.freq_cutoff();
-        let s2 = s.powi(2);
-        let wc2 = wc.powi(2);
-        let denom = s2 + 2. * self.r * wc * s + wc2;
-        let hp = s2 / denom;
-        let bp = 2. * self.r * wc * s / denom;
-        let lp = wc2 / denom;
-        [lp, bp, hp]
+impl<T: Scalar, S: Saturator<T>> DspAnalysis<1, 3> for Svf<T, S> {
+    #[replace_float_literals(T::from_f64(literal))]
+    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [Complex<Self::Sample>; 3] {
+        let omega_c = samplerate * self.fc;
+        let x0 = z + Complex::one();
+        let x1 = x0.powi(2)*omega_c.simd_powi(2);
+        let x2 = z - Complex::one();
+        let x3 = x2.powi(2)*4.0*samplerate.simd_powi(2);
+        let x4 = x0 * x2 * samplerate*omega_c;
+        let x5 = Complex::<T>::one() / (-x4*4.0*self.r + x1 + x3);
+        [x1*x5, -x4*x5*2.0, x3*x5]
     }
 }
 
