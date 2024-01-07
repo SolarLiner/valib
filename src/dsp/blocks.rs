@@ -359,6 +359,14 @@ where P: DSP<N, N>
     }
 }
 
+impl<P: DspAnalysis<N, N>, const N: usize> DspAnalysis<N, N> for Feedback<P, N> {
+    #[replace_float_literals(Complex::from(P::Sample::from_f64(literal)))]
+    fn h_z(&self, z: [Complex<Self::Sample>; N]) -> [Complex<Self::Sample>; N] {
+        let hs = self.inner.h_z(z);
+        std::array::from_fn(|i| 1.0 / (1.0 - hs[i] * self.mix[i]))
+    }
+}
+
 impl<P: DSP<N, N>, const N: usize> Feedback<P, N> {
     pub fn new(dsp: P) -> Self {
         Self {
