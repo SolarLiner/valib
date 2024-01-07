@@ -1,6 +1,9 @@
 [svfmixer]
 name = "SVF Mixer"
 
+[ladder]
+name = "Ladder Filter"
+
 [dirty-biquad]
 name = "Dirty Biquad"
 

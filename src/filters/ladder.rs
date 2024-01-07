@@ -15,13 +15,14 @@ pub trait LadderTopology<T>: Default {
 pub struct Ideal;
 
 impl<T: Scalar> LadderTopology<T> for Ideal {
+    #[replace_float_literals(T::from_f64(literal))]
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let yd = SVector::from([
             y[0] - y0,
             y[1] - y[0],
             y[2] - y[1],
             y[3] - y[2],
-        ]);
+        ]).map(|x| x.simd_clamp(-1.0, 1.0));
         yd * (-wc) + y
     }
 }
@@ -32,10 +33,10 @@ pub struct OTA<S>([S; 4]);
 impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for OTA<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let yd = SVector::from([
-            y0 - y[0],
-            y[0] - y[1],
-            y[1] - y[2],
-            y[2] - y[3],
+            y[0] - y0,
+            y[1] - y[0],
+            y[2] - y[1],
+            y[3] - y[2],
         ]);
         let sout = SVector::from_fn(|i, _| self.0[i].saturate(yd[i]));
         for (i, s) in self.0.iter_mut().enumerate() {
@@ -52,7 +53,7 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let y0sat = self.0[4].saturate(y0);
         let ysat = SVector::<_, 4>::from_fn(|i, _| self.0[i].saturate(y[0]));
-        let ysat = ysat * wc;
+        let ysat = ysat * (-wc);
         let yd = SVector::from([
             ysat[0] - y0sat,
             ysat[1] - ysat[0],
