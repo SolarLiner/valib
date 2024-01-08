@@ -3,14 +3,14 @@ name: Automated Builds
 on:
   push:
     branches:
-      - main
+      - master
     tags:
       # Run when pushing version tags, since otherwise it's impossible to
       # restart a successful build after pushing a tag
       - '*.*.*'
   pull_request:
     branches:
-      - main
+      - master
 
 defaults:
   run:
