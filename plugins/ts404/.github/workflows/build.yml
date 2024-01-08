@@ -63,6 +63,8 @@ jobs:
           # The macOS AArch64/universal build is done from an x86_64 macOS CI
           # runner, so it needs to be cross compiled
           target: ${{ matrix.cross-target }}
+      - name: Install cargo-make
+        run: cargo install --force cargo-make
       - name: Setup Python
         uses: actions/setup-python@v5.0.0
         with:
