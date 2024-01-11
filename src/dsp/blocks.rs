@@ -88,7 +88,10 @@ pub struct P1<T> {
     s: T,
 }
 
-impl<T: Scalar> DspAnalysis<1, 3> for P1<T> where Self::Sample: nalgebra::RealField {
+impl<T: Scalar> DspAnalysis<1, 3> for P1<T>
+where
+    Self::Sample: nalgebra::RealField,
+{
     #[replace_float_literals(Complex::from_real(<T as Scalar>::from_f64(literal)))]
     fn h_z(
         &self,
@@ -275,7 +278,11 @@ impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
 where
     P: DspAnalysis<N, N>,
 {
-    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; N]; N] {
+    fn h_z(
+        &self,
+        samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; N]; N] {
         self.0.iter().fold([[Complex::one(); N]; N], |acc, f| {
             let ret = f.h_z(samplerate, z);
             std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] * ret[i][j]))
@@ -361,7 +368,11 @@ impl<P, const I: usize, const O: usize, const N: usize> DspAnalysis<I, O> for Pa
 where
     P: DspAnalysis<I, O>,
 {
-    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
+    fn h_z(
+        &self,
+        samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; O]; I] {
         self.0.iter().fold([[Complex::zero(); O]; I], |acc, f| {
             let ret = f.h_z(samplerate, z);
             std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] + ret[i][j]))

@@ -27,8 +27,8 @@ pub fn nr_step<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     input: &SVector<T, N>,
 ) -> Option<SVector<T, N>>
-    where
-        T::Element: Float,
+where
+    T::Element: Float,
 {
     let ret = eq.j_inv(input).map(|jinv| jinv * eq.eval(input))?;
     let all_finite = ret
@@ -49,8 +49,8 @@ pub fn newton_rhapson_steps<T: Scalar, const N: usize>(
     value: &mut SVector<T, N>,
     iter: usize,
 ) -> T
-    where
-        T::Element: Float,
+where
+    T::Element: Float,
 {
     let Some(mut step) = nr_step(eq, value) else {
         return T::zero();
@@ -74,8 +74,8 @@ pub fn newton_rhapson_tolerance<T: Scalar, const N: usize>(
     value: &mut SVector<T, N>,
     tol: T,
 ) -> usize
-    where
-        T::Element: Float,
+where
+    T::Element: Float,
 {
     let mut i = 0;
 
@@ -119,7 +119,10 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
 }
 
 #[replace_float_literals(Complex::from(T::from_f64(literal)))]
-pub fn freq_to_z<T: Scalar>(samplerate: T, f: T) -> Complex<T> where Complex<T>: SimdComplexField {
+pub fn freq_to_z<T: Scalar>(samplerate: T, f: T) -> Complex<T>
+where
+    Complex<T>: SimdComplexField,
+{
     let jw = Complex::new(T::zero(), T::simd_two_pi() * f / samplerate);
     jw.simd_exp()
     // let fs = Complex::from(samplerate);

@@ -3,7 +3,7 @@ use std::{marker::PhantomData, ops::Range};
 use num_traits::{FromPrimitive, Num};
 use numeric_literals::replace_float_literals;
 
-use crate::{Scalar, SimdCast, simd::SimdPartialOrd};
+use crate::{simd::SimdPartialOrd, Scalar, SimdCast};
 
 use super::interpolation::{Interpolate, Linear};
 

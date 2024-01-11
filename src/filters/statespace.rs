@@ -1,6 +1,6 @@
 use std::f64::NAN;
 
-use nalgebra::{Complex, SimdComplexField, SMatrix, SVector};
+use nalgebra::{Complex, SMatrix, SVector, SimdComplexField};
 use num_traits::{One, Zero};
 
 use crate::dsp::{analysis::DspAnalysis, DSP};
@@ -107,8 +107,8 @@ mod tests {
     use numeric_literals::replace_float_literals;
 
     use crate::dsp::{
-        DSPBlock,
         utils::{slice_to_mono_block, slice_to_mono_block_mut},
+        DSPBlock,
     };
 
     use super::*;

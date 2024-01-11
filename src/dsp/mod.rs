@@ -9,9 +9,9 @@ pub mod blocks;
 pub mod utils;
 
 /// DSP trait. This is the main abstraction of the whole library.
-/// 
+///
 /// Implementors of this trait are processes that work on a per-sample basis.
-/// 
+///
 /// Multichannel I/O is supported, and is determined by the `I` and `O` const generics.
 /// It's up to each implementor to document what the inputs and outputs mean.
 /// There are no restrictions on the number of input or output channels in and of itself.
@@ -95,7 +95,7 @@ where
 }
 
 /// Adapt a [`DSPBlock`] instance to be able to used as a [`DSP`].
-/// 
+///
 /// This introduces as much latency as the internal buffer size is.
 /// The internal buffer size is determined by either the max accepted buffer size of the inner instance, or is set
 /// to 64 samples by default.
@@ -195,13 +195,17 @@ where
 }
 
 impl<P, const I: usize, const O: usize> DspAnalysis<I, O> for PerSampleBlockAdapter<P, I, O>
-where P: DspAnalysis<I, O>
+where
+    P: DspAnalysis<I, O>,
 {
-    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
+    fn h_z(
+        &self,
+        samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; O]; I] {
         self.inner.h_z(samplerate, z)
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -222,12 +226,16 @@ mod tests {
         impl<T: Scalar> DSPBlock<0, 1> for Echo<T> {
             type Sample = T;
 
-            fn process_block(&mut self, inputs: &[[Self::Sample; 0]], outputs: &mut [[Self::Sample; 1]]) {
+            fn process_block(
+                &mut self,
+                inputs: &[[Self::Sample; 0]],
+                outputs: &mut [[Self::Sample; 1]],
+            ) {
                 let len = inputs.len();
                 assert_eq!(len, outputs.len());
 
                 for (i, [out]) in outputs.iter_mut().enumerate() {
-                    *out = T::from_f64((i+1) as _);
+                    *out = T::from_f64((i + 1) as _);
                 }
             }
         }

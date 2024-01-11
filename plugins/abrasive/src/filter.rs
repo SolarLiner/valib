@@ -4,12 +4,12 @@ use nih_plug::prelude::*;
 use numeric_literals::replace_float_literals;
 use realfft::num_complex::Complex;
 
-use valib::{dsp::analysis::DspAnalysis, math::freq_to_z, saturators::clippers::DiodeClipperModel};
 use valib::dsp::DSP;
 use valib::filters::svf::Svf;
 use valib::saturators::{Dynamic, Saturator};
-use valib::Scalar;
 use valib::simd::SimdValue;
+use valib::Scalar;
+use valib::{dsp::analysis::DspAnalysis, math::freq_to_z, saturators::clippers::DiodeClipperModel};
 
 use crate::Sample;
 

@@ -1,6 +1,10 @@
-use crate::{Scalar, dsp::DSP, oscillators::Phasor, util::{semitone_to_ratio, midi_to_freq}};
+use crate::{
+    dsp::DSP,
+    oscillators::Phasor,
+    util::{midi_to_freq, semitone_to_ratio},
+    Scalar,
+};
 use num_traits::{One, Zero};
-
 
 #[allow(unused_variables)]
 pub trait VoiceManager<const N: usize>: DSP<0, N> {
@@ -9,7 +13,7 @@ pub trait VoiceManager<const N: usize>: DSP<0, N> {
     fn note_off(&mut self, midi_note: u8, velocity: f32);
     fn choke(&mut self, midi_note: u8);
     fn panic(&mut self);
-    
+
     // Channel modulation
     fn pitch_bend(&mut self, amount: f32) {}
     fn aftertouch(&mut self, amount: f32) {}
@@ -46,7 +50,10 @@ pub struct VoiceController<V: Voice> {
     pan: f32,
 }
 
-impl<V: Voice> DSP<2, 1> for VoiceController<V> where V::Sample: Scalar {
+impl<V: Voice> DSP<2, 1> for VoiceController<V>
+where
+    V::Sample: Scalar,
+{
     type Sample = V::Sample;
 
     fn latency(&self) -> usize {
@@ -60,24 +67,40 @@ impl<V: Voice> DSP<2, 1> for VoiceController<V> where V::Sample: Scalar {
     fn process(&mut self, [bend_st, aftertouch]: [Self::Sample; 2]) -> [Self::Sample; 1] {
         let freq = self.center_freq * semitone_to_ratio(self.glide_semi);
         let freq = Self::Sample::from_f64(freq as _) * semitone_to_ratio(bend_st);
-        let [osc] = self.voice.process([freq, if self.gate { Self::Sample::one()} else { Self::Sample::zero() }, Self::Sample::from_f64(self.pressure as _) + aftertouch, Self::Sample::from_f64((self.velocity *self.gain) as _), Self::Sample::from_f64(self.pan as _)]);
+        let [osc] = self.voice.process([
+            freq,
+            if self.gate {
+                Self::Sample::one()
+            } else {
+                Self::Sample::zero()
+            },
+            Self::Sample::from_f64(self.pressure as _) + aftertouch,
+            Self::Sample::from_f64((self.velocity * self.gain) as _),
+            Self::Sample::from_f64(self.pan as _),
+        ]);
         [osc * Self::Sample::from_f64(self.gain as f64)]
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Monophonic<V: Voice> { voice: Option<VoiceController<V>>, aftertouch: f32 }
+pub struct Monophonic<V: Voice> {
+    voice: Option<VoiceController<V>>,
+    aftertouch: f32,
+}
 
 impl<V: Voice> DSP<0, 1> for Monophonic<V> {
     type Sample = V::Sample;
-    
+
     fn reset(&mut self) {
         self.voice.take();
     }
 
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
         if self.voice.as_ref().is_some_and(|v| !v.voice.done()) {
-            self.voice.as_mut().unwrap().process([Self::Sample::zero(), Self::Sample::from_f64(self.aftertouch as _)])
+            self.voice.as_mut().unwrap().process([
+                Self::Sample::zero(),
+                Self::Sample::from_f64(self.aftertouch as _),
+            ])
         } else if self.voice.is_some() {
             self.voice.take();
             [Self::Sample::zero()]
@@ -120,7 +143,11 @@ impl<V: Voice> VoiceManager<1> for Monophonic<V> {
     }
 
     fn choke(&mut self, midi_note: u8) {
-        if self.voice.as_ref().is_some_and(|v| v.midi_note == midi_note) {
+        if self
+            .voice
+            .as_ref()
+            .is_some_and(|v| v.midi_note == midi_note)
+        {
             self.voice.take();
         }
     }

@@ -1,4 +1,4 @@
-use std::sync::{Arc, atomic::Ordering};
+use std::sync::{atomic::Ordering, Arc};
 
 use atomic_float::AtomicF32;
 use nih_plug::prelude::*;
@@ -7,8 +7,8 @@ use realfft::num_complex::Complex;
 
 use valib::{filters::svf::Svf, saturators::Linear};
 
-use crate::AbrasiveParams;
 use crate::filter::FilterParams;
+use crate::AbrasiveParams;
 
 #[derive(Debug, Clone)]
 struct EqData<const N: usize> {
@@ -54,26 +54,21 @@ impl<const N: usize> View for EqData<N> {
                 .map(|i| {
                     let ftype = self.params.params[i].ftype.value();
                     let scale = if self.modulated {
-                            util::db_to_gain(
-                                self.params.scale.smoothed.previous_value()
-                                    * util::gain_to_db(
-                                        self.params.params[i].amp.smoothed.previous_value(),
-                                    ),
-                            )
+                        util::db_to_gain(
+                            self.params.scale.smoothed.previous_value()
+                                * util::gain_to_db(
+                                    self.params.params[i].amp.smoothed.previous_value(),
+                                ),
+                        )
                     } else {
-                            util::db_to_gain(
-                                self.params.scale.unmodulated_plain_value()
-                                    * util::gain_to_db(
-                                        self.params.params[i].amp.unmodulated_plain_value(),
-                                    ),
-                            )
+                        util::db_to_gain(
+                            self.params.scale.unmodulated_plain_value()
+                                * util::gain_to_db(
+                                    self.params.params[i].amp.unmodulated_plain_value(),
+                                ),
+                        )
                     };
-                    ftype.freq_response(
-                        samplerate,
-                        &filters[i],
-                        scale,
-                        freq,
-                    )
+                    ftype.freq_response(samplerate, &filters[i], scale, freq)
                 })
                 .product::<Complex<f32>>()
                 .norm();

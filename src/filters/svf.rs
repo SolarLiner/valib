@@ -6,12 +6,12 @@ use nalgebra::Complex;
 use num_traits::One;
 use numeric_literals::replace_float_literals;
 
+use crate::dsp::DSP;
 use crate::{
     dsp::analysis::DspAnalysis,
     saturators::{Linear, Saturator},
     Scalar,
 };
-use crate::dsp::DSP;
 
 /// SVF topology filter, with optional non-linearities.
 #[derive(Debug, Copy, Clone)]
@@ -149,8 +149,8 @@ mod tests {
     #[test]
     fn test_svf_hz() {
         let filter = Svf::<_, Linear>::new(1024.0, 10.0, 0.5);
-        let hz: [_; 512] =
-            std::array::from_fn(|i| i as f64).map(|f| filter.freq_response(1024.0, f)[0].map(|c| c.abs()));
+        let hz: [_; 512] = std::array::from_fn(|i| i as f64)
+            .map(|f| filter.freq_response(1024.0, f)[0].map(|c| c.abs()));
         insta::assert_csv_snapshot!(&hz as &[_], { "[]" => insta::rounded_redaction(3)})
     }
 }

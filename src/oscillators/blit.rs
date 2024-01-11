@@ -62,7 +62,11 @@ impl<T: Scalar> Blit<T> {
 
 /// BLIT sawtooth oscillator.
 #[derive(Debug, Clone, Copy)]
-pub struct Sawtooth<T> { blit: Blit<T>, integrator_state: T, dc: T }
+pub struct Sawtooth<T> {
+    blit: Blit<T>,
+    integrator_state: T,
+    dc: T,
+}
 
 impl<T: Scalar> DSP<0, 1> for Sawtooth<T> {
     type Sample = T;

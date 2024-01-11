@@ -3,11 +3,12 @@
 use nalgebra::Complex;
 use numeric_literals::replace_float_literals;
 
-use crate::{
-    saturators::{Dynamic, Saturator}, Scalar,
-};
 use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::DSP;
+use crate::{
+    saturators::{Dynamic, Saturator},
+    Scalar,
+};
 
 /// Biquad struct in Transposed Direct Form II. Optionally, a [`Saturator`](crate::saturators::Saturator) instance can be used
 /// to apply waveshaping to the internal states.
@@ -217,7 +218,7 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 1> for Biquad<T, S> {
         let in2 = x * self.b[2] + self.sats[1].saturate(in0 / 10.) * 10. * self.na[1];
         self.s = [in1, in2];
 
-        for (s,y) in self.sats.iter_mut().zip(s_out.into_iter()) {
+        for (s, y) in self.sats.iter_mut().zip(s_out.into_iter()) {
             s.update_state(in0 / 10., y);
         }
         [in0]
@@ -228,7 +229,11 @@ impl<T: Scalar, S> DspAnalysis<1, 1> for Biquad<T, S>
 where
     Self: DSP<1, 1, Sample = T>,
 {
-    fn h_z(&self, _samplerate: Self::Sample, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
+    fn h_z(
+        &self,
+        _samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; 1]; 1] {
         let num = z.powi(-1).scale(self.b[1]) + z.powi(-2).scale(self.b[2]) + self.b[0];
         let den = z.powi(-1).scale(-self.na[0]) + z.powi(-2).scale(-self.na[1]) + T::one();
         [[num / den]]
@@ -237,7 +242,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::{dsp::{DSPBlock, utils::{slice_to_mono_block, slice_to_mono_block_mut}}, saturators::clippers::DiodeClipperModel};
+    use crate::{
+        dsp::{
+            utils::{slice_to_mono_block, slice_to_mono_block_mut},
+            DSPBlock,
+        },
+        saturators::clippers::DiodeClipperModel,
+    };
 
     use super::*;
 
@@ -245,11 +256,16 @@ mod tests {
     fn test_lp_diode_clipper() {
         let samplerate = 1000.0;
         let sat = DiodeClipperModel::new_led(2, 3);
-        let mut biquad = Biquad::lowpass(10.0/samplerate, 20.0).with_saturators(Dynamic::DiodeClipper(sat), Dynamic::DiodeClipper(sat));
+        let mut biquad = Biquad::lowpass(10.0 / samplerate, 20.0)
+            .with_saturators(Dynamic::DiodeClipper(sat), Dynamic::DiodeClipper(sat));
 
-        let input: [_; 512] = std::array::from_fn(|i| i as f64 / samplerate).map(|t| (10.0 * t).fract() * 2.0 - 1.0);
+        let input: [_; 512] =
+            std::array::from_fn(|i| i as f64 / samplerate).map(|t| (10.0 * t).fract() * 2.0 - 1.0);
         let mut output = [0.0; 512];
-        biquad.process_block(slice_to_mono_block(&input), slice_to_mono_block_mut(&mut output));
+        biquad.process_block(
+            slice_to_mono_block(&input),
+            slice_to_mono_block_mut(&mut output),
+        );
 
         insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(4) });
     }

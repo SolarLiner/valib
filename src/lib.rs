@@ -4,17 +4,17 @@ use simba::simd::{AutoSimd, SimdRealField, SimdValue};
 
 pub use simba::simd;
 
-pub mod filters;
 pub mod dsp;
+pub mod filters;
+pub mod fir;
 pub mod math;
 pub mod oscillators;
 pub mod oversample;
 pub mod saturators;
 pub mod util;
+pub mod voice;
 #[cfg(feature = "unstable-wdf")]
 pub mod wdf;
-pub mod fir;
-pub mod voice;
 
 pub trait Scalar: Copy + SimdRealField {
     fn from_f64(value: f64) -> Self;
@@ -24,7 +24,7 @@ pub trait Scalar: Copy + SimdRealField {
         std::array::from_fn(|i| self.extract(i))
     }
 
-    fn into_iter(self) -> impl ExactSizeIterator<Item=Self::Element> {
+    fn into_iter(self) -> impl ExactSizeIterator<Item = Self::Element> {
         (0..Self::lanes()).map(move |i| self.extract(i))
     }
 }
@@ -42,7 +42,7 @@ pub trait SimdCast<E>: SimdValue {
 
 impl<E1, E2, const N: usize> SimdCast<E2> for simba::simd::AutoSimd<[E1; N]>
 where
-    Self: SimdValue<Element=E1>,
+    Self: SimdValue<Element = E1>,
     simba::simd::AutoSimd<[E2; N]>: SimdValue<Element = E2>,
     E2: CastFrom<E1>,
 {
