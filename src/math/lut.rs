@@ -1,11 +1,11 @@
-use std::{marker::PhantomData, ops::Range};
+use std::ops::Range;
 
 use num_traits::{FromPrimitive, Num};
 use numeric_literals::replace_float_literals;
 
 use crate::{simd::SimdPartialOrd, Scalar, SimdCast};
 
-use super::interpolation::{Interpolate, Linear};
+use super::interpolation::Interpolate;
 
 #[derive(Debug, Clone)]
 pub struct Lut<T, const N: usize> {

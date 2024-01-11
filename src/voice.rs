@@ -1,6 +1,5 @@
 use crate::{
     dsp::DSP,
-    oscillators::Phasor,
     util::{midi_to_freq, semitone_to_ratio},
     Scalar,
 };

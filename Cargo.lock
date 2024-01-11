@@ -8,8 +8,7 @@ version = "0.1.0"
 dependencies = [
  "atomic_float",
  "morphorm",
- g"nalgebra",
-
+ "nalgebra",
  "nih_plug",
  "nih_plug_vizia",
  "numeric_literals",

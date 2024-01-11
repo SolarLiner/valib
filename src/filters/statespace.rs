@@ -1,7 +1,7 @@
 use std::f64::NAN;
 
 use nalgebra::{Complex, SMatrix, SVector, SimdComplexField};
-use num_traits::{One, Zero};
+use num_traits::Zero;
 
 use crate::dsp::{analysis::DspAnalysis, DSP};
 use crate::Scalar;

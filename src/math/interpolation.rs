@@ -6,8 +6,6 @@ use numeric_literals::replace_float_literals;
 
 use crate::Scalar;
 
-use super::lut::Lut;
-
 /// Interpolation trait. Interpolators implement function that connect discrete points into a continuous function.
 /// Functions can have any number of taps, both in the forward and bacward directions. It's up to the called to provide
 /// either actual existing points or extrapolated values when the indices would be out of bounds.
