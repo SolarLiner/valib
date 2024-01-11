@@ -197,7 +197,7 @@ where
 impl<P, const I: usize, const O: usize> DspAnalysis<I, O> for PerSampleBlockAdapter<P, I, O>
 where P: DspAnalysis<I, O>
 {
-    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [nalgebra::Complex<Self::Sample>; O] {
+    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
         self.inner.h_z(samplerate, z)
     }
 }

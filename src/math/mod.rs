@@ -1,13 +1,14 @@
-pub mod interpolation;
-pub mod lut;
-
 use std::hint;
 
-use nalgebra::{Dim, OVector, SMatrix, SVector};
+use nalgebra::{Complex, Dim, OVector, SMatrix, SVector};
 use num_traits::Float;
-use simba::simd::{SimdComplexField,SimdBool};
+use numeric_literals::replace_float_literals;
+use simba::simd::{SimdBool, SimdComplexField};
 
 use crate::Scalar;
+
+pub mod interpolation;
+pub mod lut;
 
 /// Trait desciring a multivariate root equation. Root equations are solved with numerical methods such as
 /// Newton-Rhapson, when linear algebra cannot be used (e.g. in the case of nonlinear systems).
@@ -25,9 +26,16 @@ pub trait RootEq<T, const N: usize> {
 pub fn nr_step<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     input: &SVector<T, N>,
-) -> Option<SVector<T, N>> where T::Element: Float {
+) -> Option<SVector<T, N>>
+    where
+        T::Element: Float,
+{
     let ret = eq.j_inv(input).map(|jinv| jinv * eq.eval(input))?;
-    let all_finite = ret.iter().copied().flat_map(|v| v.into_iter()).all(|v| v.is_finite());
+    let all_finite = ret
+        .iter()
+        .copied()
+        .flat_map(|v| v.into_iter())
+        .all(|v| v.is_finite());
 
     debug_assert!(all_finite);
 
@@ -40,7 +48,10 @@ pub fn newton_rhapson_steps<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
     iter: usize,
-) -> T where T::Element: Float {
+) -> T
+    where
+        T::Element: Float,
+{
     let Some(mut step) = nr_step(eq, value) else {
         return T::zero();
     };
@@ -62,7 +73,10 @@ pub fn newton_rhapson_tolerance<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
     tol: T,
-) -> usize where T::Element: Float {
+) -> usize
+    where
+        T::Element: Float,
+{
     let mut i = 0;
 
     while let Some(step) = nr_step(eq, value) {
@@ -88,7 +102,9 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
     value: &mut SVector<T, N>,
     tol: T,
     max_iter: usize,
-) where T::Element: Float {
+) where
+    T::Element: Float,
+{
     for _ in 0..max_iter {
         let Some(step) = nr_step(eq, value) else {
             break;
@@ -100,6 +116,15 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
         let changed = *value - step;
         *value = value.zip_map(&changed, |v, c| v.select(tgt, c));
     }
+}
+
+#[replace_float_literals(Complex::from(T::from_f64(literal)))]
+pub fn freq_to_z<T: Scalar>(samplerate: T, f: T) -> Complex<T> where Complex<T>: SimdComplexField {
+    let jw = Complex::new(T::zero(), T::simd_two_pi() * f / samplerate);
+    jw.simd_exp()
+    // let fs = Complex::from(samplerate);
+    // let ipif = Complex::new(T::zero(), T::simd_pi() * f);
+    // (fs + ipif) / (fs - ipif)
 }
 
 #[inline]
@@ -151,10 +176,16 @@ mod tests {
             }
 
             fn j_inv(&self, _: &SVector<f64, 1>) -> Option<SMatrix<f64, 1, 1>> {
-                Some(SVector::<_,1>::new(f64::NAN))
+                Some(SVector::<_, 1>::new(f64::NAN))
             }
         }
 
-        assert_eq!(0, newton_rhapson_tolerance(&Equ, &mut SVector::zeros(), 1e-4));
+        assert_eq!(
+            0,
+            newton_rhapson_tolerance(&Equ, &mut SVector::zeros(), 1e-4)
+        );
     }
+
+    #[test]
+    fn test_freq_to_z() {}
 }

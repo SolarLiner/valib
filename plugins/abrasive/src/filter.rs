@@ -1,19 +1,16 @@
 use std::sync::Arc;
 
-
 use nih_plug::prelude::*;
-
 use numeric_literals::replace_float_literals;
 use realfft::num_complex::Complex;
 
-use valib::{saturators::clippers::DiodeClipperModel, dsp::analog::DspAnalog};
-use valib::saturators::{Dynamic, Saturator};
-use valib::filters::svf::Svf;
-
-
+use valib::{dsp::analysis::DspAnalysis, math::freq_to_z, saturators::clippers::DiodeClipperModel};
 use valib::dsp::DSP;
+use valib::filters::svf::Svf;
+use valib::saturators::{Dynamic, Saturator};
 use valib::Scalar;
 use valib::simd::SimdValue;
+
 use crate::Sample;
 
 #[derive(Debug, Copy, Clone, Enum, Eq, PartialEq)]
@@ -31,15 +28,16 @@ pub enum FilterType {
 }
 
 impl FilterType {
-    #[replace_float_literals(Complex::from(T::from_f64(literal)))]
-    pub(crate) fn h_s<T: Scalar, S: Saturator<T>>(
+    #[replace_float_literals(Complex::from(< T as Scalar >::from_f64(literal)))]
+    pub(crate) fn h_z<T: Scalar + valib::simd::SimdRealField, S: Saturator<T>>(
         &self,
+        samplerate: T,
         filter: &Svf<T, S>,
         amp: <T as SimdValue>::Element,
-        jw: Complex<T>,
+        z: Complex<T>,
     ) -> Complex<T> {
         let amp = Complex::from(T::splat(amp));
-        let [lp, bp, hp] = filter.h_s([jw]);
+        let [[lp, bp, hp]] = filter.h_z(samplerate, z);
         match self {
             Self::Bypass => 1.0,
             Self::Lowpass => lp,
@@ -55,6 +53,16 @@ impl FilterType {
             Self::Lowshelf => 1. + lp * (amp - 1.),
             Self::Highshelf => 1. + hp * (amp - 1.),
         }
+    }
+
+    pub(crate) fn freq_response<T: Scalar + nalgebra::RealField, S: Saturator<T>>(
+        &self,
+        samplerate: T,
+        filter: &Svf<T, S>,
+        amp: <T as SimdValue>::Element,
+        f: T,
+    ) -> Complex<T> {
+        self.h_z(samplerate, filter, amp, freq_to_z(samplerate, f))
     }
 
     #[replace_float_literals(Sample::from_f64(literal))]
@@ -181,9 +189,17 @@ pub struct Filter {
     last_resclip: ResonanceClip,
 }
 
-impl DspAnalog<1, 1> for Filter {
-    fn h_s(&self, s: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 1] {
-        [self.params.ftype.value().h_s(&self.svf, self.scale, s[0])]
+impl DspAnalysis<1, 1> for Filter {
+    fn h_z(
+        &self,
+        samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; 1]; 1] {
+        [[self
+            .params
+            .ftype
+            .value()
+            .h_z(samplerate, &self.svf, self.scale, z)]]
     }
 }
 
@@ -201,14 +217,12 @@ impl DSP<1, 1> for Filter {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let mut x = x[0];
         self.update_coefficients_sample();
-        let amps = Sample::splat(util::db_to_gain(util::gain_to_db(self.params.amp.smoothed.next()) * self.scale));
+        let amps = Sample::splat(util::db_to_gain(
+            util::gain_to_db(self.params.amp.smoothed.next()) * self.scale,
+        ));
         let filter_out = self.svf.process([x]);
         let filter_out = std::array::from_fn(|i| self.clippers[i].saturate(filter_out[i]));
-        x = self
-            .params
-            .ftype
-            .value()
-            .mix(amps, x, filter_out);
+        x = self.params.ftype.value().mix(amps, x, filter_out);
         [x]
     }
 }

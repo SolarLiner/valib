@@ -20,11 +20,12 @@ keywords = ["virtual-analog", "audio", "plugin", "va-modeling", "dsp"]
 [workspace.dependencies]
 nih_plug = { git = "https://github.com/geom3trik/nih-plug.git", branch = "vizia-update" }
 nih_plug_vizia = { git = "https://github.com/geom3trik/nih-plug.git", branch = "vizia-update" }
+nalgebra = "0.32.3"
 
 
 [dependencies]
 az = "1.2.1"
-nalgebra = "0.32.3"
+nalgebra.workspace = true
 num-traits = "0.2.17"
 numeric_literals = "0.2.0"
 simba = { version = "0.8.1", features = ["wide"] }

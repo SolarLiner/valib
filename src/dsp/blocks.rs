@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use nalgebra::{Complex, SMatrix, SVector, ComplexField};
+use nalgebra::{Complex, ComplexField, SMatrix, SVector};
 use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
 
@@ -46,8 +46,8 @@ impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
         &self,
         _samplerate: Self::Sample,
         z: Complex<Self::Sample>,
-    ) -> [Complex<Self::Sample>; 1] {
-        [1. / 2. * (z + 1.) / (z - 1.)]
+    ) -> [[Complex<Self::Sample>; 1]; 1] {
+        [[1. / 2. * (z + 1.) / (z - 1.)]]
     }
 }
 
@@ -73,9 +73,9 @@ where
     fn h_z(
         &self,
         _samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [Complex<Self::Sample>; 1] {
-        [Complex::one()]
+        _z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; 1]; N] {
+        [[Complex::one()]; N]
     }
 }
 
@@ -94,11 +94,11 @@ impl<T: Scalar> DspAnalysis<1, 3> for P1<T> where Self::Sample: nalgebra::RealFi
         &self,
         _samplerate: Self::Sample,
         z: Complex<Self::Sample>,
-    ) -> [Complex<Self::Sample>; 3] {
+    ) -> [[Complex<Self::Sample>; 3]; 1] {
         let lp = (z - 1.0) / (z + 1.0) * self.fc / 2.0;
         let hp = 1.0 - lp;
         let ap = 2.0 * lp - 1.0;
-        [lp, hp, ap]
+        [[lp, hp, ap]]
     }
 }
 
@@ -275,10 +275,10 @@ impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
 where
     P: DspAnalysis<N, N>,
 {
-    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [Complex<Self::Sample>; N] {
-        self.0.iter().fold([Complex::one(); N], |acc, f| {
+    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; N]; N] {
+        self.0.iter().fold([[Complex::one(); N]; N], |acc, f| {
             let ret = f.h_z(samplerate, z);
-            std::array::from_fn(|i| acc[i] * ret[i])
+            std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] * ret[i][j]))
         })
     }
 }
@@ -361,10 +361,10 @@ impl<P, const I: usize, const O: usize, const N: usize> DspAnalysis<I, O> for Pa
 where
     P: DspAnalysis<I, O>,
 {
-    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [Complex<Self::Sample>; O] {
-        self.0.iter().fold([Complex::zero(); O], |acc, f| {
+    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
+        self.0.iter().fold([[Complex::zero(); O]; I], |acc, f| {
             let ret = f.h_z(samplerate, z);
-            std::array::from_fn(|i| acc[i] + ret[i])
+            std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] + ret[i][j]))
         })
     }
 }

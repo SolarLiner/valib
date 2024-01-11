@@ -1,9 +1,10 @@
 use std::f64::NAN;
 
+use nalgebra::{Complex, SimdComplexField, SMatrix, SVector};
+use num_traits::{One, Zero};
+
 use crate::dsp::{analysis::DspAnalysis, DSP};
 use crate::Scalar;
-use nalgebra::{Complex, SMatrix, SVector, SimdComplexField};
-use num_traits::{One, Zero};
 
 /// Linear discrete state-space method implementation with direct access to the state space matrices.
 #[derive(Debug, Copy, Clone)]
@@ -26,7 +27,7 @@ impl<
         &self,
         _samplerate: Self::Sample,
         z: Complex<Self::Sample>,
-    ) -> [Complex<Self::Sample>; OUT] {
+    ) -> [[Complex<Self::Sample>; OUT]; IN] {
         let a = self.a.map(Complex::from_simd_real);
         let b = self.b.map(Complex::from_simd_real);
         let c = self.c.map(Complex::from_simd_real);
@@ -39,8 +40,7 @@ impl<
         }
 
         let h = c * zia * b + d;
-        let u = SVector::from([Complex::one(); IN]);
-        (h * u).into()
+        h.into()
     }
 }
 
@@ -103,12 +103,13 @@ impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSP<IN, O
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{
-        utils::{slice_to_mono_block, slice_to_mono_block_mut},
-        DSPBlock,
-    };
     use nalgebra::ComplexField;
     use numeric_literals::replace_float_literals;
+
+    use crate::dsp::{
+        DSPBlock,
+        utils::{slice_to_mono_block, slice_to_mono_block_mut},
+    };
 
     use super::*;
 
@@ -153,7 +154,7 @@ mod tests {
     fn test_rc_filter_hz() {
         let filter = RC::new(0.25);
         let freq_response: [_; 1024] = std::array::from_fn(|i| i as f64 / 1024f64)
-            .map(|f| filter.0.freq_response(1024.0, f)[0].abs());
+            .map(|f| filter.0.freq_response(1024.0, f)[0][0].abs());
         insta::assert_csv_snapshot!(&freq_response as &[_], { "[]" => insta::rounded_redaction(3)})
     }
 }

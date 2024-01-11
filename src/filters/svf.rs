@@ -2,12 +2,14 @@
 //! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
 //! All references in this module, unless specified otherwise, are taken from this book.
 
-use nalgebra::{Complex};
+use nalgebra::Complex;
 use num_traits::One;
 use numeric_literals::replace_float_literals;
 
 use crate::{
-    saturators::{Linear, Saturator}, Scalar, dsp::analysis::DspAnalysis,
+    dsp::analysis::DspAnalysis,
+    saturators::{Linear, Saturator},
+    Scalar,
 };
 use crate::dsp::DSP;
 
@@ -54,15 +56,19 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
 
 impl<T: Scalar, S: Saturator<T>> DspAnalysis<1, 3> for Svf<T, S> {
     #[replace_float_literals(T::from_f64(literal))]
-    fn h_z(&self, samplerate: Self::Sample, z: Complex<Self::Sample>) -> [Complex<Self::Sample>; 3] {
+    fn h_z(
+        &self,
+        samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; 3]; 1] {
         let omega_c = samplerate * self.fc;
         let x0 = z + Complex::one();
-        let x1 = x0.powi(2)*omega_c.simd_powi(2);
+        let x1 = x0.powi(2) * omega_c.simd_powi(2);
         let x2 = z - Complex::one();
-        let x3 = x2.powi(2)*4.0*samplerate.simd_powi(2);
-        let x4 = x0 * x2 * samplerate*omega_c;
-        let x5 = Complex::<T>::one() / (-x4*4.0*self.r + x1 + x3);
-        [x1*x5, -x4*x5*2.0, x3*x5]
+        let x3 = x2.powi(2) * 4.0 * samplerate.simd_powi(2);
+        let x4 = x0 * x2 * samplerate * omega_c;
+        let x5 = Complex::<T>::one() / (-x4 * 4.0 * self.r + x1 + x3);
+        [[x1 * x5, -x4 * x5 * 2.0, x3 * x5]]
     }
 }
 
@@ -131,5 +137,20 @@ impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
     pub fn with_saturators(mut self, s1: S, s2: S) -> Self {
         self.set_saturators(s1, s2);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nalgebra::ComplexField;
+
+    use super::*;
+
+    #[test]
+    fn test_svf_hz() {
+        let filter = Svf::<_, Linear>::new(1024.0, 10.0, 0.5);
+        let hz: [_; 512] =
+            std::array::from_fn(|i| i as f64).map(|f| filter.freq_response(1024.0, f)[0].map(|c| c.abs()));
+        insta::assert_csv_snapshot!(&hz as &[_], { "[]" => insta::rounded_redaction(3)})
     }
 }

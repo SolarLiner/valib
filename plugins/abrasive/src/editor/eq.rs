@@ -1,15 +1,14 @@
-use std::f32::consts::TAU;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{Arc, atomic::Ordering};
 
 use atomic_float::AtomicF32;
 use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::{context::DrawContext, prelude::*, vg};
 use realfft::num_complex::Complex;
 
-use valib::{saturators::Linear, filters::svf::Svf};
+use valib::{filters::svf::Svf, saturators::Linear};
 
-use crate::filter::FilterParams;
 use crate::AbrasiveParams;
+use crate::filter::FilterParams;
 
 #[derive(Debug, Clone)]
 struct EqData<const N: usize> {
@@ -27,7 +26,6 @@ impl<const N: usize> View for EqData<N> {
 
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
         let samplerate = self.samplerate.load(Ordering::Relaxed);
-
         let filters = if self.modulated {
             self.params.params.each_ref().map(|p| {
                 Svf::<f32, Linear>::new(
@@ -50,31 +48,31 @@ impl<const N: usize> View for EqData<N> {
         let mut path = vg::Path::new();
 
         for j in 0..4 * bounds.w as usize {
-            let i = j as f32 / 4.;
-            let x = i / bounds.w;
+            let x = j as f32 / (4. * bounds.w);
             let freq = self.frequency_range.unnormalize(x);
-            let jw = TAU * freq;
             let y = (0..N)
                 .map(|i| {
                     let ftype = self.params.params[i].ftype.value();
-                    ftype.h_s(
-                        &filters[i],
-                        if self.modulated {
+                    let scale = if self.modulated {
                             util::db_to_gain(
                                 self.params.scale.smoothed.previous_value()
                                     * util::gain_to_db(
                                         self.params.params[i].amp.smoothed.previous_value(),
                                     ),
                             )
-                        } else {
+                    } else {
                             util::db_to_gain(
                                 self.params.scale.unmodulated_plain_value()
                                     * util::gain_to_db(
                                         self.params.params[i].amp.unmodulated_plain_value(),
                                     ),
                             )
-                        },
-                        Complex::new(0.0, jw),
+                    };
+                    ftype.freq_response(
+                        samplerate,
+                        &filters[i],
+                        scale,
+                        freq,
                     )
                 })
                 .product::<Complex<f32>>()
