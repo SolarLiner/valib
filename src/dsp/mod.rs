@@ -7,34 +7,63 @@ pub mod analysis;
 pub mod blocks;
 pub mod utils;
 
+/// DSP trait. This is the main abstraction of the whole library.
+/// 
+/// Implementors of this trait are processes that work on a per-sample basis.
+/// 
+/// Multichannel I/O is supported, and is determined by the `I` and `O` const generics.
+/// It's up to each implementor to document what the inputs and outputs mean.
+/// There are no restrictions on the number of input or output channels in and of itself.
+/// Implementors can support multiple configurations of I/O for different setups.
 pub trait DSP<const I: usize, const O: usize> {
+    /// Type of the audio sample used by this DSP instance.
     type Sample: Scalar;
 
+    /// Process a single sample of audio. No assumptions are made on the contents of said sample,
+    /// so it can both work for working with audio data, but also control signals like frequency in Hertz
+    /// for oscillators, or gate signals that are actually either 0 or 1.
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O];
 
+    /// Report the latency of this DSP instance, that is the time, in samples, it takes for an input sample to be
+    /// output back.
     fn latency(&self) -> usize {
         0
     }
 
+    /// Reset this instance. Parameters should be kept, but any memory and derived state should be put back to a
+    /// well-known default value.
     fn reset(&mut self) {}
 }
 
+/// Trait for DSP processes that take in buffers of audio instead of single-samples.
+/// Documentation of [`DSP`] still applies in here; only the process method changes.
 pub trait DSPBlock<const I: usize, const O: usize> {
     type Sample: Scalar;
 
-    /// Caller must ensure inputs and outputs buffers are of the same size.
+    /// Process a block of audio. Implementors should take the values of inputs and produce a stream into outputs,
+    /// *as if* it was processed sample-by-sample. Ideally there should be no difference between a [`DSP`] and [`DSPBlock`]
+    /// implementation, when both can exist. Note that [`DSPBlock`] is blanket-implemented for all [`DSP`] implementors,
+    /// and as such, a simultaneous implementation of both onto one struct is impossible.
+    ///
+    /// Implementors should assume inputs and outputs are of the same length, as it is the caller's responsibility to make sure of that.
     fn process_block(&mut self, inputs: &[[Self::Sample; I]], outputs: &mut [[Self::Sample; O]]);
 
+    /// Define an optional maximum buffer size alloed by this [`DSPBlock`] instance. Callers into this instance must
+    /// then only provide buffers that are up to this size in samples.
     #[inline(always)]
     fn max_block_size(&self) -> Option<usize> {
         None
     }
 
+    /// Report the latency of this DSP instance, that is the time, in samples, it takes for an input sample to be
+    /// output back.
     #[inline(always)]
     fn latency(&self) -> usize {
         0
     }
 
+    /// Reset this instance. Parameters should be kept, but any memory and derived state should be put back to a
+    /// well-known default value.
     #[inline(always)]
     fn reset(&mut self) {}
 }
@@ -64,6 +93,11 @@ where
     }
 }
 
+/// Adapt a [`DSPBlock`] instance to be able to used as a [`DSP`].
+/// 
+/// This introduces as much latency as the internal buffer size is.
+/// The internal buffer size is determined by either the max accepted buffer size of the inner instance, or is set
+/// to 64 samples by default.
 pub struct PerSampleBlockAdapter<P, const I: usize, const O: usize>
 where
     P: DSPBlock<I, O>,

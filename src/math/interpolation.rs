@@ -6,10 +6,19 @@ use numeric_literals::replace_float_literals;
 
 use crate::Scalar;
 
+/// Interpolation trait. Interpolators implement function that connect discrete points into a continuous function.
+/// Functions can have any number of taps, both in the forward and bacward directions. It's up to the called to provide
+/// either actual existing points or extrapolated values when the indices would be out of bounds.
 pub trait Interpolate<T, const N: usize> {
+    /// Provide the relative indices needed to compute the interpolation
     fn rel_indices() -> [isize; N];
+
+    /// Interpolate a single point from the given taps (in the same order as the indices defined in [`rel_indices`]).
+    /// The t parameter is assumed to be in the 0..=1 range, and it's up to the caller to provide values in the valid range.
     fn interpolate(t: T, taps: [T; N]) -> T;
 
+    /// Interpolate a value from an entire slice, where the t parameter is the "floating index" into the slice
+    /// (meaning 3.5 is halfway between index 3 and 4 on the given slice).
     fn interpolate_on_slice(t: T, values: &[T]) -> T
     where
         T: Scalar + SimdCast<isize>,
@@ -28,6 +37,8 @@ pub trait Interpolate<T, const N: usize> {
         Self::interpolate(input_frac, taps)
     }
 
+    /// Interpolate one slice into another, where the output slice ends up containing the same "range" of values as
+    /// the input slice, but also automatically performs interpolation using this instance.
     fn interpolate_slice(output: &mut [T], input: &[T])
     where
         T: Scalar + SimdCast<isize>,
@@ -42,6 +53,7 @@ pub trait Interpolate<T, const N: usize> {
     }
 }
 
+/// Nearest-neighbor interpolation, where the neighbor is chosen based on how close it is to the floating index.
 pub struct Nearest;
 
 impl<T: SimdPartialOrd + FromPrimitive> Interpolate<T, 2> for Nearest {
@@ -54,6 +66,7 @@ impl<T: SimdPartialOrd + FromPrimitive> Interpolate<T, 2> for Nearest {
     }
 }
 
+/// Standard-issue linear interpolation algorithm.
 pub struct Linear;
 
 impl<T: Scalar> Interpolate<T, 2> for Linear {
@@ -66,6 +79,7 @@ impl<T: Scalar> Interpolate<T, 2> for Linear {
     }
 }
 
+/// Cubic algorithm, smoother than [`Linear`], but needs 4 taps instead of 2.
 pub struct Cubic;
 
 impl<T: Scalar> Interpolate<T, 4> for Cubic {
@@ -84,6 +98,7 @@ impl<T: Scalar> Interpolate<T, 4> for Cubic {
     }
 }
 
+/// 4-tap cubic Hermite spline interpolation
 pub struct Hermite;
 
 impl<T: Scalar> Interpolate<T, 4> for Hermite {

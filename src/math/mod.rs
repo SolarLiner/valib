@@ -8,12 +8,17 @@ use simba::simd::{SimdComplexField,SimdBool};
 
 use crate::Scalar;
 
+/// Trait desciring a multivariate root equation. Root equations are solved with numerical methods such as
+/// Newton-Rhapson, when linear algebra cannot be used (e.g. in the case of nonlinear systems).
 pub trait RootEq<T, const N: usize> {
+    /// Evaluate the equation at the given input vector.
     fn eval(&self, input: &SVector<T, N>) -> SVector<T, N>;
 
+    /// Evaluate the **inverse** jacobian of the equation. When the jacobian cannot be computed, [`None`] should be returned instead.
     fn j_inv(&self, input: &SVector<T, N>) -> Option<SMatrix<T, N, N>>;
 }
 
+/// Perform a single step of the Newton-Rhapson algorithm. This takes the inverse jabobian and computes the differential to the next step.
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline)]
 pub fn nr_step<T: Scalar, const N: usize>(
@@ -28,6 +33,7 @@ pub fn nr_step<T: Scalar, const N: usize>(
     all_finite.then_some(ret)
 }
 
+/// Solve the given root equation using Newton-Rhapson for a specified number of setps.
 #[inline]
 pub fn newton_rhapson_steps<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
@@ -48,6 +54,7 @@ pub fn newton_rhapson_steps<T: Scalar, const N: usize>(
     rms(&step)
 }
 
+/// Solve the given root equation using Newton-Rhapson until the RMS of the differential is lesser than the given tolerance.
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline(always))]
 pub fn newton_rhapson_tolerance<T: Scalar, const N: usize>(
@@ -71,6 +78,8 @@ pub fn newton_rhapson_tolerance<T: Scalar, const N: usize>(
     i
 }
 
+/// Solve the given root equation using Newton-Rhapson, until either the RMS of the differential is less than the
+/// given tolerances, or the specified max number of steps has been taken.
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline(always))]
 pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(

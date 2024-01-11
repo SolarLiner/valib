@@ -11,6 +11,7 @@ use crate::{
 use crate::dsp::analog::DspAnalog;
 use crate::dsp::DSP;
 
+/// SVF topology filter, with optional non-linearities.
 #[derive(Debug, Copy, Clone)]
 pub struct Svf<T, Mode = Linear> {
     s: [T; 2],
@@ -67,6 +68,8 @@ impl<T: Scalar, S: Saturator<T>> DspAnalog<1, 3> for Svf<T, S> {
 }
 
 impl<T: Scalar, C: Default> Svf<T, C> {
+    /// Create a new SVF filter with the provided sample rate, frequency cutoff (in Hz) and resonance amount
+    /// (in 0..1 for stable filters, otherwise use bounded nonlinearities).
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new(samplerate: T, fc: T, r: T) -> Self {
         let mut this = Self {
@@ -87,17 +90,20 @@ impl<T: Scalar, C: Default> Svf<T, C> {
         self.s.fill(T::zero());
     }
 
+    /// Set the samplerate this filter will be running at.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn set_samplerate(&mut self, samplerate: T) {
         self.w_step = T::simd_pi() / samplerate;
         self.update_coefficients();
     }
 
+    /// Set the new filter cutoff frequency (in Hz).
     pub fn set_cutoff(&mut self, freq: T) {
         self.fc = freq;
         self.update_coefficients();
     }
 
+    /// Set the resonance amount (in 0..1 for stable filters, otherwise use bounded nonlinearities).
     #[replace_float_literals(T::from_f64(literal))]
     pub fn set_r(&mut self, r: T) {
         self.r = 2. * r;
@@ -117,10 +123,12 @@ impl<T: Scalar, C: Default> Svf<T, C> {
 }
 
 impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
+    /// Apply these new saturators to this SVF instance, returning a new instance of it.
     pub fn set_saturators(&mut self, s1: S, s2: S) {
         self.sats = [s1, s2];
     }
 
+    /// Replace the saturators in this Biquad instance with the provided values.
     pub fn with_saturators(mut self, s1: S, s2: S) -> Self {
         self.set_saturators(s1, s2);
         self

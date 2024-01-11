@@ -6,8 +6,21 @@ use crate::dsp::DSP;
 use crate::Scalar;
 use crate::dsp::analog::DspAnalog;
 
+/// Trait for DSP structs that have a z-domain transfer function available.
+/// For processes with nonlinear methods, the transfer function can still be defined by
+/// linearizing the process, e.g. in filters, nonlinearities can be removed.
+/// 
+/// The goal of this trait is to provide an easy way to compute frequency responses of
+/// filters for end-user visual feedback and not to be scientifically accurate.
 pub trait DspAnalysis<const I: usize, const O: usize>: DSP<I, O> {
+    /// Discrete transfer function in the z-domain.
     fn h_z(&self, z: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O];
+
+    /// Frequency response of the filter, using the complex exponential transformation to
+    /// translate the input angular velocity into its z-domain position to pass into `h_z`.
+    /// 
+    /// This is provided in the trait to allow overrides where the frequency representation
+    /// is faster to compute than the full z-domain transfer function.
     fn freq_response(&self, jw: [Self::Sample; I]) -> [Complex<Self::Sample>; O]
         where
             Self::Sample: RealField,

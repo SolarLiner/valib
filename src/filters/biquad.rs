@@ -8,6 +8,8 @@ use numeric_literals::replace_float_literals;
 use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::DSP;
 
+/// Biquad struct in Transposed Direct Form II. Optionally, a [`Saturator`](crate::saturators::Saturator) instance can be used
+/// to apply waveshaping to the internal states.
 #[derive(Debug, Copy, Clone)]
 pub struct Biquad<T, S> {
     na: [T; 2],
@@ -17,11 +19,13 @@ pub struct Biquad<T, S> {
 }
 
 impl<T> Biquad<T, Dynamic<T>> {
+    /// Apply these new saturators to this Biquad instance, returning a new instance of it.
     pub fn with_saturators(mut self, a: Dynamic<T>, b: Dynamic<T>) -> Biquad<T, Dynamic<T>> {
         self.set_saturators(a, b);
         self
     }
 
+    /// Replace the saturators in this Biquad instance with the provided values.
     pub fn set_saturators(&mut self, a: Dynamic<T>, b: Dynamic<T>) {
         self.sats = [a, b];
     }
@@ -35,6 +39,7 @@ impl<T: Copy, S> Biquad<T, S> {
 }
 
 impl<T: Scalar, S: Default> Biquad<T, S> {
+    /// Create a new instance of a Biquad with the provided poles and zeros coefficients.
     pub fn new(b: [T; 3], a: [T; 2]) -> Self {
         Self {
             na: a.map(T::neg),
@@ -44,6 +49,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         }
     }
 
+    /// Create a lowpass with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn lowpass(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -60,6 +66,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a highpass with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn highpass(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -76,6 +83,9 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a bandpass with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
+    /// The resulting bandpass is normalized so that the maximum of the transfer function sits at 0 dB, making it
+    /// appear as having a sharper slope than it actually does.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn bandpass_peak0(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -93,6 +103,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a notch with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn notch(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -110,6 +121,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create an allpass with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn allpass(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -127,6 +139,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a peaking filter with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn peaking(fc: T, q: T, amp: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -144,6 +157,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a low shelf with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn lowshelf(fc: T, q: T, amp: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -166,6 +180,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a high shelf with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn highshelf(fc: T, q: T, amp: T) -> Self {
         let w0 = T::simd_two_pi() * fc;

@@ -8,6 +8,7 @@ use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::DSP;
 use crate::Scalar;
 
+/// "Bypass" struct, which simply forwards the input to the output.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Bypass<S>(PhantomData<S>);
 
@@ -151,10 +152,12 @@ series_tuple!(A, B, C, D, E, F);
 series_tuple!(A, B, C, D, E, F, G);
 series_tuple!(A, B, C, D, E, F, G, H);
 
+/// Specialized `Series` struct that doesn't restrict the I/O count of either DSP struct
 #[derive(Debug, Copy, Clone)]
 pub struct Series2<A, B, const INNER: usize>(A, PhantomData<[(); INNER]>, B);
 
 impl<A, B, const INNER: usize> Series2<A, B, INNER> {
+    /// Construct a new `Series2` instance, with each inner DSP instance given.
     pub const fn new<const I: usize, const O: usize>(a: A, b: B) -> Self
     where
         A: DSP<I, INNER>,
@@ -163,18 +166,22 @@ impl<A, B, const INNER: usize> Series2<A, B, INNER> {
         Self(a, PhantomData, b)
     }
 
+    /// Returns a reference to the first DSP instance, which processes the incoming audio first.
     pub const fn left(&self) -> &A {
         &self.0
     }
 
+    /// Returns a mutable reference to the first DSP instance, which processes the incoming audio first.
     pub fn left_mut(&mut self) -> &mut A {
         &mut self.0
     }
 
+    /// Returns a reference to the second DSP instance, which processes the incoming audio last.
     pub const fn right(&self) -> &B {
         &self.2
     }
 
+    /// Returns a mutable reference to the second DSP instance, which processes the incoming audio last.
     pub fn right_mut(&mut self) -> &mut B {
         &mut self.2
     }
@@ -304,8 +311,11 @@ where
     }
 }
 
+/// Mod matrix struct, with direct access to the summing matrix
 #[derive(Debug, Copy, Clone)]
 pub struct ModMatrix<T, const I: usize, const O: usize> {
+    /// Mod matrix weights, setup in column-major form to produce outputs from inputs with a single matrix-vector
+    /// multiplication.
     pub weights: SMatrix<T, O, I>,
 }
 
@@ -331,9 +341,13 @@ where
         std::array::from_fn(|i| res[i])
     }
 }
+
+/// Feedback adapter with a one-sample delay and integrated mixing and summing point.
 pub struct Feedback<P, const N: usize> where P: DSP<N, N> {
     memory: [P::Sample; N],
+    /// Inner DSP instance
     pub inner: P,
+    /// Mixing vector, which is lanewise-multiplied from the output and summed back to the input at the next sample.
     pub mix: [P::Sample; N],
 }
 
@@ -360,6 +374,7 @@ where P: DSP<N, N>
 }
 
 impl<P: DSP<N, N>, const N: usize> Feedback<P, N> {
+    /// Create a new Feedback adapter with the provider inner DSP instance. Sets the mix to 0 by default.
     pub fn new(dsp: P) -> Self {
         Self {
             memory: [P::Sample::from_f64(0.0); N],
@@ -368,6 +383,7 @@ impl<P: DSP<N, N>, const N: usize> Feedback<P, N> {
         }
     }
 
+    /// Unwrap this adapter and give back the inner DSP instance.
     pub fn into_inner(self) -> P {
         self.inner
     }

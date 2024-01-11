@@ -3,6 +3,7 @@ use num_traits::Zero;
 use crate::dsp::DSP;
 use crate::Scalar;
 
+/// Linear discrete state-space method implementation with direct access to the state space matrices.
 #[derive(Debug, Copy, Clone)]
 pub struct StateSpace<T: nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize> {
     pub a: SMatrix<T, STATE, STATE>,
@@ -13,6 +14,7 @@ pub struct StateSpace<T: nalgebra::Scalar, const IN: usize, const STATE: usize, 
 }
 
 impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT: usize> StateSpace<T, IN, STATE, OUT> {
+    /// Create a zero state-space system, which blocks all inputs.
     pub fn zeros() -> Self {
         Self {
             a: SMatrix::zeros(),
@@ -23,6 +25,7 @@ impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT:
         }
     }
 
+    /// Create a state-space system with the provided A, B, C and D matrices.
     pub fn new(a: SMatrix<T, STATE, STATE>, b: SMatrix<T, STATE, IN>, c: SMatrix<T, OUT, STATE>, d: SMatrix<T, OUT, IN>) -> Self {
         Self {
             a,
@@ -35,6 +38,8 @@ impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT:
 }
 
 impl<T: Copy + nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize> StateSpace<T, IN, STATE, OUT> {
+    /// Update the matrices of this state space instance by copying them from another instance.
+    /// This is useful to be able to reuse constructors as a mean to fully update the state space.
     pub fn update_matrices(&mut self, other: &Self) {
         self.a = other.a;
         self.b = other.b;

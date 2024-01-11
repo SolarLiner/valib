@@ -2,7 +2,7 @@ use numeric_literals::replace_float_literals;
 
 use crate::{dsp::DSP, Scalar};
 
-/// Raw BLIT output, to be passed to a leaky integrator or a full lowpass filter
+/// Raw Band-Limited Impulse Train output. To be fed to leaky integrators to reconstruct the oscillator shape.
 #[derive(Debug, Clone, Copy)]
 pub struct Blit<T> {
     p: T,
@@ -40,6 +40,7 @@ impl<T: Scalar> DSP<0, 1> for Blit<T> {
 }
 
 impl<T: Scalar> Blit<T> {
+    /// Construct a new BLIT with the given samplerate and oscillation frequency (in Hz).
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new(samplerate: T, freq: T) -> Self {
         let mut this = Self {
@@ -52,12 +53,14 @@ impl<T: Scalar> Blit<T> {
         this
     }
 
+    /// Set the samplerate and frequency (in Hz) of this instance.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn set_frequency(&mut self, samplerate: T, freq: T) {
         self.pmax = 0.5 * samplerate / freq;
     }
 }
 
+/// BLIT sawtooth oscillator.
 #[derive(Debug, Clone, Copy)]
 pub struct Sawtooth<T> { blit: Blit<T>, integrator_state: T, dc: T }
 
@@ -73,6 +76,7 @@ impl<T: Scalar> DSP<0, 1> for Sawtooth<T> {
 }
 
 impl<T: Scalar> Sawtooth<T> {
+    /// Create a new BLIT sawtooth wave oscillator, at the given samplerate with the given frequency (in Hz).
     pub fn new(samplerate: T, freq: T) -> Self {
         let blit = Blit::new(samplerate, freq);
         Self {
@@ -82,6 +86,7 @@ impl<T: Scalar> Sawtooth<T> {
         }
     }
 
+    /// Set the samplerate and frequency (in Hz) of this instance.
     pub fn set_frequency(&mut self, samplerate: T, freq: T) {
         self.dc = Self::get_dc(self.blit.pmax);
         self.blit.set_frequency(samplerate, freq);
@@ -93,6 +98,7 @@ impl<T: Scalar> Sawtooth<T> {
     }
 }
 
+/// BLIT pulse wave oscillator with variable pulse width modulation.
 #[derive(Debug, Clone, Copy)]
 pub struct Square<T> {
     blit_pos: Blit<T>,
@@ -116,6 +122,7 @@ impl<T: Scalar> DSP<0, 1> for Square<T> {
 }
 
 impl<T: Scalar> Square<T> {
+    /// Create a new BLIT pulse wave, at the given samplerate with the given frequency (in Hz) and pulse width (in 0..1)
     pub fn new(samplerate: T, freq: T, pw: T) -> Self {
         let blit = Blit::new(samplerate, freq);
         let mut this = Self {
@@ -128,6 +135,7 @@ impl<T: Scalar> Square<T> {
         this
     }
 
+    /// Sets the pulse width of this instance, in (0..1)
     #[replace_float_literals(T::from_f64(literal))]
     pub fn set_pulse_width(&mut self, pw: T) {
         let delta = pw - self.pw;
@@ -137,6 +145,7 @@ impl<T: Scalar> Square<T> {
         self.integrator_state += state_delta;
     }
 
+    /// Set the samplerate and frequency (in Hz) of this instance.
     pub fn set_frequency(&mut self, samplerate: T, freq: T) {
         self.blit_pos.set_frequency(samplerate, freq);
         self.blit_neg.set_frequency(samplerate, freq);
