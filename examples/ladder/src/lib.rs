@@ -203,7 +203,7 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        self.setup_filter(Sample::splat(buffer_config.sample_rate));
+        self.setup_filter(Sample::splat(buffer_config.sample_rate * OVERSAMPLE as f32));
         true
     }
 
@@ -217,7 +217,7 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let samplerate = Sample::splat(_context.transport().sample_rate);
+        let samplerate = Sample::splat(_context.transport().sample_rate * OVERSAMPLE as f32);
         self.setup_filter(samplerate);
 
         let mut drive = [0.; MAX_BUFFER_SIZE];

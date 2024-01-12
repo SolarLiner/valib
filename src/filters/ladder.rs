@@ -2,7 +2,7 @@
 //! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
 //! All references in this module, unless specified otherwise, are taken from this book.
 
-use crate::{saturators::{Saturator, Tanh}, Scalar, dsp::{DSP, analysis::DspAnalysis}};
+use crate::{saturators::{Saturator, Tanh}, Scalar, dsp::{DSP, analysis::DspAnalysis}, math::bilinear_prewarming_bounded};
 use nalgebra::{SVector, Complex, SimdComplexField};
 use numeric_literals::replace_float_literals;
 use std::{fmt, marker::PhantomData};
@@ -23,7 +23,7 @@ impl<T: Scalar> LadderTopology<T> for Ideal {
             y[2] - y[1],
             y[3] - y[2],
         ]).map(|x| x.simd_clamp(-1.0, 1.0));
-        yd * (-wc) + y
+        y - yd * wc
     }
 }
 
@@ -42,7 +42,7 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for OTA<S> {
         for (i, s) in self.0.iter_mut().enumerate() {
             s.update_state(yd[i], sout[i]);
         }
-        sout * (-wc) + y
+        y - sout * wc
     }
 }
 
@@ -51,16 +51,19 @@ pub struct Transistor<S>([S; 5]);
 
 impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
-        let y0sat = self.0[4].saturate(y0);
-        let ysat = SVector::<_, 4>::from_fn(|i, _| self.0[i].saturate(y[0]));
-        let ysat = ysat * (-wc);
+        let y0sat = wc * self.0[4].saturate(y0);
+        let ysat = SVector::<_, 4>::from_fn(|i, _| wc * self.0[i].saturate(y[0]));
         let yd = SVector::from([
             ysat[0] - y0sat,
             ysat[1] - ysat[0],
             ysat[2] - ysat[1],
             ysat[3] - ysat[2],
         ]);
-        yd + y
+        for (i, s) in self.0.iter_mut().enumerate() {
+            s.update_state(y[i], ysat[i]);
+        }
+        self.0[4].update_state(y0, y0sat);
+        y - yd
     }
 }
 
@@ -89,7 +92,8 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
 
     #[replace_float_literals(T::from_f64(literal))]
     pub fn set_cutoff(&mut self, samplerate: T, frequency: T) {
-        self.g = frequency / (2.0 * samplerate);
+        let wc = bilinear_prewarming_bounded(samplerate, T::simd_two_pi() * frequency);
+        self.g = wc / (2.0 * samplerate);
     }
 
     pub fn set_resonance(&mut self, k: T) {

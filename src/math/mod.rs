@@ -1,10 +1,11 @@
 pub mod interpolation;
 
-use std::hint;
+use std::{cmp::PartialOrd, hint};
 
 use nalgebra::{Dim, OVector, SMatrix, SVector};
 use num_traits::Float;
-use simba::simd::{SimdComplexField,SimdBool};
+use numeric_literals::replace_float_literals;
+use simba::simd::{SimdBool, SimdComplexField};
 
 use crate::Scalar;
 
@@ -19,9 +20,16 @@ pub trait RootEq<T, const N: usize> {
 pub fn nr_step<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     input: &SVector<T, N>,
-) -> Option<SVector<T, N>> where T::Element: Float {
+) -> Option<SVector<T, N>>
+where
+    T::Element: Float,
+{
     let ret = eq.j_inv(input).map(|jinv| jinv * eq.eval(input))?;
-    let all_finite = ret.iter().copied().flat_map(|v| v.into_iter()).all(|v| v.is_finite());
+    let all_finite = ret
+        .iter()
+        .copied()
+        .flat_map(|v| v.into_iter())
+        .all(|v| v.is_finite());
 
     debug_assert!(all_finite);
 
@@ -33,7 +41,10 @@ pub fn newton_rhapson_steps<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
     iter: usize,
-) -> T where T::Element: Float {
+) -> T
+where
+    T::Element: Float,
+{
     let Some(mut step) = nr_step(eq, value) else {
         return T::zero();
     };
@@ -54,7 +65,10 @@ pub fn newton_rhapson_tolerance<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
     tol: T,
-) -> usize where T::Element: Float {
+) -> usize
+where
+    T::Element: Float,
+{
     let mut i = 0;
 
     while let Some(step) = nr_step(eq, value) {
@@ -78,7 +92,9 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
     value: &mut SVector<T, N>,
     tol: T,
     max_iter: usize,
-) where T::Element: Float {
+) where
+    T::Element: Float,
+{
     for _ in 0..max_iter {
         let Some(step) = nr_step(eq, value) else {
             break;
@@ -98,6 +114,19 @@ where
     nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<T, D>,
 {
     value.map(|v| v.simd_powi(2)).sum().simd_sqrt()
+}
+
+#[replace_float_literals(T::from_f64(literal))]
+pub fn bilinear_prewarming<T: Scalar>(samplerate: T, wc: T) -> T {
+    2.0 * samplerate * T::simd_tan(wc / (2.0 * samplerate))
+}
+
+pub fn bilinear_prewarming_bounded<T: Scalar>(samplerate: T, wc: T) -> T {
+    let wmax = samplerate * T::simd_frac_pi_2();
+    wc.simd_lt(wmax).if_else(
+        || bilinear_prewarming(samplerate, wc),
+        || (wc * bilinear_prewarming(samplerate, wmax) / wmax),
+    )
 }
 
 #[cfg(test)]
@@ -141,10 +170,13 @@ mod tests {
             }
 
             fn j_inv(&self, _: &SVector<f64, 1>) -> Option<SMatrix<f64, 1, 1>> {
-                Some(SVector::<_,1>::new(f64::NAN))
+                Some(SVector::<_, 1>::new(f64::NAN))
             }
         }
 
-        assert_eq!(0, newton_rhapson_tolerance(&Equ, &mut SVector::zeros(), 1e-4));
+        assert_eq!(
+            0,
+            newton_rhapson_tolerance(&Equ, &mut SVector::zeros(), 1e-4)
+        );
     }
 }
