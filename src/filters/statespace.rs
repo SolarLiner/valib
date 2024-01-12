@@ -153,7 +153,7 @@ mod tests {
     #[test]
     fn test_rc_filter_hz() {
         let filter = RC::new(0.25);
-        let freq_response: [_; 1024] = std::array::from_fn(|i| i as f64 / 1024f64)
+        let freq_response: [_; 512] = std::array::from_fn(|i| i as f64)
             .map(|f| filter.0.freq_response(1024.0, f)[0][0].abs());
         insta::assert_csv_snapshot!(&freq_response as &[_], { "[]" => insta::rounded_redaction(3)})
     }

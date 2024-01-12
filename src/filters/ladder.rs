@@ -223,9 +223,10 @@ mod tests {
         #[values(Ideal, OTA([Tanh; 4]), Transistor([DiodeClipperModel::new_silicon(1, 1); 5]))]
         topology: Topo,
         #[values(false, true)] compensated: bool,
+        #[values(0.0, 0.1, 0.5, 1.0)] resonance: f64,
     ) {
         let mut filter =
-            Ladder::<f64, Ideal>::new(1024.0, 200.0, 2.0).with_topology::<Topo>(topology);
+            Ladder::<f64, Ideal>::new(1024.0, 200.0, resonance).with_topology::<Topo>(topology);
         filter.compensated = compensated;
         let mut input = [1.0; 1024];
         let mut output = [0.0; 1024];
@@ -239,10 +240,13 @@ mod tests {
     }
 
     #[rstest]
-    fn test_ladder_hz(#[values(false, true)] compensated: bool) {
-        let mut filter = Ladder::<_, Ideal>::new(1024.0, 200.0, 2.0);
+    fn test_ladder_hz(
+        #[values(false, true)] compensated: bool,
+        #[values(0.0, 0.1, 0.2, 0.5, 1.0)] resonance: f64,
+    ) {
+        let mut filter = Ladder::<_, Ideal>::new(1024.0, 200.0, resonance);
         filter.compensated = compensated;
-        let response: [_; 512] = std::array::from_fn(|i| i as f64 / 1024.0)
+        let response: [_; 512] = std::array::from_fn(|i| i as f64)
             .map(|f| filter.freq_response(1024.0, f)[0][0].simd_abs())
             .map(|x| 20.0 * x.log10());
 
