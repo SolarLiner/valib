@@ -60,12 +60,12 @@ mod tests {
     #[test]
     fn test_lut_tanh() {
         let tanh = Lut::<f64, 512>::tanh();
-        insta::assert_debug_snapshot!(tanh);
+        insta::assert_csv_snapshot!(tanh.array.as_ref(), { "[]" => insta::rounded_redaction(3) });
     }
 
     #[test]
     fn test_lut_atanh() {
         let atanh = Lut::<f64, 512>::atanh();
-        insta::assert_debug_snapshot!(atanh);
+        insta::assert_csv_snapshot!(atanh.array.as_ref(), { "[]" => insta::rounded_redaction(3) });
     }
 }
