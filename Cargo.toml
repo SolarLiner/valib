@@ -33,6 +33,7 @@ simba = { version = "0.8.1", features = ["wide"] }
 [dev-dependencies]
 csv = "1.1.6"
 insta = { version = "1.34.0", features = ["csv", "redactions"] }
+rstest = "0.18.2"
 serde = "*"
 
 [features]

@@ -151,6 +151,6 @@ mod tests {
         let filter = Svf::<_, Linear>::new(1024.0, 10.0, 0.5);
         let hz: [_; 512] = std::array::from_fn(|i| i as f64)
             .map(|f| filter.freq_response(1024.0, f)[0].map(|c| c.abs()));
-        insta::assert_csv_snapshot!(&hz as &[_], { "[]" => insta::rounded_redaction(3)})
+        insta::assert_csv_snapshot!(&hz as &[_], { "[][]" => insta::rounded_redaction(3)})
     }
 }

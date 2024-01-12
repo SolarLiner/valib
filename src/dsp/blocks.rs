@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 use nalgebra::{Complex, ComplexField, SMatrix, SVector};
 use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
+use simba::simd::{SimdComplexField, SimdRealField};
 
 use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::DSP;
@@ -92,7 +93,7 @@ impl<T: Scalar> DspAnalysis<1, 3> for P1<T>
 where
     Self::Sample: nalgebra::RealField,
 {
-    #[replace_float_literals(Complex::from_real(<T as Scalar>::from_f64(literal)))]
+    #[replace_float_literals(Complex::from_real(< T as Scalar >::from_f64(literal)))]
     fn h_z(
         &self,
         _samplerate: Self::Sample,
@@ -427,6 +428,13 @@ where
 impl<FF: DSP<N, N>, const N: usize> DSP<N, N> for Feedback<FF, (), N> {
     type Sample = FF::Sample;
 
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        let x = std::array::from_fn(|i| self.memory[i] * self.mix[i] + x[i]);
+        let y = self.feedforward.process(x);
+        self.memory = y;
+        y
+    }
+
     fn latency(&self) -> usize {
         self.feedforward.latency()
     }
@@ -434,21 +442,6 @@ impl<FF: DSP<N, N>, const N: usize> DSP<N, N> for Feedback<FF, (), N> {
     fn reset(&mut self) {
         self.memory.fill(Self::Sample::zero());
         self.feedforward.reset();
-    }
-
-    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        let x = std::array::from_fn(|i| self.memory[i] * self.mix[i] + x[i]);
-        let y = self.feedforward.process(x);
-        self.memory = y;
-        y
-    }
-}
-
-impl<P: DspAnalysis<N, N>, const N: usize> DspAnalysis<N, N> for Feedback<P, N> {
-    #[replace_float_literals(Complex::from(P::Sample::from_f64(literal)))]
-    fn h_z(&self, z: [Complex<Self::Sample>; N]) -> [Complex<Self::Sample>; N] {
-        let hs = self.inner.h_z(z);
-        std::array::from_fn(|i| 1.0 / (1.0 - hs[i] * self.mix[i]))
     }
 }
 
@@ -459,6 +452,14 @@ where
 {
     type Sample = FF::Sample;
 
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        let fb = self.feedback.process(self.memory);
+        let x = std::array::from_fn(|i| fb[i] * self.mix[i] + x[i]);
+        let y = self.feedforward.process(x);
+        self.memory = y;
+        y
+    }
+
     fn latency(&self) -> usize {
         self.feedforward.latency()
     }
@@ -467,14 +468,6 @@ where
         self.memory.fill(FB::Sample::from_f64(0.0));
         self.feedforward.reset();
         self.feedback.reset();
-    }
-
-    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        let fb = self.feedback.process(self.memory);
-        let x = std::array::from_fn(|i| fb[i] * self.mix[i] + x[i]);
-        let y = self.feedforward.process(x);
-        self.memory = y;
-        y
     }
 }
 

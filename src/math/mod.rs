@@ -125,9 +125,6 @@ where
 {
     let jw = Complex::new(T::zero(), T::simd_two_pi() * f / samplerate);
     jw.simd_exp()
-    // let fs = Complex::from(samplerate);
-    // let ipif = Complex::new(T::zero(), T::simd_pi() * f);
-    // (fs + ipif) / (fs - ipif)
 }
 
 #[inline]
