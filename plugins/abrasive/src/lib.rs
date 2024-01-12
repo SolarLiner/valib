@@ -197,8 +197,14 @@ impl Abrasive<NUM_BANDS> {
         for (_, mut block) in buffer.iter_blocks(BLOCK_SIZE) {
             let len = block.samples();
 
-            self.params.drive.smoothed.next_block_exact(&mut drive[..len]);
-            self.params.scale.smoothed.next_block_exact(&mut scale[..len]);
+            self.params
+                .drive
+                .smoothed
+                .next_block_exact(&mut drive[..len]);
+            self.params
+                .scale
+                .smoothed
+                .next_block_exact(&mut scale[..len]);
             let mut simd_input = [Sample::from_f64(0.0); BLOCK_SIZE];
             let mut simd_output = simd_input;
             for (i, mut samples) in block.iter_samples().enumerate() {

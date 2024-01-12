@@ -1,8 +1,12 @@
-use nalgebra::{SMatrix, SVector};
+use std::f64::NAN;
+
+use nalgebra::{Complex, SMatrix, SVector, SimdComplexField};
 use num_traits::Zero;
-use crate::dsp::DSP;
+
+use crate::dsp::{analysis::DspAnalysis, DSP};
 use crate::Scalar;
 
+/// Linear discrete state-space method implementation with direct access to the state space matrices.
 #[derive(Debug, Copy, Clone)]
 pub struct StateSpace<T: nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize> {
     pub a: SMatrix<T, STATE, STATE>,
@@ -12,7 +16,38 @@ pub struct StateSpace<T: nalgebra::Scalar, const IN: usize, const STATE: usize, 
     state: SVector<T, STATE>,
 }
 
-impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT: usize> StateSpace<T, IN, STATE, OUT> {
+impl<
+        T: Copy + Scalar + nalgebra::RealField,
+        const IN: usize,
+        const STATE: usize,
+        const OUT: usize,
+    > DspAnalysis<IN, OUT> for StateSpace<T, IN, STATE, OUT>
+{
+    fn h_z(
+        &self,
+        _samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; OUT]; IN] {
+        let a = self.a.map(Complex::from_simd_real);
+        let b = self.b.map(Complex::from_simd_real);
+        let c = self.c.map(Complex::from_simd_real);
+        let d = self.d.map(Complex::from_simd_real);
+        let zi = SMatrix::<_, STATE, STATE>::identity() * z;
+        let mut zia = zi - a;
+        if !zia.try_inverse_mut() {
+            zia.iter_mut()
+                .for_each(|v| *v = Complex::from_simd_real(<T as Scalar>::from_f64(NAN)));
+        }
+
+        let h = c * zia * b + d;
+        h.into()
+    }
+}
+
+impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT: usize>
+    StateSpace<T, IN, STATE, OUT>
+{
+    /// Create a zero state-space system, which blocks all inputs.
     pub fn zeros() -> Self {
         Self {
             a: SMatrix::zeros(),
@@ -23,7 +58,13 @@ impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT:
         }
     }
 
-    pub fn new(a: SMatrix<T, STATE, STATE>, b: SMatrix<T, STATE, IN>, c: SMatrix<T, OUT, STATE>, d: SMatrix<T, OUT, IN>) -> Self {
+    /// Create a state-space system with the provided A, B, C and D matrices.
+    pub fn new(
+        a: SMatrix<T, STATE, STATE>,
+        b: SMatrix<T, STATE, IN>,
+        c: SMatrix<T, OUT, STATE>,
+        d: SMatrix<T, OUT, IN>,
+    ) -> Self {
         Self {
             a,
             b,
@@ -34,7 +75,11 @@ impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT:
     }
 }
 
-impl<T: Copy + nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize> StateSpace<T, IN, STATE, OUT> {
+impl<T: Copy + nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize>
+    StateSpace<T, IN, STATE, OUT>
+{
+    /// Update the matrices of this state space instance by copying them from another instance.
+    /// This is useful to be able to reuse constructors as a mean to fully update the state space.
     pub fn update_matrices(&mut self, other: &Self) {
         self.a = other.a;
         self.b = other.b;
@@ -43,7 +88,9 @@ impl<T: Copy + nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT:
     }
 }
 
-impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSP<IN, OUT> for StateSpace<T, IN, STATE, OUT> {
+impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSP<IN, OUT>
+    for StateSpace<T, IN, STATE, OUT>
+{
     type Sample = T;
 
     fn process(&mut self, x: [Self::Sample; IN]) -> [Self::Sample; OUT] {
@@ -56,8 +103,13 @@ impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSP<IN, O
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::ComplexField;
     use numeric_literals::replace_float_literals;
-    use crate::dsp::{DSPBlock, utils::{slice_to_mono_block, slice_to_mono_block_mut}};
+
+    use crate::dsp::{
+        utils::{slice_to_mono_block, slice_to_mono_block_mut},
+        DSPBlock,
+    };
 
     use super::*;
 
@@ -76,9 +128,9 @@ mod tests {
         fn new(fc: T) -> Self {
             let new = SMatrix::<_, 1, 1>::new;
             Self(StateSpace {
-                a: new(-(fc-2.0)/(fc+2.0)),
+                a: new(-(fc - 2.0) / (fc + 2.0)),
                 b: new(1.0),
-                c: new(-fc*(fc-2.0)/(fc+2.0).simd_powi(2) + fc/(fc+2.0)),
+                c: new(-fc * (fc - 2.0) / (fc + 2.0).simd_powi(2) + fc / (fc + 2.0)),
                 d: new(fc / (fc + 2.0)),
                 ..StateSpace::zeros()
             })
@@ -91,7 +143,18 @@ mod tests {
         let mut input = [0.0; 1024];
         let mut output = [0.0; 1024];
         input[0] = 1.0;
-        filter.process_block(slice_to_mono_block(&input), slice_to_mono_block_mut(&mut output));
+        filter.process_block(
+            slice_to_mono_block(&input),
+            slice_to_mono_block_mut(&mut output),
+        );
         insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(3) });
+    }
+
+    #[test]
+    fn test_rc_filter_hz() {
+        let filter = RC::new(0.25);
+        let freq_response: [_; 1024] = std::array::from_fn(|i| i as f64 / 1024f64)
+            .map(|f| filter.0.freq_response(1024.0, f)[0][0].abs());
+        insta::assert_csv_snapshot!(&freq_response as &[_], { "[]" => insta::rounded_redaction(3)})
     }
 }

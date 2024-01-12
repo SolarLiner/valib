@@ -1,6 +1,6 @@
 mod diode_clipper_model_data;
 
-use std::{fmt};
+use std::fmt;
 
 use nalgebra::{SMatrix, SVector};
 use num_traits::Float;

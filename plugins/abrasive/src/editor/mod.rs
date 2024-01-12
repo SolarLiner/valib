@@ -10,7 +10,7 @@ use nih_plug_vizia::widgets::ResizeHandle;
 #[cfg(not(feature = "example"))]
 use nih_plug_vizia::{create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
 #[cfg(not(feature = "example"))]
-use resource::{resource};
+use resource::resource;
 #[cfg(not(feature = "example"))]
 use triple_buffer::Output;
 
@@ -54,7 +54,9 @@ pub(crate) fn default_state() -> Arc<ViziaState> {
 #[cfg(not(feature = "example"))]
 pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Editor>> {
     create_vizia_editor(state, ViziaTheming::Custom, move |cx, _| {
-        cx.emit(EnvironmentEvent::SetThemeMode(AppTheme::BuiltIn(ThemeMode::DarkMode)));
+        cx.emit(EnvironmentEvent::SetThemeMode(AppTheme::BuiltIn(
+            ThemeMode::DarkMode,
+        )));
         cx.add_font_mem(resource!("src/assets/Metrophobic-Regular.ttf"));
         if let Err(err) = cx.add_stylesheet(include_style!("src/editor/theme.css")) {
             nih_error!("Cannot read CSS: {err}");

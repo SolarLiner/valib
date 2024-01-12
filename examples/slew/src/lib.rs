@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use nih_plug::{prelude::*, util::db_to_gain};
+
 use valib::{
     dsp::DSP,
     saturators::Slew,
@@ -11,7 +12,7 @@ type Sample = AutoF32x2;
 
 #[derive(Debug, Params)]
 struct SlewParams {
-    #[id="rate"]
+    #[id = "rate"]
     rate: FloatParam,
 }
 
@@ -74,12 +75,15 @@ impl Plugin for SlewPlugin {
     }
 
     fn initialize(
-            &mut self,
-            _audio_io_layout: &AudioIOLayout,
-            buffer_config: &BufferConfig,
-            _context: &mut impl InitContext<Self>,
-        ) -> bool {
-        self.dsp.set_max_diff(Sample::splat(self.params.rate.value()), Sample::splat(buffer_config.sample_rate));
+        &mut self,
+        _audio_io_layout: &AudioIOLayout,
+        buffer_config: &BufferConfig,
+        _context: &mut impl InitContext<Self>,
+    ) -> bool {
+        self.dsp.set_max_diff(
+            Sample::splat(self.params.rate.value()),
+            Sample::splat(buffer_config.sample_rate),
+        );
         true
     }
 
@@ -97,7 +101,8 @@ impl Plugin for SlewPlugin {
         context.set_latency_samples(self.dsp.latency() as _);
 
         for s in buffer.iter_samples() {
-            self.dsp.set_max_diff(Sample::splat(self.params.rate.smoothed.next()), sample_rate);
+            self.dsp
+                .set_max_diff(Sample::splat(self.params.rate.smoothed.next()), sample_rate);
             let mut it = s.into_iter();
             let stereo = [it.next().unwrap(), it.next().unwrap()];
             let s = Sample::new(*stereo[0], *stereo[1]);

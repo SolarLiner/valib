@@ -69,21 +69,27 @@ impl<T: Scalar> Impedance<T> {
     }
 
     pub fn from_resistance(r: T) -> Self {
-        Self { r, g: r.simd_recip()) }
+        Self {
+            r,
+            g: r.simd_recip(),
+        }
     }
 
     pub fn from_admittance(g: T) -> Self {
-        Self { r: g.simd_recip()), g }
+        Self {
+            r: g.simd_recip(),
+            g,
+        }
     }
 
     pub fn set_resistance(&mut self, r: T) {
         self.r = r;
-        self.g = r.simd_recip());
+        self.g = r.simd_recip();
     }
 
     pub fn set_admittance(&mut self, g: T) {
         self.g = g;
-        self.r = g.simd_recip());
+        self.r = g.simd_recip();
     }
 
     pub fn is_adaptable(&self) -> bool {
@@ -147,7 +153,7 @@ impl<T: 'static + Scalar> Wdf<T> for IdealVs<T> {
 
     #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, rp: Impedance<T>, p: T, a: T) -> T {
-        2. * rp.resistance().powf(p - 1.) * self.0 - a
+        2. * rp.resistance().simd_powf(p - 1.) * self.0 - a
     }
 }
 
@@ -160,7 +166,7 @@ impl<T: 'static + Scalar> Wdf<T> for IdealIs<T> {
 
     #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, rp: Impedance<T>, p: T, a: T) -> T {
-        2. * rp.resistance().powf(p) + a
+        2. * rp.resistance().simd_powf(p) + a
     }
 }
 
@@ -176,7 +182,7 @@ impl<T: 'static + Scalar> Wdf<T> for ResistiveVs<T> {
 
     #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, port_impedance: Impedance<T>, p: T, _: T) -> T {
-        self.vs * port_impedance.resistance().powf(p - 1.)
+        self.vs * port_impedance.resistance().simd_powf(p - 1.)
     }
 }
 
@@ -192,7 +198,7 @@ impl<T: 'static + Scalar> Wdf<T> for ResistiveIs<T> {
 
     #[replace_float_literals(T::from_f64(literal))]
     fn eval_wave(&mut self, port_impedance: Impedance<T>, p: T, _: T) -> T {
-        self.is * port_impedance.resistance().powf(p)
+        self.is * port_impedance.resistance().simd_powf(p)
     }
 }
 

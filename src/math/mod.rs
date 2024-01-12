@@ -1,20 +1,26 @@
-pub mod interpolation;
-
 use std::{cmp::PartialOrd, hint};
 
-use nalgebra::{Dim, OVector, SMatrix, SVector};
+use nalgebra::{Complex, Dim, OVector, SMatrix, SVector};
 use num_traits::Float;
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdBool, SimdComplexField};
 
 use crate::Scalar;
 
+pub mod interpolation;
+pub mod lut;
+
+/// Trait desciring a multivariate root equation. Root equations are solved with numerical methods such as
+/// Newton-Rhapson, when linear algebra cannot be used (e.g. in the case of nonlinear systems).
 pub trait RootEq<T, const N: usize> {
+    /// Evaluate the equation at the given input vector.
     fn eval(&self, input: &SVector<T, N>) -> SVector<T, N>;
 
+    /// Evaluate the **inverse** jacobian of the equation. When the jacobian cannot be computed, [`None`] should be returned instead.
     fn j_inv(&self, input: &SVector<T, N>) -> Option<SMatrix<T, N, N>>;
 }
 
+/// Perform a single step of the Newton-Rhapson algorithm. This takes the inverse jabobian and computes the differential to the next step.
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline)]
 pub fn nr_step<T: Scalar, const N: usize>(
@@ -36,6 +42,7 @@ where
     all_finite.then_some(ret)
 }
 
+/// Solve the given root equation using Newton-Rhapson for a specified number of setps.
 #[inline]
 pub fn newton_rhapson_steps<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
@@ -59,6 +66,7 @@ where
     rms(&step)
 }
 
+/// Solve the given root equation using Newton-Rhapson until the RMS of the differential is lesser than the given tolerance.
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline(always))]
 pub fn newton_rhapson_tolerance<T: Scalar, const N: usize>(
@@ -85,6 +93,8 @@ where
     i
 }
 
+/// Solve the given root equation using Newton-Rhapson, until either the RMS of the differential is less than the
+/// given tolerances, or the specified max number of steps has been taken.
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline(always))]
 pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
@@ -106,6 +116,18 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
         let changed = *value - step;
         *value = value.zip_map(&changed, |v, c| v.select(tgt, c));
     }
+}
+
+#[replace_float_literals(Complex::from(T::from_f64(literal)))]
+pub fn freq_to_z<T: Scalar>(samplerate: T, f: T) -> Complex<T>
+where
+    Complex<T>: SimdComplexField,
+{
+    let jw = Complex::new(T::zero(), T::simd_two_pi() * f / samplerate);
+    jw.simd_exp()
+    // let fs = Complex::from(samplerate);
+    // let ipif = Complex::new(T::zero(), T::simd_pi() * f);
+    // (fs + ipif) / (fs - ipif)
 }
 
 #[inline]
@@ -179,4 +201,7 @@ mod tests {
             newton_rhapson_tolerance(&Equ, &mut SVector::zeros(), 1e-4)
         );
     }
+
+    #[test]
+    fn test_freq_to_z() {}
 }

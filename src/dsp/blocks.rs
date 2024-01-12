@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use nalgebra::{Complex, SMatrix, SVector};
+use nalgebra::{Complex, ComplexField, SMatrix, SVector};
 use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
 
@@ -8,6 +8,7 @@ use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::DSP;
 use crate::Scalar;
 
+/// "Bypass" struct, which simply forwards the input to the output.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Bypass<S>(PhantomData<S>);
 
@@ -41,8 +42,12 @@ impl<T: Scalar> DSP<1, 1> for Integrator<T> {
 
 impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
     #[replace_float_literals(Complex::from(T::from_f64(literal)))]
-    fn h_z(&self, z: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 1] {
-        [1. / 2. * (z[0] + 1.) / (z[0] - 1.)]
+    fn h_z(
+        &self,
+        _samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; 1]; 1] {
+        [[1. / 2. * (z + 1.) / (z - 1.)]]
     }
 }
 
@@ -65,8 +70,12 @@ impl<T, const N: usize> DspAnalysis<N, 1> for Sum<T, N>
 where
     Self: DSP<N, 1>,
 {
-    fn h_z(&self, z: [Complex<Self::Sample>; N]) -> [Complex<Self::Sample>; 1] {
-        [z.into_iter().fold(Complex::zero(), |a, b| a + b)]
+    fn h_z(
+        &self,
+        _samplerate: Self::Sample,
+        _z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; 1]; N] {
+        [[Complex::one()]; N]
     }
 }
 
@@ -79,6 +88,23 @@ pub struct P1<T> {
     s: T,
 }
 
+impl<T: Scalar> DspAnalysis<1, 3> for P1<T>
+where
+    Self::Sample: nalgebra::RealField,
+{
+    #[replace_float_literals(Complex::from_real(<T as Scalar>::from_f64(literal)))]
+    fn h_z(
+        &self,
+        _samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; 3]; 1] {
+        let lp = (z - 1.0) / (z + 1.0) * self.fc / 2.0;
+        let hp = 1.0 - lp;
+        let ap = 2.0 * lp - 1.0;
+        [[lp, hp, ap]]
+    }
+}
+
 impl<T: Scalar> P1<T> {
     pub fn new(samplerate: T, fc: T) -> Self {
         Self {
@@ -86,10 +112,6 @@ impl<T: Scalar> P1<T> {
             fc,
             s: T::zero(),
         }
-    }
-
-    pub fn reset(&mut self) {
-        self.s = T::zero();
     }
 
     pub fn set_samplerate(&mut self, samplerate: T) {
@@ -119,6 +141,14 @@ impl<T: Scalar> DSP<1, 3> for P1<T> {
         let ap = 2. * lp - x[0];
         [lp, hp, ap]
     }
+
+    fn latency(&self) -> usize {
+        1
+    }
+
+    fn reset(&mut self) {
+        self.s = T::zero();
+    }
 }
 
 /// Process inner DSP blocks in series. `DSP` is implemented for tuples up to 8 elements all of the same I/O configuration.
@@ -127,8 +157,23 @@ pub struct Series<T>(pub T);
 
 macro_rules! series_tuple {
     ($($p:ident),*) => {
+        #[allow(non_snake_case)]
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSP<N, N, Sample = __Sample>),*, const N: usize> DSP<N, N> for $crate::dsp::blocks::Series<($($p),*)> {
             type Sample = __Sample;
+
+            fn latency(&self) -> usize {
+                let Self(($($p),*)) = self;
+                0 $(
+                + $p.latency()
+                )*
+            }
+
+            fn reset(&mut self) {
+                let Self(($($p),*)) = self;
+                $(
+                $p.reset();
+                )*
+            }
 
             #[allow(non_snake_case)]
             #[inline(always)]
@@ -151,10 +196,12 @@ series_tuple!(A, B, C, D, E, F);
 series_tuple!(A, B, C, D, E, F, G);
 series_tuple!(A, B, C, D, E, F, G, H);
 
+/// Specialized `Series` struct that doesn't restrict the I/O count of either DSP struct
 #[derive(Debug, Copy, Clone)]
 pub struct Series2<A, B, const INNER: usize>(A, PhantomData<[(); INNER]>, B);
 
 impl<A, B, const INNER: usize> Series2<A, B, INNER> {
+    /// Construct a new `Series2` instance, with each inner DSP instance given.
     pub const fn new<const I: usize, const O: usize>(a: A, b: B) -> Self
     where
         A: DSP<I, INNER>,
@@ -163,18 +210,22 @@ impl<A, B, const INNER: usize> Series2<A, B, INNER> {
         Self(a, PhantomData, b)
     }
 
+    /// Returns a reference to the first DSP instance, which processes the incoming audio first.
     pub const fn left(&self) -> &A {
         &self.0
     }
 
+    /// Returns a mutable reference to the first DSP instance, which processes the incoming audio first.
     pub fn left_mut(&mut self) -> &mut A {
         &mut self.0
     }
 
+    /// Returns a reference to the second DSP instance, which processes the incoming audio last.
     pub const fn right(&self) -> &B {
         &self.2
     }
 
+    /// Returns a mutable reference to the second DSP instance, which processes the incoming audio last.
     pub fn right_mut(&mut self) -> &mut B {
         &mut self.2
     }
@@ -227,10 +278,14 @@ impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
 where
     P: DspAnalysis<N, N>,
 {
-    fn h_z(&self, z: [Complex<Self::Sample>; N]) -> [Complex<Self::Sample>; N] {
-        self.0.iter().fold([Complex::one(); N], |acc, f| {
-            let ret = f.h_z(z);
-            std::array::from_fn(|i| acc[i] * ret[i])
+    fn h_z(
+        &self,
+        samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; N]; N] {
+        self.0.iter().fold([[Complex::one(); N]; N], |acc, f| {
+            let ret = f.h_z(samplerate, z);
+            std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] * ret[i][j]))
         })
     }
 }
@@ -241,8 +296,25 @@ pub struct Parallel<T>(pub T);
 
 macro_rules! parallel_tuple {
     ($($p:ident),*) => {
+        #[allow(non_snake_case)]
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSP<N, N, Sample = __Sample>),*, const N: usize> $crate::dsp::DSP<N, N> for $crate::dsp::blocks::Parallel<($($p),*)> {
             type Sample = __Sample;
+
+            fn latency(&self) -> usize {
+                let Self(($($p),*)) = self;
+                let latency = 0;
+                $(
+                let latency = latency.max($p.latency());
+                )*
+                latency
+            }
+
+            fn reset(&mut self) {
+                let Self(($($p),*)) = self;
+                $(
+                $p.reset();
+                )*
+            }
 
             #[allow(non_snake_case)]
             #[inline(always)]
@@ -296,16 +368,23 @@ impl<P, const I: usize, const O: usize, const N: usize> DspAnalysis<I, O> for Pa
 where
     P: DspAnalysis<I, O>,
 {
-    fn h_z(&self, z: [Complex<Self::Sample>; I]) -> [Complex<Self::Sample>; O] {
-        self.0.iter().fold([Complex::zero(); O], |acc, f| {
-            let ret = f.h_z(z);
-            std::array::from_fn(|i| acc[i] + ret[i])
+    fn h_z(
+        &self,
+        samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; O]; I] {
+        self.0.iter().fold([[Complex::zero(); O]; I], |acc, f| {
+            let ret = f.h_z(samplerate, z);
+            std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] + ret[i][j]))
         })
     }
 }
 
+/// Mod matrix struct, with direct access to the summing matrix
 #[derive(Debug, Copy, Clone)]
 pub struct ModMatrix<T, const I: usize, const O: usize> {
+    /// Mod matrix weights, setup in column-major form to produce outputs from inputs with a single matrix-vector
+    /// multiplication.
     pub weights: SMatrix<T, O, I>,
 }
 
@@ -331,29 +410,35 @@ where
         std::array::from_fn(|i| res[i])
     }
 }
-pub struct Feedback<P, const N: usize> where P: DSP<N, N> {
-    memory: [P::Sample; N],
-    pub inner: P,
-    pub mix: [P::Sample; N],
+
+/// Feedback adapter with a one-sample delay and integrated mixing and summing point.
+pub struct Feedback<FF, FB, const N: usize>
+where
+    FF: DSP<N, N>,
+{
+    memory: [FF::Sample; N],
+    /// Inner DSP instance
+    pub feedforward: FF,
+    pub feedback: FB,
+    /// Mixing vector, which is lanewise-multiplied from the output and summed back to the input at the next sample.
+    pub mix: [FF::Sample; N],
 }
 
-impl<P, const N: usize> DSP<N, N> for Feedback<P, N>
-where P: DSP<N, N>
-{
-    type Sample = P::Sample;
+impl<FF: DSP<N, N>, const N: usize> DSP<N, N> for Feedback<FF, (), N> {
+    type Sample = FF::Sample;
 
     fn latency(&self) -> usize {
-        self.inner.latency()
+        self.feedforward.latency()
     }
 
     fn reset(&mut self) {
-        self.memory.fill(P::Sample::from_f64(0.0));
-        self.inner.reset();
+        self.memory.fill(Self::Sample::zero());
+        self.feedforward.reset();
     }
 
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
         let x = std::array::from_fn(|i| self.memory[i] * self.mix[i] + x[i]);
-        let y = self.inner.process(x);
+        let y = self.feedforward.process(x);
         self.memory = y;
         y
     }
@@ -367,16 +452,45 @@ impl<P: DspAnalysis<N, N>, const N: usize> DspAnalysis<N, N> for Feedback<P, N> 
     }
 }
 
-impl<P: DSP<N, N>, const N: usize> Feedback<P, N> {
-    pub fn new(dsp: P) -> Self {
+impl<FF, FB, const N: usize> DSP<N, N> for Feedback<FF, FB, N>
+where
+    FF: DSP<N, N>,
+    FB: DSP<N, N, Sample = <FF as DSP<N, N>>::Sample>,
+{
+    type Sample = FF::Sample;
+
+    fn latency(&self) -> usize {
+        self.feedforward.latency()
+    }
+
+    fn reset(&mut self) {
+        self.memory.fill(FB::Sample::from_f64(0.0));
+        self.feedforward.reset();
+        self.feedback.reset();
+    }
+
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        let fb = self.feedback.process(self.memory);
+        let x = std::array::from_fn(|i| fb[i] * self.mix[i] + x[i]);
+        let y = self.feedforward.process(x);
+        self.memory = y;
+        y
+    }
+}
+
+impl<FF: DSP<N, N>, FB, const N: usize> Feedback<FF, FB, N> {
+    /// Create a new Feedback adapter with the provider inner DSP instance. Sets the mix to 0 by default.
+    pub fn new(feedforward: FF, feedback: FB) -> Self {
         Self {
-            memory: [P::Sample::from_f64(0.0); N],
-            inner: dsp,
-            mix: [P::Sample::from_f64(0.0); N],
+            memory: [FF::Sample::from_f64(0.0); N],
+            feedforward,
+            feedback,
+            mix: [FF::Sample::from_f64(0.0); N],
         }
     }
 
-    pub fn into_inner(self) -> P {
-        self.inner
+    /// Unwrap this adapter and give back the inner DSP instance.
+    pub fn into_inner(self) -> (FF, FB) {
+        (self.feedforward, self.feedback)
     }
 }

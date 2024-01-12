@@ -140,14 +140,15 @@ pub mod kernels {
     use crate::Scalar;
 
     #[replace_float_literals(T::from_f64(literal))]
-    pub fn windowed_sinc_in_place<T: Scalar>(fc: T, slice:&mut [T]) {
+    pub fn windowed_sinc_in_place<T: Scalar>(fc: T, slice: &mut [T]) {
         debug_assert_eq!(slice.len() % 2, 1);
         let width = T::from_f64(slice.len() as _);
         let half_width = 0.5 * width;
         for (i, s) in slice.iter_mut().enumerate() {
             let i = T::from_f64(i as _);
             *s = T::simd_sin(T::simd_two_pi() * fc * (i - half_width)) / (i - half_width);
-            *s *= 0.42 - 0.5 * T::simd_cos(T::simd_two_pi() * i / width) + 0.08 * T::simd_cos(2.0 * T::simd_two_pi() * i / width);
+            *s *= 0.42 - 0.5 * T::simd_cos(T::simd_two_pi() * i / width)
+                + 0.08 * T::simd_cos(2.0 * T::simd_two_pi() * i / width);
         }
         // Normalization
         let magnitude = slice.iter().copied().fold(0.0, |a, b| a + b);

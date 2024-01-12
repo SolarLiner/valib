@@ -177,7 +177,12 @@ impl<T: Scalar> DSP<1, 1> for Slew<T> {
 }
 
 impl<T: Scalar> Slew<T> {
-    pub fn new(max_diff: T) -> Self { Self { max_diff, last_out: T::from_f64(0.0) } }
+    pub fn new(max_diff: T) -> Self {
+        Self {
+            max_diff,
+            last_out: T::from_f64(0.0),
+        }
+    }
 
     pub fn set_max_diff(&mut self, max: T, samplerate: T) {
         self.max_diff = max / samplerate;
@@ -198,7 +203,7 @@ impl<T: Scalar> Saturator<T> for Slew<T> {
         self.slew(x)
     }
 
-    fn sat_diff(&self, x:T) -> T {
+    fn sat_diff(&self, x: T) -> T {
         self.slew_diff(x)
     }
 

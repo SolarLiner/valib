@@ -6,10 +6,19 @@ use numeric_literals::replace_float_literals;
 
 use crate::Scalar;
 
+/// Interpolation trait. Interpolators implement function that connect discrete points into a continuous function.
+/// Functions can have any number of taps, both in the forward and bacward directions. It's up to the called to provide
+/// either actual existing points or extrapolated values when the indices would be out of bounds.
 pub trait Interpolate<T, const N: usize> {
+    /// Provide the relative indices needed to compute the interpolation
     fn rel_indices() -> [isize; N];
+
+    /// Interpolate a single point from the given taps (in the same order as the indices defined in [`rel_indices`]).
+    /// The t parameter is assumed to be in the 0..=1 range, and it's up to the caller to provide values in the valid range.
     fn interpolate(t: T, taps: [T; N]) -> T;
 
+    /// Interpolate a value from an entire slice, where the t parameter is the "floating index" into the slice
+    /// (meaning 3.5 is halfway between index 3 and 4 on the given slice).
     fn interpolate_on_slice(t: T, values: &[T]) -> T
     where
         T: Scalar + SimdCast<isize>,
@@ -28,6 +37,8 @@ pub trait Interpolate<T, const N: usize> {
         Self::interpolate(input_frac, taps)
     }
 
+    /// Interpolate one slice into another, where the output slice ends up containing the same "range" of values as
+    /// the input slice, but also automatically performs interpolation using this instance.
     fn interpolate_slice(output: &mut [T], input: &[T])
     where
         T: Scalar + SimdCast<isize>,
@@ -42,6 +53,19 @@ pub trait Interpolate<T, const N: usize> {
     }
 }
 
+pub struct ZeroHold;
+
+impl<T> Interpolate<T, 1> for ZeroHold {
+    fn rel_indices() -> [isize; 1] {
+        [0]
+    }
+
+    fn interpolate(_: T, [x]: [T; 1]) -> T {
+        x
+    }
+}
+
+/// Nearest-neighbor interpolation, where the neighbor is chosen based on how close it is to the floating index.
 pub struct Nearest;
 
 impl<T: SimdPartialOrd + FromPrimitive> Interpolate<T, 2> for Nearest {
@@ -54,6 +78,7 @@ impl<T: SimdPartialOrd + FromPrimitive> Interpolate<T, 2> for Nearest {
     }
 }
 
+/// Standard-issue linear interpolation algorithm.
 pub struct Linear;
 
 impl<T: Scalar> Interpolate<T, 2> for Linear {
@@ -66,6 +91,7 @@ impl<T: Scalar> Interpolate<T, 2> for Linear {
     }
 }
 
+/// Cubic algorithm, smoother than [`Linear`], but needs 4 taps instead of 2.
 pub struct Cubic;
 
 impl<T: Scalar> Interpolate<T, 4> for Cubic {
@@ -84,6 +110,7 @@ impl<T: Scalar> Interpolate<T, 4> for Cubic {
     }
 }
 
+/// 4-tap cubic Hermite spline interpolation
 pub struct Hermite;
 
 impl<T: Scalar> Interpolate<T, 4> for Hermite {
@@ -98,6 +125,21 @@ impl<T: Scalar> Interpolate<T, 4> for Hermite {
         let c2 = taps[0] - 2.5 * taps[1] + 2.0 * taps[2] - 0.5 * taps[3];
         let c3 = 1.5 * (taps[1] - taps[2]) + 0.5 * (taps[3] - taps[0]);
         ((c3 * t + c2) * t + c1) * t + c0
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Sine;
+
+impl<T: Scalar> Interpolate<T, 2> for Sine {
+    fn rel_indices() -> [isize; 2] {
+        [0, 1]
+    }
+
+    #[replace_float_literals(T::from_f64(literal))]
+    fn interpolate(t: T, taps: [T; 2]) -> T {
+        let fac = T::simd_cos(t * T::simd_pi()) * 0.5 + 0.5;
+        Linear::interpolate(fac, taps)
     }
 }
 
@@ -127,7 +169,9 @@ mod tests {
     fn test_interpolate_cubic() {
         let a = [0., 1., 1.];
         let mut actual = [0.; 12];
-        let expected = [0.0, 0.203125, 0.5, 0.796875, 1.0, 1.0703125, 1.0625, 1.0234375, 1.0, 1.0, 1.0, 1.0];
+        let expected = [
+            0.0, 0.203125, 0.5, 0.796875, 1.0, 1.0703125, 1.0625, 1.0234375, 1.0, 1.0, 1.0, 1.0,
+        ];
         Cubic::interpolate_slice(&mut actual, &a);
         assert_eq!(actual, expected);
     }

@@ -1,16 +1,16 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-use nih_plug::{
-    buffer::Block,
-    prelude::*,
-};
+use nih_plug::{buffer::Block, prelude::*};
 
 use valib::dsp::DSP;
 use valib::oversample::Oversample;
 use valib::{
     filters::biquad::Biquad,
-    saturators::{Linear, clippers::{DiodeClipper, DiodeClipperModel}},
+    saturators::{
+        clippers::{DiodeClipper, DiodeClipperModel},
+        Linear,
+    },
     simd::{AutoF32x2, AutoF64x2, AutoSimd, SimdComplexField, SimdValue},
     Scalar,
 };
@@ -223,7 +223,10 @@ impl Plugin for ClipperPlugin {
             true => self.clipper_model.latency(),
             false => self.clipper_nr.latency(),
         };
-        let latency = self.dc_couple_in.latency() + self.dc_couple_out.latency() + self.oversample.latency() + clipper_latency;
+        let latency = self.dc_couple_in.latency()
+            + self.dc_couple_out.latency()
+            + self.oversample.latency()
+            + clipper_latency;
         _context.set_latency_samples(latency as _);
         if self.force_reset.load(Ordering::Acquire) {
             self.force_reset.store(false, Ordering::Release);

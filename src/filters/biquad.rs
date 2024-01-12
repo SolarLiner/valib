@@ -1,13 +1,17 @@
 //! Transposed Direct Form II Biquad implementation - nonlinearities based on https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-5-nonlinear-feedback-filters-115e65fc0402
 
-use crate::{
-    saturators::{Dynamic, Saturator}, Scalar,
-};
 use nalgebra::Complex;
 use numeric_literals::replace_float_literals;
+
 use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::DSP;
+use crate::{
+    saturators::{Dynamic, Saturator},
+    Scalar,
+};
 
+/// Biquad struct in Transposed Direct Form II. Optionally, a [`Saturator`](crate::saturators::Saturator) instance can be used
+/// to apply waveshaping to the internal states.
 #[derive(Debug, Copy, Clone)]
 pub struct Biquad<T, S> {
     na: [T; 2],
@@ -17,11 +21,13 @@ pub struct Biquad<T, S> {
 }
 
 impl<T> Biquad<T, Dynamic<T>> {
+    /// Apply these new saturators to this Biquad instance, returning a new instance of it.
     pub fn with_saturators(mut self, a: Dynamic<T>, b: Dynamic<T>) -> Biquad<T, Dynamic<T>> {
         self.set_saturators(a, b);
         self
     }
 
+    /// Replace the saturators in this Biquad instance with the provided values.
     pub fn set_saturators(&mut self, a: Dynamic<T>, b: Dynamic<T>) {
         self.sats = [a, b];
     }
@@ -35,6 +41,7 @@ impl<T: Copy, S> Biquad<T, S> {
 }
 
 impl<T: Scalar, S: Default> Biquad<T, S> {
+    /// Create a new instance of a Biquad with the provided poles and zeros coefficients.
     pub fn new(b: [T; 3], a: [T; 2]) -> Self {
         Self {
             na: a.map(T::neg),
@@ -44,6 +51,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         }
     }
 
+    /// Create a lowpass with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn lowpass(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -60,6 +68,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a highpass with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn highpass(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -76,6 +85,9 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a bandpass with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
+    /// The resulting bandpass is normalized so that the maximum of the transfer function sits at 0 dB, making it
+    /// appear as having a sharper slope than it actually does.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn bandpass_peak0(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -93,6 +105,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a notch with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn notch(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -110,6 +123,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create an allpass with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn allpass(fc: T, q: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -127,6 +141,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a peaking filter with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn peaking(fc: T, q: T, amp: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -144,6 +159,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a low shelf with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn lowshelf(fc: T, q: T, amp: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -166,6 +182,7 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
 
+    /// Create a high shelf with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn highshelf(fc: T, q: T, amp: T) -> Self {
         let w0 = T::simd_two_pi() * fc;
@@ -201,7 +218,7 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 1> for Biquad<T, S> {
         let in2 = x * self.b[2] + self.sats[1].saturate(in0 / 10.) * 10. * self.na[1];
         self.s = [in1, in2];
 
-        for (s,y) in self.sats.iter_mut().zip(s_out.into_iter()) {
+        for (s, y) in self.sats.iter_mut().zip(s_out.into_iter()) {
             s.update_state(in0 / 10., y);
         }
         [in0]
@@ -212,19 +229,26 @@ impl<T: Scalar, S> DspAnalysis<1, 1> for Biquad<T, S>
 where
     Self: DSP<1, 1, Sample = T>,
 {
-    fn h_z(&self, z: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 1] {
-        let z: Complex<T> = z[0];
+    fn h_z(
+        &self,
+        _samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; 1]; 1] {
         let num = z.powi(-1).scale(self.b[1]) + z.powi(-2).scale(self.b[2]) + self.b[0];
         let den = z.powi(-1).scale(-self.na[0]) + z.powi(-2).scale(-self.na[1]) + T::one();
-        [num / den]
+        [[num / den]]
     }
 }
 
 #[cfg(test)]
 mod tests {
-    
-
-    use crate::{saturators::clippers::DiodeClipperModel, dsp::{DSPBlock, utils::{slice_to_mono_block, slice_to_mono_block_mut}}};
+    use crate::{
+        dsp::{
+            utils::{slice_to_mono_block, slice_to_mono_block_mut},
+            DSPBlock,
+        },
+        saturators::clippers::DiodeClipperModel,
+    };
 
     use super::*;
 
@@ -232,11 +256,16 @@ mod tests {
     fn test_lp_diode_clipper() {
         let samplerate = 1000.0;
         let sat = DiodeClipperModel::new_led(2, 3);
-        let mut biquad = Biquad::lowpass(10.0/samplerate, 20.0).with_saturators(Dynamic::DiodeClipper(sat), Dynamic::DiodeClipper(sat));
+        let mut biquad = Biquad::lowpass(10.0 / samplerate, 20.0)
+            .with_saturators(Dynamic::DiodeClipper(sat), Dynamic::DiodeClipper(sat));
 
-        let input: [_; 512] = std::array::from_fn(|i| i as f64 / samplerate).map(|t| (10.0 * t).fract() * 2.0 - 1.0);
+        let input: [_; 512] =
+            std::array::from_fn(|i| i as f64 / samplerate).map(|t| (10.0 * t).fract() * 2.0 - 1.0);
         let mut output = [0.0; 512];
-        biquad.process_block(slice_to_mono_block(&input), slice_to_mono_block_mut(&mut output));
+        biquad.process_block(
+            slice_to_mono_block(&input),
+            slice_to_mono_block_mut(&mut output),
+        );
 
         insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(4) });
     }

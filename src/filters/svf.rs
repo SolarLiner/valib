@@ -2,15 +2,18 @@
 //! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
 //! All references in this module, unless specified otherwise, are taken from this book.
 
-use nalgebra::{Complex};
+use nalgebra::Complex;
+use num_traits::One;
 use numeric_literals::replace_float_literals;
 
-use crate::{
-    saturators::{Linear, Saturator}, Scalar,
-};
-use crate::dsp::analog::DspAnalog;
 use crate::dsp::DSP;
+use crate::{
+    dsp::analysis::DspAnalysis,
+    saturators::{Linear, Saturator},
+    Scalar,
+};
 
+/// SVF topology filter, with optional non-linearities.
 #[derive(Debug, Copy, Clone)]
 pub struct Svf<T, Mode = Linear> {
     s: [T; 2],
@@ -51,22 +54,27 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
     }
 }
 
-impl<T: Scalar, S: Saturator<T>> DspAnalog<1, 3> for Svf<T, S> {
-    #[replace_float_literals(Complex::new(T::from_f64(literal), T::zero()))]
-    fn h_s(&self, s: [Complex<Self::Sample>; 1]) -> [Complex<Self::Sample>; 3] {
-        let s = s[0];
-        let wc = 2. * T::simd_pi() * self.freq_cutoff();
-        let s2 = s.powi(2);
-        let wc2 = wc.powi(2);
-        let denom = s2 + 2. * self.r * wc * s + wc2;
-        let hp = s2 / denom;
-        let bp = 2. * self.r * wc * s / denom;
-        let lp = wc2 / denom;
-        [lp, bp, hp]
+impl<T: Scalar, S: Saturator<T>> DspAnalysis<1, 3> for Svf<T, S> {
+    #[replace_float_literals(T::from_f64(literal))]
+    fn h_z(
+        &self,
+        samplerate: Self::Sample,
+        z: Complex<Self::Sample>,
+    ) -> [[Complex<Self::Sample>; 3]; 1] {
+        let omega_c = samplerate * self.fc;
+        let x0 = z + Complex::one();
+        let x1 = x0.powi(2) * omega_c.simd_powi(2);
+        let x2 = z - Complex::one();
+        let x3 = x2.powi(2) * 4.0 * samplerate.simd_powi(2);
+        let x4 = x0 * x2 * samplerate * omega_c;
+        let x5 = Complex::<T>::one() / (-x4 * 4.0 * self.r + x1 + x3);
+        [[x1 * x5, -x4 * x5 * 2.0, x3 * x5]]
     }
 }
 
 impl<T: Scalar, C: Default> Svf<T, C> {
+    /// Create a new SVF filter with the provided sample rate, frequency cutoff (in Hz) and resonance amount
+    /// (in 0..1 for stable filters, otherwise use bounded nonlinearities).
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new(samplerate: T, fc: T, r: T) -> Self {
         let mut this = Self {
@@ -87,17 +95,20 @@ impl<T: Scalar, C: Default> Svf<T, C> {
         self.s.fill(T::zero());
     }
 
+    /// Set the samplerate this filter will be running at.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn set_samplerate(&mut self, samplerate: T) {
         self.w_step = T::simd_pi() / samplerate;
         self.update_coefficients();
     }
 
+    /// Set the new filter cutoff frequency (in Hz).
     pub fn set_cutoff(&mut self, freq: T) {
         self.fc = freq;
         self.update_coefficients();
     }
 
+    /// Set the resonance amount (in 0..1 for stable filters, otherwise use bounded nonlinearities).
     #[replace_float_literals(T::from_f64(literal))]
     pub fn set_r(&mut self, r: T) {
         self.r = 2. * r;
@@ -117,12 +128,29 @@ impl<T: Scalar, C: Default> Svf<T, C> {
 }
 
 impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
+    /// Apply these new saturators to this SVF instance, returning a new instance of it.
     pub fn set_saturators(&mut self, s1: S, s2: S) {
         self.sats = [s1, s2];
     }
 
+    /// Replace the saturators in this Biquad instance with the provided values.
     pub fn with_saturators(mut self, s1: S, s2: S) -> Self {
         self.set_saturators(s1, s2);
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use nalgebra::ComplexField;
+
+    use super::*;
+
+    #[test]
+    fn test_svf_hz() {
+        let filter = Svf::<_, Linear>::new(1024.0, 10.0, 0.5);
+        let hz: [_; 512] = std::array::from_fn(|i| i as f64)
+            .map(|f| filter.freq_response(1024.0, f)[0].map(|c| c.abs()));
+        insta::assert_csv_snapshot!(&hz as &[_], { "[]" => insta::rounded_redaction(3)})
     }
 }

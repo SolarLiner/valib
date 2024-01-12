@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 atomic_float = "0.1.0"
 morphorm = "*"
+nalgebra.workspace = true
 nih_plug = { workspace = true, features = ["standalone"] }
 nih_plug_vizia = { workspace = true }
 realfft = "3.3.0"
