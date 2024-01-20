@@ -1,5 +1,4 @@
-extern crate core;
-
+#![doc = include_str!("../README.md")]
 use az::CastFrom;
 use num_traits::Zero;
 use simba::simd::{AutoSimd, SimdRealField, SimdValue};
