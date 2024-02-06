@@ -10,7 +10,7 @@ use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
 use valib::dsp::{DSP, DSPBlock};
 use valib::dsp::blocks::{ModMatrix, Series2};
 use valib::oversample::Oversample;
-use valib::saturators::{Clipper, Saturator, Slew};
+use valib::saturators::Saturator;
 use valib::simd::SimdValue;
 use valib::Scalar;
 
@@ -70,6 +70,7 @@ impl PluginParams {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_unit(" dB")
             .bind_to_parameter(dsp.get_parameter(DspParam::Drive)),
             fc: FloatParam::new(
                 "Frequency",
@@ -97,7 +98,7 @@ impl PluginParams {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit("dB")
+            .with_unit(" dB")
             .bind_to_parameter(dsp.get_parameter(DspParam::LpGain)),
             bp_gain: FloatParam::new(
                 "BP Gain",
@@ -111,7 +112,7 @@ impl PluginParams {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit("dB")
+            .with_unit(" dB")
             .bind_to_parameter(dsp.get_parameter(DspParam::BpGain)),
             hp_gain: FloatParam::new(
                 "HP Gain",
@@ -125,38 +126,9 @@ impl PluginParams {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit("dB")
+            .with_unit(" dB")
             .bind_to_parameter(dsp.get_parameter(DspParam::HpGain)),
         }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct OpAmp<T>(Clipper, Slew<T>);
-
-impl<T: Scalar> Default for OpAmp<T> {
-    fn default() -> Self {
-        Self(Default::default(), Default::default())
-    }
-}
-
-impl<T: Scalar> Saturator<T> for OpAmp<T>
-where
-    Clipper: Saturator<T>,
-    Slew<T>: Saturator<T>,
-{
-    fn saturate(&self, x: T) -> T {
-        self.1.saturate(self.0.saturate(x))
-    }
-
-    fn sat_diff(&self, x: T) -> T {
-        self.0.sat_diff(x) * self.1.sat_diff(self.0.saturate(x))
-    }
-
-    fn update_state(&mut self, x: T, y: T) {
-        let xc = self.0.saturate(x);
-        self.0.update_state(x, xc);
-        self.1.update_state(xc, y);
     }
 }
 

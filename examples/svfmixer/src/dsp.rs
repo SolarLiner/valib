@@ -1,12 +1,14 @@
-use crate::OpAmp;
 use enum_map::{enum_map, Enum, EnumMap};
 use nalgebra::SMatrix;
+use nih_plug::util::db_to_gain_fast;
 use valib::dsp::blocks::ModMatrix;
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
 use valib::dsp::DSP;
 use valib::filters::svf::Svf;
 use valib::oversample::Oversampled;
+use valib::saturators::{Clipper, Saturator, Slew};
 use valib::simd::{AutoSimd, SimdValue};
+use valib::Scalar;
 
 type Sample = AutoSimd<[f32; 2]>;
 
@@ -81,16 +83,47 @@ impl HasParameters for DspInner {
 impl DSP<1, 1> for DspInner {
     type Sample = Sample;
 
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         self.filter
             .set_cutoff(Sample::splat(self.params[DspParam::Cutoff].next_sample()));
         self.filter.set_r(Sample::splat(
-            self.params[DspParam::Resonance].next_sample(),
+            1.0 - self.params[DspParam::Resonance].next_sample(),
         ));
         self.mod_matrix.weights.x = Sample::splat(self.params[DspParam::LpGain].next_sample());
         self.mod_matrix.weights.y = Sample::splat(self.params[DspParam::BpGain].next_sample());
         self.mod_matrix.weights.z = Sample::splat(self.params[DspParam::HpGain].next_sample());
 
-        self.mod_matrix.process(self.filter.process(x))
+        let drive = Sample::splat(db_to_gain_fast(self.params[DspParam::Drive].next_sample()));
+        let [out] = self.mod_matrix.process(self.filter.process([x * drive]));
+        [out / drive]
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct OpAmp<T>(Clipper, Slew<T>);
+
+impl<T: Scalar> Default for OpAmp<T> {
+    fn default() -> Self {
+        Self(Default::default(), Default::default())
+    }
+}
+
+impl<T: Scalar> Saturator<T> for OpAmp<T>
+where
+    Clipper: Saturator<T>,
+    Slew<T>: Saturator<T>,
+{
+    fn saturate(&self, x: T) -> T {
+        self.1.saturate(self.0.saturate(x))
+    }
+
+    fn sat_diff(&self, x: T) -> T {
+        self.0.sat_diff(x) * self.1.sat_diff(self.0.saturate(x))
+    }
+
+    fn update_state(&mut self, x: T, y: T) {
+        let xc = self.0.saturate(x);
+        self.0.update_state(x, xc);
+        self.1.update_state(xc, y);
     }
 }
