@@ -1,6 +1,6 @@
 use core::fmt;
 use std::fmt::Formatter;
-use std::marker::PhantomData;
+
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -46,7 +46,7 @@ impl Parameter {
         self.0.name.as_deref()
     }
 
-    pub fn named(mut self, name: impl ToString) -> Self {
+    pub fn named(self, name: impl ToString) -> Self {
         Self(Arc::new(ParamImpl {
             value: AtomicF32::new(self.0.value.load(Ordering::SeqCst)),
             name: Some(name.to_string()),
@@ -142,7 +142,7 @@ impl DSP<0, 1> for SmoothedParam {
     type Sample = f32;
 
     #[inline]
-    fn process(&mut self, x: [Self::Sample; 0]) -> [Self::Sample; 1] {
+    fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
         self.smoothing.process([self.param.get_value()])
     }
 }

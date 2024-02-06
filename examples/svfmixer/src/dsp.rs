@@ -1,9 +1,9 @@
 use crate::OpAmp;
 use enum_map::{enum_map, Enum, EnumMap};
 use nalgebra::SMatrix;
-use valib::dsp::blocks::{ModMatrix, Series2};
-use valib::dsp::parameter::{FilteredParam, HasParameters, Parameter, SmoothedParam};
-use valib::dsp::{DSPBlock, DSP};
+use valib::dsp::blocks::ModMatrix;
+use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
+use valib::dsp::DSP;
 use valib::filters::svf::Svf;
 use valib::oversample::Oversampled;
 use valib::simd::{AutoSimd, SimdValue};

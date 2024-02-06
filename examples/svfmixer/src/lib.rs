@@ -1,4 +1,3 @@
-use nih_plug::buffer::ChannelSamples;
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
@@ -8,13 +7,12 @@ use valib::simd::{AutoSimd, SimdValue};
 use extend::FloatParamExt;
 use valib::dsp::parameter::HasParameters;
 use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
-use valib::dsp::DSPBlock;
-use valib::{
-    dsp::blocks::{ModMatrix, Series2},
-    saturators::{Clipper, Saturator, Slew},
-};
-use valib::{dsp::DSP, Scalar};
-use valib::{filters::svf::Svf, oversample::Oversample};
+use valib::dsp::{DSP, DSPBlock};
+use valib::dsp::blocks::{ModMatrix, Series2};
+use valib::oversample::Oversample;
+use valib::saturators::{Clipper, Saturator, Slew};
+use valib::simd::SimdValue;
+use valib::Scalar;
 
 use crate::dsp::{Dsp, DspInner, DspParam};
 
