@@ -12,7 +12,7 @@ use valib::dsp::blocks::{ModMatrix, Series2};
 use valib::oversample::Oversample;
 use valib::saturators::Saturator;
 use valib::oversample::Oversample;
-use valib::saturators::{Clipper, Saturator, Slew};
+use valib::saturators::Saturator;
 use valib::simd::SimdValue;
 use valib::Scalar;
 
