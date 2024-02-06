@@ -177,9 +177,9 @@ impl<T: Scalar> DSP<1, 1> for Slew<T> {
 }
 
 impl<T: Scalar> Slew<T> {
-    pub fn new(max_diff: T) -> Self {
+    pub fn new(samplerate: T, max_diff: T) -> Self {
         Self {
-            max_diff,
+            max_diff: max_diff / samplerate,
             last_out: T::from_f64(0.0),
         }
     }

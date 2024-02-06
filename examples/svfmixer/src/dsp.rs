@@ -42,12 +42,12 @@ impl DspInner {
 impl DspInner {
     pub fn new(samplerate: f32) -> Self {
         let params = enum_map! {
-            DspParam::Drive => Parameter::new(1.0).named("Drive").smoothed_linear(10.0),
-            DspParam::Cutoff => Parameter::new(3000.0).named("Cutoff").smoothed_linear(10.0),
-            DspParam::Resonance => Parameter::new(0.5).named("Resonance").smoothed_linear(10.0),
-            DspParam::LpGain => Parameter::new(1.0).named("LP Gain").smoothed_linear(10.0),
-            DspParam::BpGain => Parameter::new(0.0).named("BP Gain").smoothed_linear(10.0),
-            DspParam::HpGain => Parameter::new(0.0).named("HP Gain").smoothed_linear(10.0),
+            DspParam::Drive => Parameter::new(1.0).named("Drive").smoothed_linear(samplerate, 10.0),
+            DspParam::Cutoff => Parameter::new(3000.0).named("Cutoff").smoothed_linear(samplerate, 1e-6),
+            DspParam::Resonance => Parameter::new(0.5).named("Resonance").smoothed_linear(samplerate, 10.0),
+            DspParam::LpGain => Parameter::new(1.0).named("LP Gain").smoothed_linear(samplerate, 10.0),
+            DspParam::BpGain => Parameter::new(0.0).named("BP Gain").smoothed_linear(samplerate, 10.0),
+            DspParam::HpGain => Parameter::new(0.0).named("HP Gain").smoothed_linear(samplerate, 10.0),
         };
         let filter = Filter::new(
             Sample::splat(samplerate),

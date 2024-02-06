@@ -74,8 +74,8 @@ impl Parameter {
         }
     }
 
-    pub fn smoothed_linear(&self, max_dur_ms: f32) -> SmoothedParam {
-        SmoothedParam::linear(self.clone(), max_dur_ms)
+    pub fn smoothed_linear(&self, samplerate: f32, max_dur_ms: f32) -> SmoothedParam {
+        SmoothedParam::linear(self.clone(), samplerate, max_dur_ms)
     }
 
     pub fn smoothed_exponential(&self, samplerate: f32, t60_ms: f32) -> SmoothedParam {
@@ -107,14 +107,16 @@ impl<P: DSP<1, 1, Sample = f32>> DSP<0, 1> for FilteredParam<P> {
 #[derive(Debug, Copy, Clone)]
 enum Smoothing {
     Exponential(Series2<P1<f32>, ModMatrix<f32, 3, 1>, 3>),
-    Linear(Slew<f32>),
+    Linear { slew: Slew<f32>, max_diff: f32 },
 }
 
 impl Smoothing {
-    fn set_samplerate(&mut self, samplerate: f32) {
+    fn set_samplerate(&mut self, new_sr: f32) {
         match self {
-            Self::Exponential(s) => s.left_mut().set_samplerate(samplerate),
-            _ => {}
+            Self::Exponential(s) => s.left_mut().set_samplerate(new_sr),
+            Self::Linear { slew, max_diff } => {
+                slew.set_max_diff(*max_diff, new_sr);
+            }
         }
     }
 }
@@ -126,7 +128,7 @@ impl DSP<1, 1> for Smoothing {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         match self {
             Self::Exponential(s) => s.process(x),
-            Self::Linear(s) => s.process(x),
+            Self::Linear { slew: s, .. } => s.process(x),
         }
     }
 }
@@ -153,11 +155,16 @@ impl SmoothedParam {
     /// # Arguments
     ///
     /// * `param`: Inner parameter to tap values from.
+    /// * `samplerate`: Samplerate at which the smoother will run.
     /// * `duration_ms`: Maximum duration of a sweep, that is the duration it would take to go from one extreme to the other.
-    pub fn linear(param: Parameter, duration_ms: f32) -> Self {
+    pub fn linear(param: Parameter, samplerate: f32, duration_ms: f32) -> Self {
+        let max_diff = 1000.0 / duration_ms;
         Self {
             param,
-            smoothing: Smoothing::Linear(Slew::new(1000.0 / duration_ms)),
+            smoothing: Smoothing::Linear {
+                slew: Slew::new(samplerate, max_diff),
+                max_diff,
+            },
         }
     }
 
