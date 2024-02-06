@@ -1,5 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
+use crate::dsp::parameter::{HasParameters, Parameter};
 use crate::dsp::{
     utils::{mono_block_to_slice, mono_block_to_slice_mut, slice_to_mono_block_mut},
     DSP,
@@ -137,6 +138,12 @@ pub struct Oversampled<T, P> {
     pub inner: P,
 }
 
+impl<T, P> Oversampled<T, P> {
+    pub fn os_factor(&self) -> usize {
+        self.oversampling.os_factor
+    }
+}
+
 impl<T, P> Oversampled<T, P>
 where
     T: Scalar,
@@ -181,6 +188,14 @@ where
         self.inner
             .process_block(&self.staging_buffer, inner_outputs);
         os_block.finish(mono_block_to_slice_mut(outputs));
+    }
+}
+
+impl<S, P: HasParameters> HasParameters for Oversampled<S, P> {
+    type Enum = P::Enum;
+
+    fn get_parameter(&self, param: Self::Enum) -> &Parameter {
+        self.inner.get_parameter(param)
     }
 }
 

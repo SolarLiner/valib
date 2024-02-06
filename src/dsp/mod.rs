@@ -1,3 +1,4 @@
+use crate::dsp::utils::mono_block_to_slice;
 use nalgebra::Complex;
 
 use crate::Scalar;
@@ -6,6 +7,7 @@ use self::analysis::DspAnalysis;
 
 pub mod analysis;
 pub mod blocks;
+pub mod parameter;
 pub mod utils;
 
 /// DSP trait. This is the main abstraction of the whole library.
