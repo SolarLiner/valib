@@ -1,4 +1,3 @@
-use nih_plug::buffer::ChannelSamples;
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
@@ -12,6 +11,8 @@ use valib::dsp::{DSP, DSPBlock};
 use valib::dsp::blocks::{ModMatrix, Series2};
 use valib::oversample::Oversample;
 use valib::saturators::Saturator;
+use valib::oversample::Oversample;
+use valib::saturators::{Clipper, Saturator, Slew};
 use valib::simd::SimdValue;
 use valib::Scalar;
 
