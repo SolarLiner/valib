@@ -1,6 +1,5 @@
 ---
 source: src/filters/svf.rs
-assertion_line: 154
 expression: "&hz as &[_]"
 ---
 1.0,0.0,0.0

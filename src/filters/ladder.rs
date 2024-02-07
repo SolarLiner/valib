@@ -72,8 +72,8 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
             ysat[2] - ysat[1],
             ysat[3] - ysat[2],
         ]);
-        for (i, s) in self.0.iter_mut().enumerate() {
-            s.update_state(y[i], ysat[i]);
+        for (s, (y, ysat)) in self.0.iter_mut().zip(y.iter().copied().zip(ysat.iter().copied())) {
+            s.update_state(y, ysat);
         }
         self.0[4].update_state(y0, y0sat);
         y - yd
@@ -236,7 +236,9 @@ mod tests {
             slice_to_mono_block_mut(&mut output),
         );
 
-        insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(3) })
+        let topo = std::any::type_name::<Topo>();
+        let name = format!("test_ladder_ir_{topo}_c{compensated}_r{resonance}");
+        insta::assert_csv_snapshot!(name, &output as &[_], { "[]" => insta::rounded_redaction(3) })
     }
 
     #[rstest]
@@ -250,6 +252,7 @@ mod tests {
             .map(|f| filter.freq_response(1024.0, f)[0][0].simd_abs())
             .map(|x| 20.0 * x.log10());
 
-        insta::assert_csv_snapshot!(&response as &[_], { "[]" => insta::rounded_redaction(3) })
+        let name = format!("test_ladder_hz_c{compensated}_r{resonance}");
+        insta::assert_csv_snapshot!(name, &response as &[_], { "[]" => insta::rounded_redaction(3) })
     }
 }
