@@ -1,5 +1,6 @@
 ---
 source: src/filters/ladder.rs
+assertion_line: 241
 expression: "&output as &[_]"
 ---
 0.0
