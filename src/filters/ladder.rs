@@ -236,7 +236,7 @@ mod tests {
             slice_to_mono_block_mut(&mut output),
         );
 
-        let topo = std::any::type_name::<Topo>();
+        let topo = std::any::type_name::<Topo>().replace("::", "__");
         let name = format!("test_ladder_ir_{topo}_c{compensated}_r{resonance}");
         insta::assert_csv_snapshot!(name, &output as &[_], { "[]" => insta::rounded_redaction(3) })
     }
