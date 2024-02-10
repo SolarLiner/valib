@@ -4,7 +4,7 @@
 
 use std::fmt;
 
-use nalgebra::{Complex, SVector, SimdComplexField};
+use nalgebra::{Complex, SVector};
 use numeric_literals::replace_float_literals;
 
 use crate::{
@@ -209,6 +209,7 @@ impl<T: Scalar, Topo: LadderTopology<T>> DspAnalysis<1, 1> for Ladder<T, Topo> {
 mod tests {
     use num_traits::real::Real;
     use rstest::rstest;
+    use simba::simd::SimdComplexField;
 
     use crate::dsp::{
         utils::{slice_to_mono_block, slice_to_mono_block_mut},
@@ -238,8 +239,7 @@ mod tests {
 
         let topo = std::any::type_name::<Topo>()
             .replace("::", "__")
-            .replace('<', "_")
-            .replace('>', "_");
+            .replace(['<', '>'], "_");
         let name = format!("test_ladder_ir_{topo}_c{compensated}_r{resonance}");
         insta::assert_csv_snapshot!(name, &output as &[_], { "[]" => insta::rounded_redaction(3) })
     }

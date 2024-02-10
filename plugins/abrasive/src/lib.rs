@@ -184,9 +184,9 @@ impl Plugin for Abrasive<NUM_BANDS> {
 
 #[cfg(not(feature = "example"))]
 impl Abrasive<NUM_BANDS> {
-    fn set_filterbank_samplerate(&mut self, sr: f32) {
+    fn set_filterbank_samplerate(&mut self, _sr: f32) {
         for filter in self.filters.0.iter_mut() {
-            filter.reset(sr);
+            filter.reset();
         }
     }
 

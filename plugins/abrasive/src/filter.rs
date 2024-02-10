@@ -31,7 +31,7 @@ impl FilterType {
     #[replace_float_literals(Complex::from(< T as Scalar >::from_f64(literal)))]
     pub(crate) fn h_z<T: Scalar + valib::simd::SimdRealField, S: Saturator<T>>(
         &self,
-        samplerate: T,
+        _samplerate: T,
         filter: &Svf<T, S>,
         amp: <T as SimdValue>::Element,
         z: Complex<T>,
@@ -243,7 +243,6 @@ impl Filter {
 
     #[replace_float_literals(Sample::from_f64(literal))]
     pub fn reset(&mut self) {
-        let samplerate = Sample::splat(self.samplerate);
         let fc = Sample::splat(self.params.cutoff.smoothed.next());
         let q = Sample::splat(self.params.q.value());
         let nl = self.params.resclip.value().as_dynamic_type();
@@ -251,7 +250,6 @@ impl Filter {
         f.reset();
         f.set_cutoff(fc);
         f.set_r(1. - q);
-        f.set_samplerate(samplerate);
         f.set_saturators(nl, nl);
     }
 

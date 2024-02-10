@@ -2,17 +2,13 @@ use std::sync::{atomic::AtomicBool, Arc};
 
 use nih_plug::prelude::*;
 
-use valib::{
-    dsp::blocks::{ModMatrix, Series2},
-    saturators::{Clipper, Saturator, Slew},
-};
+use valib::oversample::Oversample;
 use valib::{dsp::DSP, Scalar};
 use valib::{
     filters::ladder::{Ideal, Ladder, Transistor, OTA},
     saturators::{clippers::DiodeClipperModel, Tanh},
-    simd::{AutoF32x2, AutoSimd, SimdValue},
+    simd::{AutoF32x2, SimdValue},
 };
-use valib::{filters::svf::Svf, oversample::Oversample};
 
 const MAX_BUFFER_SIZE: usize = 512;
 const OVERSAMPLE: usize = 2;

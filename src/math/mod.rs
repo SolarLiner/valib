@@ -1,4 +1,4 @@
-use std::{cmp::PartialOrd, hint};
+use std::hint;
 
 use nalgebra::{Complex, Dim, OVector, SMatrix, SVector};
 use num_traits::Float;
