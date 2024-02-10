@@ -119,10 +119,6 @@ impl<T: Scalar, C: Default> Svf<T, C> {
         self.g1 = 2. * self.r + self.g;
         self.d = (1. + 2. * self.r * self.g + self.g * self.g).simd_recip();
     }
-
-    fn freq_cutoff(&self) -> T {
-        self.g / self.w_step
-    }
 }
 
 impl<T: Scalar, S: Saturator<T>> Svf<T, S> {

@@ -54,9 +54,9 @@ where
     }
 }
 
-#[deprecated = "Use math::interpolators"]
 pub fn lerp<T: Scalar>(t: T, a: T, b: T) -> T {
-    a + t * (b - a)
+    use crate::math::interpolation::{Interpolate, Linear};
+    Linear::interpolate(t, [a, b])
 }
 
 #[replace_float_literals(T::from_f64(literal))]
@@ -71,14 +71,14 @@ pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
 
 #[cfg(test)]
 mod tests {
-    use super::lerp_block;
+    use crate::math::interpolation::{Interpolate, Linear};
 
     #[test]
     fn interp_block() {
         let a = [0., 1., 1.];
         let mut actual = [0.; 12];
         let expected = [0., 0.25, 0.5, 0.75, 1., 1., 1., 1., 1., 1., 1., 1.];
-        lerp_block(&mut actual, &a);
+        Linear::interpolate_slice(&mut actual, &a);
         assert_eq!(actual, expected);
     }
 }

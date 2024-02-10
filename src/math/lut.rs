@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use num_traits::{FromPrimitive, Num};
+use num_traits::Num;
 use numeric_literals::replace_float_literals;
 
 use crate::{simd::SimdPartialOrd, Scalar, SimdCast};

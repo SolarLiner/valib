@@ -3,7 +3,6 @@ use std::marker::PhantomData;
 use nalgebra::{Complex, ComplexField, SMatrix, SVector};
 use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
-use simba::simd::SimdRealField;
 
 use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::DSP;
