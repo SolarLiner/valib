@@ -198,12 +198,8 @@ impl<P, const I: usize, const O: usize> DspAnalysis<I, O> for PerSampleBlockAdap
 where
     P: DspAnalysis<I, O>,
 {
-    fn h_z(
-        &self,
-        samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; O]; I] {
-        self.inner.h_z(samplerate, z)
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
+        self.inner.h_z(z)
     }
 }
 

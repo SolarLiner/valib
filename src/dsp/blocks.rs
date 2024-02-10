@@ -43,11 +43,7 @@ impl<T: Scalar> DSP<1, 1> for Integrator<T> {
 
 impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
     #[replace_float_literals(Complex::from(T::from_f64(literal)))]
-    fn h_z(
-        &self,
-        _samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; 1]; 1] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
         [[1. / 2. * (z + 1.) / (z - 1.)]]
     }
 }
@@ -71,11 +67,7 @@ impl<T, const N: usize> DspAnalysis<N, 1> for Sum<T, N>
 where
     Self: DSP<N, 1>,
 {
-    fn h_z(
-        &self,
-        _samplerate: Self::Sample,
-        _z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; 1]; N] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; N] {
         [[Complex::one()]; N]
     }
 }
@@ -94,11 +86,7 @@ where
     Self::Sample: nalgebra::RealField,
 {
     #[replace_float_literals(Complex::from_real(< T as Scalar >::from_f64(literal)))]
-    fn h_z(
-        &self,
-        _samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; 3]; 1] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 3]; 1] {
         let lp = (z - 1.0) / (z + 1.0) * self.fc / 2.0;
         let hp = 1.0 - lp;
         let ap = 2.0 * lp - 1.0;
@@ -279,13 +267,9 @@ impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
 where
     P: DspAnalysis<N, N>,
 {
-    fn h_z(
-        &self,
-        samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; N]; N] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; N]; N] {
         self.0.iter().fold([[Complex::one(); N]; N], |acc, f| {
-            let ret = f.h_z(samplerate, z);
+            let ret = f.h_z(z);
             std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] * ret[i][j]))
         })
     }
@@ -369,13 +353,9 @@ impl<P, const I: usize, const O: usize, const N: usize> DspAnalysis<I, O> for Pa
 where
     P: DspAnalysis<I, O>,
 {
-    fn h_z(
-        &self,
-        samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; O]; I] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
         self.0.iter().fold([[Complex::zero(); O]; I], |acc, f| {
-            let ret = f.h_z(samplerate, z);
+            let ret = f.h_z(z);
             std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] + ret[i][j]))
         })
     }

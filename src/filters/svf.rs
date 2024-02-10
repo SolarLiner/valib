@@ -23,6 +23,7 @@ pub struct Svf<T, Mode = Linear> {
     g1: T,
     d: T,
     w_step: T,
+    samplerate: T,
     sats: [Mode; 2],
 }
 
@@ -56,17 +57,13 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
 
 impl<T: Scalar, S: Saturator<T>> DspAnalysis<1, 3> for Svf<T, S> {
     #[replace_float_literals(T::from_f64(literal))]
-    fn h_z(
-        &self,
-        samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; 3]; 1] {
-        let omega_c = samplerate * self.fc;
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 3]; 1] {
+        let omega_c = self.samplerate * self.fc;
         let x0 = z + Complex::one();
         let x1 = x0.powi(2) * omega_c.simd_powi(2);
         let x2 = z - Complex::one();
-        let x3 = x2.powi(2) * 4.0 * samplerate.simd_powi(2);
-        let x4 = x0 * x2 * samplerate * omega_c;
+        let x3 = x2.powi(2) * 4.0 * self.samplerate.simd_powi(2);
+        let x4 = x0 * x2 * self.samplerate * omega_c;
         let x5 = Complex::<T>::one() / (-x4 * 4.0 * self.r + x1 + x3);
         [[x1 * x5, -x4 * x5 * 2.0, x3 * x5]]
     }
@@ -84,6 +81,7 @@ impl<T: Scalar, C: Default> Svf<T, C> {
             g: T::zero(),
             g1: T::zero(),
             d: T::zero(),
+            samplerate,
             w_step: T::zero(),
             sats: Default::default(),
         };

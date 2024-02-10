@@ -193,11 +193,7 @@ impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSP<1, 1> for Ladder<T, To
 
 impl<T: Scalar, Topo: LadderTopology<T>> DspAnalysis<1, 1> for Ladder<T, Topo> {
     #[replace_float_literals(Complex::from(T::from_f64(literal)))]
-    fn h_z(
-        &self,
-        samplerate: T,
-        z: nalgebra::Complex<Self::Sample>,
-    ) -> [[nalgebra::Complex<Self::Sample>; 1]; 1] {
+    fn h_z(&self, z: nalgebra::Complex<Self::Sample>) -> [[nalgebra::Complex<Self::Sample>; 1]; 1] {
         let input_gain = if self.compensated {
             (Complex::from(self.k) + 1.0) * 0.707_945_784
         } else {

@@ -37,7 +37,7 @@ impl FilterType {
         z: Complex<T>,
     ) -> Complex<T> {
         let amp = Complex::from(T::splat(amp));
-        let [[lp, bp, hp]] = filter.h_z(samplerate, z);
+        let [[lp, bp, hp]] = filter.h_z(z);
         match self {
             Self::Bypass => 1.0,
             Self::Lowpass => lp,
@@ -190,11 +190,7 @@ pub struct Filter {
 }
 
 impl DspAnalysis<1, 1> for Filter {
-    fn h_z(
-        &self,
-        samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; 1]; 1] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
         [[self
             .params
             .ftype

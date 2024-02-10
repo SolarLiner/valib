@@ -23,11 +23,7 @@ impl<
         const OUT: usize,
     > DspAnalysis<IN, OUT> for StateSpace<T, IN, STATE, OUT>
 {
-    fn h_z(
-        &self,
-        _samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; OUT]; IN] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; OUT]; IN] {
         let a = self.a.map(Complex::from_simd_real);
         let b = self.b.map(Complex::from_simd_real);
         let c = self.c.map(Complex::from_simd_real);

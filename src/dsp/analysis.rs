@@ -11,11 +11,7 @@ use crate::{dsp::DSP, math::freq_to_z};
 /// filters for end-user visual feedback and not to be scientifically accurate.
 pub trait DspAnalysis<const I: usize, const O: usize>: DSP<I, O> {
     /// Discrete transfer function in the z-domain.
-    fn h_z(
-        &self,
-        samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; O]; I];
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I];
 
     /// Frequency response of the filter, using the complex exponential transformation to
     /// translate the input angular velocity into its z-domain position to pass into `h_z`.
@@ -30,6 +26,6 @@ pub trait DspAnalysis<const I: usize, const O: usize>: DSP<I, O> {
     where
         Complex<Self::Sample>: SimdComplexField,
     {
-        self.h_z(samplerate, freq_to_z(samplerate, f))
+        self.h_z(freq_to_z(samplerate, f))
     }
 }

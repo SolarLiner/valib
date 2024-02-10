@@ -229,11 +229,7 @@ impl<T: Scalar, S> DspAnalysis<1, 1> for Biquad<T, S>
 where
     Self: DSP<1, 1, Sample = T>,
 {
-    fn h_z(
-        &self,
-        _samplerate: Self::Sample,
-        z: Complex<Self::Sample>,
-    ) -> [[Complex<Self::Sample>; 1]; 1] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
         let num = z.powi(-1).scale(self.b[1]) + z.powi(-2).scale(self.b[2]) + self.b[0];
         let den = z.powi(-1).scale(-self.na[0]) + z.powi(-2).scale(-self.na[1]) + T::one();
         [[num / den]]
