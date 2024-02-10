@@ -65,14 +65,18 @@ pub struct Transistor<S>(pub [S; 5]);
 impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let y0sat = wc * self.0[4].saturate(y0);
-        let ysat = SVector::<_, 4>::from_fn(|i, _| wc * self.0[i].saturate(y[0]));
+        let ysat = SVector::<_, 4>::from_fn(|i, _| wc * self.0[i].saturate(y[i]));
         let yd = SVector::from([
             ysat[0] - y0sat,
             ysat[1] - ysat[0],
             ysat[2] - ysat[1],
             ysat[3] - ysat[2],
         ]);
-        for (s, (y, ysat)) in self.0.iter_mut().zip(y.iter().copied().zip(ysat.iter().copied())) {
+        for (s, (y, ysat)) in self
+            .0
+            .iter_mut()
+            .zip(y.iter().copied().zip(ysat.iter().copied()))
+        {
             s.update_state(y, ysat);
         }
         self.0[4].update_state(y0, y0sat);
@@ -236,7 +240,10 @@ mod tests {
             slice_to_mono_block_mut(&mut output),
         );
 
-        let topo = std::any::type_name::<Topo>().replace("::", "__").replace('<', "_").replace('>', "_");
+        let topo = std::any::type_name::<Topo>()
+            .replace("::", "__")
+            .replace('<', "_")
+            .replace('>', "_");
         let name = format!("test_ladder_ir_{topo}_c{compensated}_r{resonance}");
         insta::assert_csv_snapshot!(name, &output as &[_], { "[]" => insta::rounded_redaction(3) })
     }
