@@ -4,6 +4,7 @@ use std::sync::Arc;
 use nih_plug::{buffer::Block, prelude::*};
 
 use valib::dsp::DSP;
+use valib::math::interpolation::{Cubic, Interpolate};
 use valib::oversample::Oversample;
 use valib::{
     filters::biquad::Biquad,
@@ -254,7 +255,7 @@ impl Plugin for ClipperPlugin {
                 .drive
                 .smoothed
                 .next_block_exact(&mut drive[..len]);
-            valib::util::lerp_block(&mut drive_os[..OVERSAMPLE * len], &drive[..len]);
+            Cubic::interpolate_slice(&mut drive_os[..OVERSAMPLE * len], &drive[..len]);
 
             let mut simd_buffer = [Sample64::from_f64(0.0); MAX_BLOCK_SIZE];
             let actual_len = block_to_simd_array(&mut block, &mut simd_buffer, |f| f as f64);

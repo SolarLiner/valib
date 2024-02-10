@@ -2,6 +2,7 @@ use std::sync::{atomic::AtomicBool, Arc};
 
 use nih_plug::prelude::*;
 
+use valib::math::interpolation::{Cubic, Interpolate};
 use valib::oversample::Oversample;
 use valib::{dsp::DSP, Scalar};
 use valib::{
@@ -81,6 +82,7 @@ type DspOta = DspT<OTA<Tanh>>;
 type DspTransistor = DspT<Transistor<DiodeClipperModel<Sample>>>;
 
 #[derive(Debug, Clone, Copy)]
+#[allow(clippy::large_enum_variant)]
 enum Dsp {
     Ideal(DspIdeal),
     Ota(DspOta),
@@ -242,9 +244,9 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
             let mut os_fc = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_q = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
 
-            valib::util::lerp_block(&mut os_drive[..os_len], &drive[..len]);
-            valib::util::lerp_block(&mut os_fc[..os_len], &fc[..len]);
-            valib::util::lerp_block(&mut os_q[..os_len], &q[..len]);
+            Cubic::interpolate_slice(&mut os_drive[..os_len], &drive[..len]);
+            Cubic::interpolate_slice(&mut os_fc[..os_len], &fc[..len]);
+            Cubic::interpolate_slice(&mut os_q[..os_len], &q[..len]);
 
             let buffer = &mut simd_slice[..len];
             let mut os_buffer = self.oversample.oversample(buffer);

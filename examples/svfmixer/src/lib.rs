@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
+use valib::math::interpolation::{Cubic, Interpolate};
 use valib::simd::{AutoSimd, SimdValue};
 use valib::{
     dsp::blocks::{ModMatrix, Series2},
@@ -252,12 +253,12 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
             let mut os_bp_gain = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_hp_gain = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
 
-            valib::util::lerp_block(&mut os_drive[..os_len], &drive[..len]);
-            valib::util::lerp_block(&mut os_fc[..os_len], &fc[..len]);
-            valib::util::lerp_block(&mut os_q[..os_len], &q[..len]);
-            valib::util::lerp_block(&mut os_lp_gain[..os_len], &lp_gain[..len]);
-            valib::util::lerp_block(&mut os_bp_gain[..os_len], &bp_gain[..len]);
-            valib::util::lerp_block(&mut os_hp_gain[..os_len], &hp_gain[..len]);
+            Cubic::interpolate_slice(&mut os_drive[..os_len], &drive[..len]);
+            Cubic::interpolate_slice(&mut os_fc[..os_len], &fc[..len]);
+            Cubic::interpolate_slice(&mut os_q[..os_len], &q[..len]);
+            Cubic::interpolate_slice(&mut os_lp_gain[..os_len], &lp_gain[..len]);
+            Cubic::interpolate_slice(&mut os_bp_gain[..os_len], &bp_gain[..len]);
+            Cubic::interpolate_slice(&mut os_hp_gain[..os_len], &hp_gain[..len]);
 
             let buffer = &mut simd_slice[..len];
             let mut os_buffer = self.oversample.oversample(buffer);

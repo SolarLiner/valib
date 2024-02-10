@@ -4,11 +4,11 @@ use nih_plug::prelude::*;
 
 use valib::dsp::DSP;
 use valib::filters::biquad::Biquad;
+use valib::math::interpolation::{Cubic, Interpolate};
 use valib::oversample::Oversample;
 use valib::saturators::clippers::DiodeClipperModel;
 use valib::saturators::Dynamic;
 use valib::simd::{AutoF32x2, AutoSimd, SimdValue};
-use valib::util::lerp_block;
 use valib::Scalar;
 
 const OVERSAMPLE: usize = 2;
@@ -256,9 +256,9 @@ impl nih_plug::prelude::Plugin for Plugin {
                 .drive
                 .smoothed
                 .next_block_exact(&mut drive[..len]);
-            lerp_block(&mut os_fc[..os_len], &fc[..len]);
-            lerp_block(&mut os_q[..os_len], &q[..len]);
-            lerp_block(&mut os_drive[..os_len], &drive[..len]);
+            Cubic::interpolate_slice(&mut os_fc[..os_len], &fc[..len]);
+            Cubic::interpolate_slice(&mut os_q[..os_len], &q[..len]);
+            Cubic::interpolate_slice(&mut os_drive[..os_len], &drive[..len]);
 
             let mut simd_block = [Sample::from_f64(0.0); MAX_BLOCK_SIZE];
             let actual_len =
