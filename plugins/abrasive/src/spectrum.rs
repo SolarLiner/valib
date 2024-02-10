@@ -11,6 +11,7 @@ use nih_plug::{
 };
 use realfft::{num_complex::Complex32, num_traits::Zero, RealFftPlanner, RealToComplex};
 use triple_buffer::{Input, Output, TripleBuffer};
+use valib::util::lerp;
 
 pub struct Spectrum {
     pub window_size: usize,
@@ -134,8 +135,4 @@ impl Analyzer {
         self.input.input_buffer().clone_from(&self.scratch);
         self.input.publish();
     }
-}
-
-fn lerp(t: f32, a: f32, b: f32) -> f32 {
-    a + (b - a) * t
 }
