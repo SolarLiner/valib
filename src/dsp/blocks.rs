@@ -67,7 +67,7 @@ impl<T, const N: usize> DspAnalysis<N, 1> for Sum<T, N>
 where
     Self: DSP<N, 1>,
 {
-    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; N] {
+    fn h_z(&self, _z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; N] {
         [[Complex::one()]; N]
     }
 }

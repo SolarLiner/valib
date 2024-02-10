@@ -184,18 +184,19 @@ impl FilterParams {
 pub struct Filter {
     pub params: Arc<FilterParams>,
     pub scale: <Sample as SimdValue>::Element,
+    samplerate: Sample,
     svf: Svf<Sample, Dynamic<Sample>>,
     clippers: [Dynamic<Sample>; 3],
     last_resclip: ResonanceClip,
 }
 
 impl DspAnalysis<1, 1> for Filter {
-    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
         [[self
             .params
             .ftype
             .value()
-            .h_z(samplerate, &self.svf, self.scale, z)]]
+            .h_z(self.samplerate, &self.svf, self.scale, z)]]
     }
 }
 
@@ -234,14 +235,15 @@ impl Filter {
             params,
             scale: 1.0,
             svf: Svf::new(samplerate, fc, Sample::from_f64(1.0) - q),
+            samplerate,
             clippers,
             last_resclip,
         }
     }
 
     #[replace_float_literals(Sample::from_f64(literal))]
-    pub fn reset(&mut self, samplerate: f32) {
-        let samplerate = Sample::splat(samplerate);
+    pub fn reset(&mut self) {
+        let samplerate = Sample::splat(self.samplerate);
         let fc = Sample::splat(self.params.cutoff.smoothed.next());
         let q = Sample::splat(self.params.q.value());
         let nl = self.params.resclip.value().as_dynamic_type();
