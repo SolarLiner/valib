@@ -88,7 +88,9 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
 /// back into the input.
 #[derive(Debug, Copy, Clone)]
 pub struct Ladder<T, Topo = OTA<Tanh>> {
-    g: T,
+    wc: T,
+    samplerate: T,
+    inv_2fs: T,
     s: SVector<T, 4>,
     topology: Topo,
     k: T,
@@ -117,28 +119,36 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
     /// let ideal_ladder = Ladder::<_, Ideal>::new(48000.0, 440.0, 1.0);
     /// let transistor_ladder = Ladder::<_, Transistor<DiodeClipperModel<_>>>::new(48000.0, 440.0, 1.0);
     /// ```
-    pub fn new(samplerate: T, cutoff: T, resonance: T) -> Self {
+    #[replace_float_literals(T::from_f64(literal))]
+    pub fn new(samplerate: impl Into<f64>, cutoff: T, resonance: T) -> Self {
+        let samplerate = T::from_f64(samplerate.into());
         let mut this = Self {
-            g: T::zero(),
+            inv_2fs: T::simd_recip(2.0 * samplerate),
+            samplerate,
+            wc: cutoff,
             s: SVector::zeros(),
             topology: Topo::default(),
             k: resonance,
             compensated: false,
         };
-        this.set_cutoff(samplerate, cutoff);
+        this.set_cutoff(cutoff);
         this
     }
 
     pub fn with_topology<T2>(self, topology: T2) -> Ladder<T, T2> {
         let Self {
-            g,
+            inv_2fs,
+            samplerate,
+            wc: fc,
             s,
             k,
             compensated,
             ..
         } = self;
         Ladder {
-            g,
+            inv_2fs,
+            samplerate,
+            wc: fc,
             s,
             k,
             compensated,
@@ -154,9 +164,8 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
     /// * `samplerate`: Signal sampling rate (Hz)
     /// * `frequency`: Cutoff frequency (Hz)
     #[replace_float_literals(T::from_f64(literal))]
-    pub fn set_cutoff(&mut self, samplerate: T, frequency: T) {
-        let wc = bilinear_prewarming_bounded(samplerate, T::simd_two_pi() * frequency);
-        self.g = wc / (2.0 * samplerate);
+    pub fn set_cutoff(&mut self, frequency: T) {
+        self.wc = bilinear_prewarming_bounded(self.samplerate, T::simd_two_pi() * frequency);
     }
 
     /// Sets the resonance amount.
@@ -178,8 +187,14 @@ impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSP<1, 1> for Ladder<T, To
         let input_gain = if self.compensated { self.k + 1.0 } else { 1.0 };
         let x = input_gain * x[0];
         let y0 = x - self.k * self.s[3];
-        self.s = self.topology.next_output(self.g, y0, self.s);
+        let g = self.wc * self.inv_2fs;
+        self.s = self.topology.next_output(g, y0, self.s);
         [self.s[3]]
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.samplerate = T::from_f64(samplerate as _);
+        self.inv_2fs = T::simd_recip(self.samplerate + self.samplerate);
     }
 
     fn latency(&self) -> usize {
@@ -199,7 +214,8 @@ impl<T: Scalar, Topo: LadderTopology<T>> DspAnalysis<1, 1> for Ladder<T, Topo> {
         } else {
             1.0
         };
-        let lp = z * self.g / (z - 1.0);
+        let g = self.wc * self.inv_2fs;
+        let lp = z * g / (z - 1.0);
         let ff = lp.powi(4);
         [[input_gain * ff / (1.0 - ff * self.k)]]
     }

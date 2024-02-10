@@ -9,6 +9,8 @@ pub struct Blit<T> {
     dp: T,
     pmax: T,
     x: T,
+    fc: T,
+    samplerate: f32,
 }
 
 impl<T: Scalar> DSP<0, 1> for Blit<T> {
@@ -42,21 +44,27 @@ impl<T: Scalar> DSP<0, 1> for Blit<T> {
 impl<T: Scalar> Blit<T> {
     /// Construct a new BLIT with the given samplerate and oscillation frequency (in Hz).
     #[replace_float_literals(T::from_f64(literal))]
-    pub fn new(samplerate: T, freq: T) -> Self {
+    pub fn new(samplerate: f32, freq: T) -> Self {
         let mut this = Self {
             p: 0.0,
             dp: 1.0,
             pmax: 0.0,
             x: 0.0,
+            fc: freq,
+            samplerate,
         };
-        this.set_frequency(samplerate, freq);
+        this.update_coefficients();
         this
     }
 
     /// Set the samplerate and frequency (in Hz) of this instance.
-    #[replace_float_literals(T::from_f64(literal))]
-    pub fn set_frequency(&mut self, samplerate: T, freq: T) {
-        self.pmax = 0.5 * samplerate / freq;
+    pub fn set_frequency(&mut self, freq: T) {
+        self.fc = freq;
+        self.update_coefficients();
+    }
+
+    fn update_coefficients(&mut self) {
+        self.pmax = T::from_f64(0.5 * self.samplerate as f64) / self.fc;
     }
 }
 
@@ -81,7 +89,7 @@ impl<T: Scalar> DSP<0, 1> for Sawtooth<T> {
 
 impl<T: Scalar> Sawtooth<T> {
     /// Create a new BLIT sawtooth wave oscillator, at the given samplerate with the given frequency (in Hz).
-    pub fn new(samplerate: T, freq: T) -> Self {
+    pub fn new(samplerate: f32, freq: T) -> Self {
         let blit = Blit::new(samplerate, freq);
         Self {
             blit,
@@ -91,9 +99,9 @@ impl<T: Scalar> Sawtooth<T> {
     }
 
     /// Set the samplerate and frequency (in Hz) of this instance.
-    pub fn set_frequency(&mut self, samplerate: T, freq: T) {
+    pub fn set_frequency(&mut self, freq: T) {
         self.dc = Self::get_dc(self.blit.pmax);
-        self.blit.set_frequency(samplerate, freq);
+        self.blit.set_frequency(freq);
     }
 
     #[replace_float_literals(T::from_f64(literal))]
@@ -127,7 +135,7 @@ impl<T: Scalar> DSP<0, 1> for Square<T> {
 
 impl<T: Scalar> Square<T> {
     /// Create a new BLIT pulse wave, at the given samplerate with the given frequency (in Hz) and pulse width (in 0..1)
-    pub fn new(samplerate: T, freq: T, pw: T) -> Self {
+    pub fn new(samplerate: f32, freq: T, pw: T) -> Self {
         let blit = Blit::new(samplerate, freq);
         let mut this = Self {
             blit_pos: blit,
@@ -150,9 +158,9 @@ impl<T: Scalar> Square<T> {
     }
 
     /// Set the samplerate and frequency (in Hz) of this instance.
-    pub fn set_frequency(&mut self, samplerate: T, freq: T) {
-        self.blit_pos.set_frequency(samplerate, freq);
-        self.blit_neg.set_frequency(samplerate, freq);
+    pub fn set_frequency(&mut self, freq: T) {
+        self.blit_pos.set_frequency(freq);
+        self.blit_neg.set_frequency(freq);
     }
 
     #[replace_float_literals(T::from_f64(literal))]

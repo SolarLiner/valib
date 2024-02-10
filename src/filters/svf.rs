@@ -53,6 +53,11 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
         self.sats[1].update_state(s2 / 10., self.s[1]);
         [lp, bp, hp]
     }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.w_step = T::simd_pi() / T::from_f64(samplerate as _);
+        self.update_coefficients();
+    }
 }
 
 impl<T: Scalar, S: Saturator<T>> DspAnalysis<1, 3> for Svf<T, S> {
@@ -72,7 +77,6 @@ impl<T: Scalar, S: Saturator<T>> DspAnalysis<1, 3> for Svf<T, S> {
 impl<T: Scalar, C: Default> Svf<T, C> {
     /// Create a new SVF filter with the provided sample rate, frequency cutoff (in Hz) and resonance amount
     /// (in 0..1 for stable filters, otherwise use bounded nonlinearities).
-    #[replace_float_literals(T::from_f64(literal))]
     pub fn new(samplerate: T, fc: T, r: T) -> Self {
         let mut this = Self {
             s: [T::zero(); 2],
@@ -82,22 +86,15 @@ impl<T: Scalar, C: Default> Svf<T, C> {
             g1: T::zero(),
             d: T::zero(),
             samplerate,
-            w_step: T::zero(),
+            w_step: T::simd_pi() / samplerate,
             sats: Default::default(),
         };
-        this.set_samplerate(samplerate);
+        this.update_coefficients();
         this
     }
 
     pub fn reset(&mut self) {
         self.s.fill(T::zero());
-    }
-
-    /// Set the samplerate this filter will be running at.
-    #[replace_float_literals(T::from_f64(literal))]
-    pub fn set_samplerate(&mut self, samplerate: T) {
-        self.w_step = T::simd_pi() / samplerate;
-        self.update_coefficients();
     }
 
     /// Set the new filter cutoff frequency (in Hz).
