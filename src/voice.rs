@@ -25,7 +25,7 @@ pub trait VoiceManager<const N: usize>: DSP<0, N> {
 }
 
 /// Voice trait, implemted by full voice objects.
-/// Inherits `DSP<4, 1>`, where inputs are:
+/// Inherits `DSP<5, 1>`, where inputs are:
 /// - Frequency (Hz)
 /// - Gate (> 0.5 indicates on)
 /// - Pressure (unipolar)
@@ -78,6 +78,10 @@ where
             Self::Sample::from_f64(self.pan as _),
         ]);
         [osc * Self::Sample::from_f64(self.gain as f64)]
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.voice.set_samplerate(samplerate);
     }
 }
 

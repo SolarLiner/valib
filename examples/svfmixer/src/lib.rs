@@ -196,7 +196,7 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
     ) -> bool {
         self.dsp
             .left_mut()
-            .set_samplerate(Sample::splat(buffer_config.sample_rate * OVERSAMPLE as f32));
+            .set_samplerate(buffer_config.sample_rate * OVERSAMPLE as f32);
         true
     }
 
