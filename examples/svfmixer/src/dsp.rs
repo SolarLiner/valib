@@ -37,7 +37,7 @@ impl DspInner {
         for (_, param) in self.params.iter_mut() {
             param.set_samplerate(samplerate);
         }
-        self.filter.set_samplerate(Sample::splat(samplerate));
+        self.filter.set_samplerate(samplerate);
     }
 }
 
