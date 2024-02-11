@@ -33,10 +33,12 @@ impl<T: Scalar> Default for Integrator<T> {
 impl<T: Scalar> DSP<1, 1> for Integrator<T> {
     type Sample = T;
 
+    #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let in0 = x[0] + self.0;
-        self.0 += in0;
-        [self.0]
+        let x2 = x[0] / 2.0;
+        let out = x2 + self.0;
+        self.0 = x2 + out;
+        [out]
     }
 }
 
