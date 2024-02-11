@@ -89,18 +89,18 @@ enum Dsp {
     Transistor(DspTransistor),
 }
 impl Dsp {
-    fn set_params(&mut self, samplerate: Sample, freq: Sample, q: Sample) {
+    fn set_params(&mut self, freq: Sample, q: Sample) {
         match self {
             Self::Ideal(f) => {
-                f.set_cutoff(samplerate, freq);
+                f.set_cutoff(freq);
                 f.set_resonance(q);
             }
             Self::Ota(f) => {
-                f.set_cutoff(samplerate, freq);
+                f.set_cutoff(freq);
                 f.set_resonance(q);
             }
             Self::Transistor(f) => {
-                f.set_cutoff(samplerate, freq);
+                f.set_cutoff(freq);
                 f.set_resonance(q);
             }
         }
@@ -120,14 +120,14 @@ impl DSP<1, 1> for Dsp {
 }
 
 #[derive(Debug)]
-struct SvfMixerPlugin {
+struct LadderFilterPlugin {
     topology_changed: Arc<AtomicBool>,
     params: Arc<PluginParams>,
     oversample: Oversample<Sample>,
     dsp: Dsp,
 }
-impl SvfMixerPlugin {
-    fn setup_filter(&mut self, samplerate: Sample) {
+impl LadderFilterPlugin {
+    fn setup_filter(&mut self, samplerate: impl Copy + Into<f64>) {
         if self
             .topology_changed
             .load(std::sync::atomic::Ordering::SeqCst)
@@ -153,13 +153,13 @@ impl SvfMixerPlugin {
     }
 }
 
-impl Default for SvfMixerPlugin {
+impl Default for LadderFilterPlugin {
     fn default() -> Self {
         let topology_changed = Arc::new(AtomicBool::new(false));
         let params = Arc::new(PluginParams::new(topology_changed.clone()));
         let fc = Sample::splat(params.fc.default_plain_value());
         let q = Sample::splat(params.q.default_plain_value());
-        let dsp = DspIdeal::new(Sample::splat(44100.0), fc, q);
+        let dsp = DspIdeal::new(44100.0, fc, q);
         Self {
             topology_changed,
             params,
@@ -169,7 +169,7 @@ impl Default for SvfMixerPlugin {
     }
 }
 
-impl nih_plug::prelude::Plugin for SvfMixerPlugin {
+impl Plugin for LadderFilterPlugin {
     const NAME: &'static str = "Ladder filter";
     const VENDOR: &'static str = "SolarLiner";
     const URL: &'static str = "https://github.com/SolarLiner/valib";
@@ -188,8 +188,8 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
             aux_outputs: &[],
         },
     }];
-    type BackgroundTask = ();
     type SysExMessage = ();
+    type BackgroundTask = ();
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -201,7 +201,7 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        self.setup_filter(Sample::splat(buffer_config.sample_rate * OVERSAMPLE as f32));
+        self.setup_filter(buffer_config.sample_rate * OVERSAMPLE as f32);
         true
     }
 
@@ -213,10 +213,9 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<Self>,
+        context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let samplerate = Sample::splat(_context.transport().sample_rate * OVERSAMPLE as f32);
-        self.setup_filter(samplerate);
+        self.setup_filter(context.transport().sample_rate * OVERSAMPLE as f32);
 
         let mut drive = [0.; MAX_BUFFER_SIZE];
         let mut fc = [0.; MAX_BUFFER_SIZE];
@@ -253,7 +252,7 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
             for (i, s) in os_buffer.iter_mut().enumerate() {
                 let fc = Sample::splat(os_fc[i]);
                 let q = Sample::splat(4.0 * os_q[i]);
-                self.dsp.set_params(samplerate, fc, q);
+                self.dsp.set_params(fc, q);
                 let drive = Sample::splat(os_drive[i]);
                 *s = self.dsp.process([*s * drive])[0] / drive;
             }
@@ -269,7 +268,7 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
     }
 }
 
-impl ClapPlugin for SvfMixerPlugin {
+impl ClapPlugin for LadderFilterPlugin {
     const CLAP_ID: &'static str = "com.github.SolarLiner.valib.LadderFilter";
     const CLAP_DESCRIPTION: Option<&'static str> = None;
     const CLAP_MANUAL_URL: Option<&'static str> = None;
@@ -281,7 +280,7 @@ impl ClapPlugin for SvfMixerPlugin {
     ];
 }
 
-impl Vst3Plugin for SvfMixerPlugin {
+impl Vst3Plugin for LadderFilterPlugin {
     const VST3_CLASS_ID: [u8; 16] = *b"VaLibLaddrFltSLN";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
         Vst3SubCategory::Fx,
@@ -290,5 +289,5 @@ impl Vst3Plugin for SvfMixerPlugin {
     ];
 }
 
-nih_export_clap!(SvfMixerPlugin);
-nih_export_vst3!(SvfMixerPlugin);
+nih_export_clap!(LadderFilterPlugin);
+nih_export_vst3!(LadderFilterPlugin);

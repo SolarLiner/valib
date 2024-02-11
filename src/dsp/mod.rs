@@ -42,6 +42,7 @@ pub trait DSP<const I: usize, const O: usize> {
 
 /// Trait for DSP processes that take in buffers of audio instead of single-samples.
 /// Documentation of [`DSP`] still applies in here; only the process method changes.
+#[allow(unused_variables)]
 pub trait DSPBlock<const I: usize, const O: usize> {
     type Sample: Scalar;
 
