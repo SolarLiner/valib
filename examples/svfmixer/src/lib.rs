@@ -2,42 +2,12 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::math::interpolation::{Cubic, Interpolate};
-use valib::simd::{AutoSimd, SimdValue};
 use extend::FloatParamExt;
 use valib::dsp::parameter::HasParameters;
 use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
-use valib::dsp::{DSP, DSPBlock};
-use valib::dsp::blocks::{ModMatrix, Series2};
+use valib::dsp::DSPBlock;
 use valib::oversample::Oversample;
-use valib::saturators::Saturator;
-use valib::oversample::Oversample;
-use valib::saturators::Saturator;
-use valib::simd::SimdValue;
 use valib::Scalar;
-
-use crate::dsp::{Dsp, DspInner, DspParam};
-
-mod dsp;
-
-mod extend {
-    use std::sync::Arc;
-
-    use nih_plug::params::FloatParam;
-
-    use valib::dsp::parameter::Parameter;
-
-    pub trait FloatParamExt {
-        fn bind_to_parameter(self, param: &Parameter) -> Self;
-    }
-
-    impl FloatParamExt for FloatParam {
-        fn bind_to_parameter(self, param: &Parameter) -> Self {
-            let param = param.clone();
-            self.with_callback(Arc::new(move |value| param.set_value(value)))
-        }
-    }
-}
 
 use crate::dsp::{Dsp, DspInner, DspParam};
 
