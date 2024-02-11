@@ -17,6 +17,7 @@ pub mod utils;
 /// It's up to each implementor to document what the inputs and outputs mean.
 /// There are no restrictions on the number of input or output channels in and of itself.
 /// Implementors can support multiple configurations of I/O for different setups.
+#[allow(unused_variables)]
 pub trait DSP<const I: usize, const O: usize> {
     /// Type of the audio sample used by this DSP instance.
     type Sample: Scalar;
@@ -25,6 +26,9 @@ pub trait DSP<const I: usize, const O: usize> {
     /// so it can both work for working with audio data, but also control signals like frequency in Hertz
     /// for oscillators, or gate signals that are actually either 0 or 1.
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O];
+
+    /// Sets the processing samplerate for this [`DSP`] instance.
+    fn set_samplerate(&mut self, samplerate: f32) {}
 
     /// Report the latency of this DSP instance, that is the time, in samples, it takes for an input sample to be
     /// output back.
@@ -39,6 +43,7 @@ pub trait DSP<const I: usize, const O: usize> {
 
 /// Trait for DSP processes that take in buffers of audio instead of single-samples.
 /// Documentation of [`DSP`] still applies in here; only the process method changes.
+#[allow(unused_variables)]
 pub trait DSPBlock<const I: usize, const O: usize> {
     type Sample: Scalar;
 
@@ -49,6 +54,9 @@ pub trait DSPBlock<const I: usize, const O: usize> {
     ///
     /// Implementors should assume inputs and outputs are of the same length, as it is the caller's responsibility to make sure of that.
     fn process_block(&mut self, inputs: &[[Self::Sample; I]], outputs: &mut [[Self::Sample; O]]);
+
+    /// Sets the processing samplerate for this [`DSP`] instance.
+    fn set_samplerate(&mut self, samplerate: f32) {}
 
     /// Define an optional maximum buffer size alloed by this [`DSPBlock`] instance. Callers into this instance must
     /// then only provide buffers that are up to this size in samples.
@@ -82,6 +90,10 @@ where
         for i in 0..len {
             outputs[i] = self.process(inputs[i]);
         }
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        DSP::set_samplerate(self, samplerate)
     }
 
     #[inline(always)]

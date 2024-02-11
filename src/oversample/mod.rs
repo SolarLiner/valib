@@ -189,6 +189,10 @@ where
             .process_block(&self.staging_buffer, inner_outputs);
         os_block.finish(mono_block_to_slice_mut(outputs));
     }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.inner.set_samplerate(self.oversampling.os_factor as f32 * samplerate);
+    }
 }
 
 impl<S, P: HasParameters> HasParameters for Oversampled<S, P> {
