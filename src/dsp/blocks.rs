@@ -102,10 +102,6 @@ impl<T: Scalar> P1<T> {
         }
     }
 
-    pub fn set_samplerate(&mut self, samplerate: T) {
-        self.w_step = T::simd_pi() / samplerate
-    }
-
     pub fn set_fc(&mut self, fc: T) {
         self.fc = fc;
     }
@@ -128,6 +124,10 @@ impl<T: Scalar> DSP<1, 3> for P1<T> {
         let hp = x[0] - lp;
         let ap = 2. * lp - x[0];
         [lp, hp, ap]
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.w_step = T::simd_pi() / T::from_f64(samplerate as _)
     }
 
     fn latency(&self) -> usize {
@@ -171,6 +171,13 @@ macro_rules! series_tuple {
                 let x = $p.process(x);
                 )*
                 x
+            }
+
+            fn set_samplerate(&mut self, samplerate: f32) {
+                let Self(($($p),*)) = self;
+                $(
+                $p.set_samplerate(samplerate);
+                )*
             }
         }
     };
@@ -226,6 +233,17 @@ where
 {
     type Sample = A::Sample;
 
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+        let Self(a, _, b) = self;
+        let j = a.process(x);
+        b.process(j)
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.0.set_samplerate(samplerate);
+        self.2.set_samplerate(samplerate);
+    }
+
     fn latency(&self) -> usize {
         let Self(a, _, b) = self;
         a.latency() + b.latency()
@@ -236,12 +254,6 @@ where
         a.reset();
         b.reset();
     }
-
-    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
-        let Self(a, _, b) = self;
-        let j = a.process(x);
-        b.process(j)
-    }
 }
 
 impl<P: DSP<N, N>, const N: usize, const C: usize> DSP<N, N> for Series<[P; C]> {
@@ -249,6 +261,12 @@ impl<P: DSP<N, N>, const N: usize, const C: usize> DSP<N, N> for Series<[P; C]> 
 
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
         self.0.iter_mut().fold(x, |x, dsp| dsp.process(x))
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        for s in &mut self.0 {
+            s.set_samplerate(samplerate);
+        }
     }
 
     fn latency(&self) -> usize {
@@ -313,6 +331,13 @@ macro_rules! parallel_tuple {
                 )*
                 ret
             }
+
+            fn set_samplerate(&mut self, samplerate: f32) {
+                let Self(($($p),*)) = self;
+                $(
+                $p.set_samplerate(samplerate);
+                )*
+            }
         }
     };
 }
@@ -328,10 +353,6 @@ parallel_tuple!(A, B, C, D, E, F, G, H);
 impl<P: DSP<I, O>, const I: usize, const O: usize, const N: usize> DSP<I, O> for Parallel<[P; N]> {
     type Sample = P::Sample;
 
-    fn latency(&self) -> usize {
-        self.0.iter().fold(0, |max, dsp| max.max(dsp.latency()))
-    }
-
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
         self.0
             .iter_mut()
@@ -339,6 +360,16 @@ impl<P: DSP<I, O>, const I: usize, const O: usize, const N: usize> DSP<I, O> for
             .fold([Self::Sample::from_f64(0.0); O], |out, dsp| {
                 std::array::from_fn(|i| out[i] + dsp[i])
             })
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        for s in &mut self.0 {
+            s.set_samplerate(samplerate);
+        }
+    }
+
+    fn latency(&self) -> usize {
+        self.0.iter().fold(0, |max, dsp| max.max(dsp.latency()))
     }
 
     fn reset(&mut self) {
@@ -414,6 +445,10 @@ impl<FF: DSP<N, N>, const N: usize> DSP<N, N> for Feedback<FF, (), N> {
         y
     }
 
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.feedforward.set_samplerate(samplerate);
+    }
+
     fn latency(&self) -> usize {
         self.feedforward.latency()
     }
@@ -437,6 +472,11 @@ where
         let y = self.feedforward.process(x);
         self.memory = y;
         y
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.feedforward.set_samplerate(samplerate);
+        self.feedback.set_samplerate(samplerate);
     }
 
     fn latency(&self) -> usize {
