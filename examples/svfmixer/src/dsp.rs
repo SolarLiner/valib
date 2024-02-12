@@ -97,6 +97,23 @@ impl DSP<1, 1> for DspInner {
         let [out] = self.mod_matrix.process(self.filter.process([x * drive]));
         [out / drive]
     }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        for s in self.params.values_mut() {
+            s.set_samplerate(samplerate);
+        }
+        self.filter.set_samplerate(samplerate);
+        self.mod_matrix.set_samplerate(samplerate);
+    }
+
+    fn latency(&self) -> usize {
+        self.filter.latency() + self.mod_matrix.latency()
+    }
+
+    fn reset(&mut self) {
+        self.filter.reset();
+        self.mod_matrix.reset();
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -117,13 +134,13 @@ where
         self.1.saturate(self.0.saturate(x))
     }
 
-    fn sat_diff(&self, x: T) -> T {
-        self.0.sat_diff(x) * self.1.sat_diff(self.0.saturate(x))
-    }
-
     fn update_state(&mut self, x: T, y: T) {
         let xc = self.0.saturate(x);
         self.0.update_state(x, xc);
         self.1.update_state(xc, y);
+    }
+
+    fn sat_diff(&self, x: T) -> T {
+        self.0.sat_diff(x) * self.1.sat_diff(self.0.saturate(x))
     }
 }
