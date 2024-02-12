@@ -16,26 +16,28 @@
           inherit system;
           overlays = [ (import nixpkgs-mozilla) ];
         };
+        inherit (pkgs) lib stdenv;
 
         toolchain = (pkgs.rustChannelOf {
           toolchain = ./rust-toolchain;
-          sha256 = "sha256-NNO9WVU8KfipdeTGgFnQ6Zlw3wImnN5RKAQPdAHG0d0=";
+          sha256 = "sha256-2Af13p12CWwmppsdujS1EeCQ41u0rMzJmqNh7WQ2QKM=";
         }).rust;
         naersk' = pkgs.callPackage naersk {
           cargo = toolchain;
           rustc = toolchain;
         };
 
-        package' = { pname, display-name, gui ? false }:
+        package' = { pname, display-name, gui ? false, vst3 ? false, clap ? false }:
           naersk'.buildPackage {
             name = pname;
             nativeBuildInputs = with pkgs; [ pkg-config python3 ];
             buildInputs = if gui then
               with pkgs;
               with pkgs.xorg; [
-                alsa-lib
                 jack2
                 libGL
+              ] ++ lib.optionals (!stdenv.isDarwin) [
+                alsa-lib
                 libX11
                 libxcb
                 libXcursor
@@ -45,6 +47,8 @@
               [ ];
             src = ./.;
             cargoBuildOptions = opts: [ "-p ${pname}" ] ++ opts;
+            CREATE_VST3 = vst3;
+            CREATE_CLAP = clap;
             postInstall = ''
               OUT_DIR=''${PWD}/target/release
               LIBNAME=''${OUT_DIR}/lib${pname}.so
@@ -58,13 +62,17 @@
 
               if [[ -f $LIBNAME ]]; then
                 mkdir -p $out/lib/{vst3,clap}
-                cp ''${LIBNAME} $out/lib/vst3/${display-name}.vst3
-                cp ''${LIBNAME} $out/lib/clap/${display-name}.clap
+                if (( ''${CREATE_VST3} )); then
+                  cp ''${LIBNAME} $out/lib/vst3/${display-name}.vst3
+                fi
+                if (( ''${CREATE_CLAP} )); then
+                  cp ''${LIBNAME} $out/lib/clap/${display-name}.clap
+                fi
               fi
             '';
           };
       in rec {
-        packages.workspace = naersk'.buildPackage {
+        packages.valib = naersk'.buildPackage {
           src = ./.;
           doDoc = true;
         };
@@ -72,7 +80,10 @@
           pname = "abrasive";
           display-name = "Abrasive";
           gui = true;
+          vst3 = true;
+          clap = true;
         };
-        defaultPackage = packages.workspace;
+        defaultPackage = packages.valib;
+        apps.abrasive = flake-utils.lib.mkApp { drv = packages.abrasive; };
       });
 }
