@@ -6,6 +6,7 @@ use self::analysis::DspAnalysis;
 
 pub mod analysis;
 pub mod blocks;
+pub mod parameter;
 pub mod utils;
 
 /// DSP trait. This is the main abstraction of the whole library.

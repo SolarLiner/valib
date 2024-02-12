@@ -13,5 +13,7 @@ keywords.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
-nih_plug = { workspace = true }
+enum-map.workspace = true
+nalgebra.workspace = true
+nih_plug.workspace = true
 valib = { path = "../.." }
