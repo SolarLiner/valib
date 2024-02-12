@@ -147,6 +147,10 @@ impl DSP<0, 1> for SmoothedParam {
     fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
         self.smoothing.process([self.param.get_value()])
     }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.smoothing.set_samplerate(samplerate);
+    }
 }
 
 impl SmoothedParam {
@@ -187,10 +191,6 @@ impl SmoothedParam {
                 },
             )),
         }
-    }
-
-    pub fn set_samplerate(&mut self, samplerate: f32) {
-        self.smoothing.set_samplerate(samplerate);
     }
 
     pub fn next_sample(&mut self) -> f32 {
