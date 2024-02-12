@@ -1,11 +1,13 @@
-extern crate core;
-
+#![cfg_attr(feature = "fundsp", feature(generic_const_exprs))]
 use az::CastFrom;
 use num_traits::Zero;
 use simba::simd::{AutoSimd, SimdRealField, SimdValue};
 
 pub use simba::simd;
+#[cfg(feature = "fundsp")]
+pub use contrib::fundsp;
 
+pub mod contrib;
 pub mod dsp;
 pub mod filters;
 pub mod fir;
