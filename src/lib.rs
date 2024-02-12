@@ -1,3 +1,4 @@
+#![cfg_attr(feature = "fundsp", feature(const_generic_exprs))]
 #![doc = include_str!("../README.md")]
 use az::CastFrom;
 use num_traits::Zero;
