@@ -3,9 +3,9 @@ use az::CastFrom;
 use num_traits::Zero;
 use simba::simd::{AutoSimd, SimdRealField, SimdValue};
 
-pub use simba::simd;
 #[cfg(feature = "fundsp")]
 pub use contrib::fundsp;
+pub use simba::simd;
 
 pub mod contrib;
 pub mod dsp;
@@ -17,8 +17,6 @@ pub mod oversample;
 pub mod saturators;
 pub mod util;
 pub mod voice;
-#[cfg(feature = "unstable-wdf")]
-pub mod wdf;
 
 pub trait Scalar: Copy + SimdRealField {
     fn from_f64(value: f64) -> Self;
