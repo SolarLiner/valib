@@ -30,11 +30,14 @@ jobs:
         run: cargo doc
       - name: Fix permissions
         run: |
-          chmod -c -R +rX "_site/" | while read line; do
+          chmod -c -R +rX "target/doc" | while read line; do
             echo "::warning title=Invalid file permissions automatically fixed::$line"
           done
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v2
+        with:
+          path: target/doc
+          retention-days: 31
   doc-deploy:
     needs: doc
     permissions:
