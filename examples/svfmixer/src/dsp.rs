@@ -1,6 +1,7 @@
 use enum_map::{enum_map, Enum, EnumMap};
 use nalgebra::SMatrix;
 use nih_plug::util::db_to_gain_fast;
+
 use valib::dsp::blocks::ModMatrix;
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
 use valib::dsp::DSP;
@@ -10,7 +11,7 @@ use valib::saturators::{Clipper, Saturator, Slew};
 use valib::simd::{AutoSimd, SimdValue};
 use valib::Scalar;
 
-type Sample = AutoSimd<[f32; 2]>;
+pub(crate) type Sample = AutoSimd<[f32; 2]>;
 
 pub type Dsp = Oversampled<Sample, DspInner>;
 

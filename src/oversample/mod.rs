@@ -12,21 +12,25 @@ use crate::{
     filters::biquad::Biquad,
 };
 
+const CASCADE: usize = 8;
+
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
     os_factor: usize,
     os_buffer: Box<[T]>,
-    pre_filter: Series<[Biquad<T, Linear>; 8]>,
-    post_filter: Series<[Biquad<T, Linear>; 8]>,
+    pre_filter: Series<[Biquad<T, Linear>; CASCADE]>,
+    post_filter: Series<[Biquad<T, Linear>; CASCADE]>,
 }
 
 impl<T: Scalar> Oversample<T> {
     pub fn new(os_factor: usize, max_block_size: usize) -> Self {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
+        let cascade_adjustment = f64::sqrt(2f64.powf(1.0 / CASCADE as f64) - 1.0);
+        println!("cascade adjustment {cascade_adjustment}");
         let filters = std::array::from_fn(|_| {
             Biquad::lowpass(
-                T::from_f64(2.0 * os_factor as f64).simd_recip(),
+                T::from_f64(2.0 * os_factor as f64).simd_recip() * T::from_f64(cascade_adjustment),
                 T::from_f64(0.707),
             )
         });
@@ -167,32 +171,35 @@ where
 {
     type Sample = T;
 
-    fn latency(&self) -> usize {
-        self.oversampling.latency() + self.inner.latency()
-    }
-
-    fn max_block_size(&self) -> Option<usize> {
-        Some(self.oversampling.max_block_size())
-    }
-
-    fn reset(&mut self) {
-        self.oversampling.reset();
-        self.inner.reset();
-    }
-
     fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
         let inputs = mono_block_to_slice(inputs);
         let mut os_block = self.oversampling.oversample(inputs);
         let inner_outputs = slice_to_mono_block_mut(&mut os_block);
         self.staging_buffer[..inner_outputs.len()].copy_from_slice(inner_outputs);
         self.inner
-            .process_block(&self.staging_buffer, inner_outputs);
+            .process_block(&self.staging_buffer[..inner_outputs.len()], inner_outputs);
         os_block.finish(mono_block_to_slice_mut(outputs));
     }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.inner
             .set_samplerate(self.oversampling.os_factor as f32 * samplerate);
+    }
+
+    fn max_block_size(&self) -> Option<usize> {
+        Some(match self.inner.max_block_size() {
+            Some(size) => size.min(self.oversampling.max_block_size() / self.os_factor()),
+            None => self.oversampling.max_block_size(),
+        })
+    }
+
+    fn latency(&self) -> usize {
+        self.oversampling.latency() + self.inner.latency()
+    }
+
+    fn reset(&mut self) {
+        self.oversampling.reset();
+        self.inner.reset();
     }
 }
 

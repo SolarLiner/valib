@@ -1,5 +1,3 @@
-mod diode_clipper_model_data;
-
 use std::fmt;
 
 use nalgebra::{SMatrix, SVector};
@@ -12,6 +10,8 @@ use crate::{math::RootEq, saturators::Saturator, Scalar};
 
 use super::adaa::Antiderivative;
 
+mod diode_clipper_model_data;
+
 #[derive(Debug, Copy, Clone)]
 pub struct DiodeClipper<T> {
     pub isat: T,
@@ -23,6 +23,12 @@ pub struct DiodeClipper<T> {
     pub sim_tol: T,
     pub max_iter: usize,
     last_vout: T,
+}
+
+impl<T: Copy> DiodeClipper<T> {
+    pub fn last_output(&self) -> T {
+        self.last_vout
+    }
 }
 
 impl<T: Copy> DiodeClipper<T> {
@@ -210,8 +216,9 @@ impl<T: Scalar> Saturator<T> for DiodeClipperModel<T> {
 mod tests {
     use std::hint;
 
-    use crate::{dsp::DSP, saturators::adaa::Adaa};
     use simba::simd::SimdValue;
+
+    use crate::{dsp::DSP, saturators::adaa::Adaa};
 
     use super::{DiodeClipper, DiodeClipperModel};
 
