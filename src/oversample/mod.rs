@@ -5,21 +5,21 @@ use crate::dsp::{
     utils::{mono_block_to_slice, mono_block_to_slice_mut, slice_to_mono_block_mut},
     DSP,
 };
-use crate::saturators::Linear;
+use crate::saturators::{Clipper, Linear};
 use crate::Scalar;
 use crate::{
     dsp::{blocks::Series, DSPBlock},
     filters::biquad::Biquad,
 };
 
-const CASCADE: usize = 8;
+const CASCADE: usize = 4;
 
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
     os_factor: usize,
     os_buffer: Box<[T]>,
-    pre_filter: Series<[Biquad<T, Linear>; CASCADE]>,
-    post_filter: Series<[Biquad<T, Linear>; CASCADE]>,
+    pre_filter: Series<[Biquad<T, Clipper>; CASCADE]>,
+    post_filter: Series<[Biquad<T, Clipper>; CASCADE]>,
 }
 
 impl<T: Scalar> Oversample<T> {
