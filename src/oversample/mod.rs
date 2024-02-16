@@ -26,14 +26,12 @@ impl<T: Scalar> Oversample<T> {
     pub fn new(os_factor: usize, max_block_size: usize) -> Self {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
-        let cascade_adjustment = f64::sqrt(2f64.powf(1.0 / CASCADE as f64) - 1.0);
-        println!("cascade adjustment {cascade_adjustment}");
-        let filters = std::array::from_fn(|_| {
-            Biquad::lowpass(
-                T::from_f64(2.0 * os_factor as f64).simd_recip() * T::from_f64(cascade_adjustment),
-                T::from_f64(0.707),
-            )
-        });
+        let fc_raw = f64::recip(2.1 * os_factor as f64);
+        let cascade_adjustment = f64::sqrt(2f64.powf(1.0 / CASCADE as f64) - 1.0).recip();
+        let fc_corr = fc_raw * cascade_adjustment;
+        println!("cascade adjustment {cascade_adjustment}: {fc_raw} -> {fc_corr}");
+        let filters =
+            std::array::from_fn(|_| Biquad::lowpass(T::from_f64(fc_corr), T::from_f64(0.707)));
         Self {
             os_factor,
             os_buffer,
