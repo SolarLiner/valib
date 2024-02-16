@@ -12,7 +12,6 @@
 //! [`Parallel`]: crate::dsp::blocks::Parallel
 use core::fmt;
 use std::fmt::Formatter;
-
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -77,6 +76,25 @@ impl Parameter {
 
     pub fn has_changed(&self) -> bool {
         self.0.changed.swap(false, Ordering::AcqRel)
+    }
+
+    pub fn get_bool(&self) -> bool {
+        self.get_value() > 0.5
+    }
+
+    pub fn set_bool(&self, value: bool) {
+        self.set_value(if value { 1.0 } else { 0.0 })
+    }
+
+    pub fn get_enum<E: Enum>(&self) -> E {
+        let index = self.get_value().min(E::LENGTH as f32 - 1.0);
+        eprintln!("get_enum index {index}");
+        return E::from_usize(index.floor() as _);
+    }
+
+    pub fn set_enum<E: Enum>(&self, value: E) {
+        let step = f32::recip(E::LENGTH as f32);
+        self.set_value(value.into_usize() as f32 * step);
     }
 
     pub fn filtered<P>(&self, dsp: P) -> FilteredParam<P> {
@@ -223,6 +241,13 @@ pub trait HasParameters {
         (0..Self::Enum::LENGTH)
             .map(Self::Enum::from_usize)
             .map(|p| (p, self.get_parameter(p)))
+    }
+
+    fn full_name(&self, param: Self::Enum) -> String {
+        self.get_parameter(param)
+            .name()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("Param {}", param.into_usize() + 1))
     }
 }
 

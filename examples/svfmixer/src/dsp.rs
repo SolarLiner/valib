@@ -10,7 +10,7 @@ use valib::saturators::{Clipper, Saturator, Slew};
 use valib::simd::{AutoSimd, SimdValue};
 use valib::Scalar;
 
-type Sample = AutoSimd<[f32; 2]>;
+pub(crate) type Sample = AutoSimd<[f32; 2]>;
 
 pub type Dsp = Oversampled<Sample, DspInner>;
 

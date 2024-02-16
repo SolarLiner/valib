@@ -2,59 +2,28 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use extend::FloatParamExt;
-use valib::dsp::parameter::HasParameters;
-use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
+use valib::contrib::nih_plug::{process_buffer_simd, NihParamsController};
 use valib::dsp::DSPBlock;
 use valib::oversample::Oversample;
-use valib::Scalar;
 
 use crate::dsp::{Dsp, DspInner, DspParam};
 
 mod dsp;
 
-mod extend {
-    use std::sync::Arc;
-
-    use nih_plug::params::FloatParam;
-
-    use valib::dsp::parameter::Parameter;
-
-    pub trait FloatParamExt {
-        fn bind_to_parameter(self, param: &Parameter) -> Self;
-    }
-
-    impl FloatParamExt for FloatParam {
-        fn bind_to_parameter(self, param: &Parameter) -> Self {
-            let param = param.clone();
-            self.with_callback(Arc::new(move |value| param.set_value(value)))
-        }
-    }
-}
-
 const MAX_BUFFER_SIZE: usize = 512;
 const OVERSAMPLE: usize = 2;
 
-#[derive(Debug, Params)]
-struct PluginParams {
-    #[id = "drive"]
-    drive: FloatParam,
-    #[id = "fc"]
-    fc: FloatParam,
-    #[id = "q"]
-    q: FloatParam,
-    #[id = "lp"]
-    lp_gain: FloatParam,
-    #[id = "bp"]
-    bp_gain: FloatParam,
-    #[id = "hp"]
-    hp_gain: FloatParam,
+struct SvfMixerPlugin {
+    params: Arc<NihParamsController<Dsp>>,
+    dsp: Dsp,
 }
 
-impl PluginParams {
-    fn new(dsp: &Dsp) -> Self {
-        Self {
-            drive: FloatParam::new(
+impl Default for SvfMixerPlugin {
+    fn default() -> Self {
+        let dsp_inner = DspInner::new(44100.0);
+        let dsp = Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE).with_dsp(dsp_inner);
+        let params_controller = NihParamsController::new(&dsp, |param, _| match param {
+            DspParam::Drive => FloatParam::new(
                 "Drive",
                 1.0,
                 FloatRange::Skewed {
@@ -65,9 +34,8 @@ impl PluginParams {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit(" dB")
-            .bind_to_parameter(dsp.get_parameter(DspParam::Drive)),
-            fc: FloatParam::new(
+            .with_unit(" dB"),
+            DspParam::Cutoff => FloatParam::new(
                 "Frequency",
                 300.,
                 FloatRange::Skewed {
@@ -77,11 +45,11 @@ impl PluginParams {
                 },
             )
             .with_value_to_string(formatters::v2s_f32_hz_then_khz_with_note_name(2, false))
-            .with_string_to_value(formatters::s2v_f32_hz_then_khz())
-            .bind_to_parameter(dsp.get_parameter(DspParam::Cutoff)),
-            q: FloatParam::new("Q", 0.5, FloatRange::Linear { min: 0., max: 1.25 })
-                .bind_to_parameter(dsp.get_parameter(DspParam::Resonance)),
-            lp_gain: FloatParam::new(
+            .with_string_to_value(formatters::s2v_f32_hz_then_khz()),
+            DspParam::Resonance => {
+                FloatParam::new("Q", 0.5, FloatRange::Linear { min: 0., max: 1.25 })
+            }
+            DspParam::LpGain => FloatParam::new(
                 "LP Gain",
                 0.,
                 FloatRange::SymmetricalSkewed {
@@ -93,9 +61,8 @@ impl PluginParams {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit(" dB")
-            .bind_to_parameter(dsp.get_parameter(DspParam::LpGain)),
-            bp_gain: FloatParam::new(
+            .with_unit(" dB"),
+            DspParam::BpGain => FloatParam::new(
                 "BP Gain",
                 0.,
                 FloatRange::SymmetricalSkewed {
@@ -107,9 +74,8 @@ impl PluginParams {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit(" dB")
-            .bind_to_parameter(dsp.get_parameter(DspParam::BpGain)),
-            hp_gain: FloatParam::new(
+            .with_unit(" dB"),
+            DspParam::HpGain => FloatParam::new(
                 "HP Gain",
                 0.,
                 FloatRange::SymmetricalSkewed {
@@ -121,24 +87,10 @@ impl PluginParams {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit(" dB")
-            .bind_to_parameter(dsp.get_parameter(DspParam::HpGain)),
-        }
-    }
-}
-
-struct SvfMixerPlugin {
-    params: Arc<PluginParams>,
-    dsp: Dsp,
-}
-
-impl Default for SvfMixerPlugin {
-    fn default() -> Self {
-        let dsp_inner = DspInner::new(44100.0);
-        let dsp = Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE).with_dsp(dsp_inner);
-        let params = PluginParams::new(&dsp);
+            .with_unit(" dB"),
+        });
         Self {
-            params: Arc::new(params),
+            params: Arc::new(params_controller),
             dsp,
         }
     }
@@ -163,8 +115,8 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
             aux_outputs: &[],
         },
     }];
-    type BackgroundTask = ();
     type SysExMessage = ();
+    type BackgroundTask = ();
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -194,35 +146,6 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
         _context.set_latency_samples(self.dsp.latency() as _);
         process_buffer_simd::<_, _, MAX_BUFFER_SIZE>(&mut self.dsp, buffer);
         ProcessStatus::Normal
-    }
-}
-
-fn process_buffer_simd<
-    T: Scalar<Element = f32> + From<[f32; 2]>,
-    Dsp: DSPBlock<1, 1, Sample = T>,
-    const BUFSIZE: usize,
->(
-    dsp: &mut Dsp,
-    buffer: &mut Buffer,
-) {
-    let mut input = [T::from_f64(0.0); BUFSIZE];
-    let mut output = input;
-    for (_, mut block) in buffer.iter_blocks(BUFSIZE) {
-        for (i, mut c) in block.iter_samples().enumerate() {
-            input[i] = T::from(std::array::from_fn(|i| c.get_mut(i).copied().unwrap()));
-            output[i] = input[i];
-        }
-
-        let input = &input[..block.samples()];
-        let output = &mut output[..block.samples()];
-
-        dsp.process_block(slice_to_mono_block(input), slice_to_mono_block_mut(output));
-
-        for (i, mut c) in block.iter_samples().enumerate() {
-            for (ch, s) in c.iter_mut().enumerate() {
-                *s = output[i].extract(ch);
-            }
-        }
     }
 }
 
