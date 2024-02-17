@@ -1,14 +1,16 @@
-use num_traits::Num;
 use std::ops::{Deref, DerefMut};
 
 use crate::dsp::parameter::{HasParameters, Parameter};
-use crate::dsp::DSPBlock;
 use crate::dsp::{
     utils::{mono_block_to_slice, mono_block_to_slice_mut, slice_to_mono_block_mut},
     DSP,
 };
-use crate::math::interpolation::{Cubic, Interpolate, SimdIndex, SimdInterpolatable};
-use crate::{Scalar, SimdCast};
+use crate::saturators::{Clipper, Linear};
+use crate::Scalar;
+use crate::{
+    dsp::{blocks::Series, DSPBlock},
+    filters::biquad::Biquad,
+};
 
 const CASCADE: usize = 4;
 
@@ -16,36 +18,41 @@ const CASCADE: usize = 4;
 pub struct Oversample<T> {
     os_factor: usize,
     os_buffer: Box<[T]>,
+    pre_filter: Series<[Biquad<T, Clipper>; CASCADE]>,
+    post_filter: Series<[Biquad<T, Clipper>; CASCADE]>,
 }
 
 impl<T: Scalar> Oversample<T> {
     pub fn new(os_factor: usize, max_block_size: usize) -> Self {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
+        let fc_raw = f64::recip(2.1 * os_factor as f64);
+        let cascade_adjustment = f64::sqrt(2f64.powf(1.0 / CASCADE as f64) - 1.0).recip();
+        let fc_corr = fc_raw * cascade_adjustment;
+        println!("cascade adjustment {cascade_adjustment}: {fc_raw} -> {fc_corr}");
+        let filters =
+            std::array::from_fn(|_| Biquad::lowpass(T::from_f64(fc_corr), T::from_f64(0.707)));
         Self {
             os_factor,
             os_buffer,
+            pre_filter: Series(filters),
+            post_filter: Series(filters),
         }
     }
 
     pub fn latency(&self) -> usize {
-        2 * self.os_factor
+        2 * self.os_factor + DSP::latency(&self.pre_filter) + DSP::latency(&self.post_filter)
     }
 
     pub fn max_block_size(&self) -> usize {
         self.os_buffer.len() / self.os_factor
     }
 
-    pub fn oversample(&mut self, buffer: &[T]) -> OversampleBlock<T>
-    where
-        Cubic: Interpolate<T, 4>,
-        T: SimdInterpolatable,
-        <T as SimdCast<usize>>::Output: SimdIndex,
-    {
-        let os_len = buffer.len() * self.os_factor;
-        let output = &mut self.os_buffer[..os_len];
-        Cubic.interpolate_slice(output, buffer);
-
+    pub fn oversample(&mut self, buffer: &[T]) -> OversampleBlock<T> {
+        let os_len = self.zero_stuff(buffer);
+        for s in &mut self.os_buffer[..os_len] {
+            *s = self.pre_filter.process([*s])[0];
+        }
         OversampleBlock {
             filter: self,
             os_len,
@@ -54,6 +61,8 @@ impl<T: Scalar> Oversample<T> {
 
     pub fn reset(&mut self) {
         self.os_buffer.fill(T::zero());
+        DSP::reset(&mut self.pre_filter);
+        DSP::reset(&mut self.post_filter);
     }
 
     pub fn with_dsp<P: DSPBlock<1, 1>>(self, dsp: P) -> Oversampled<T, P> {
@@ -65,6 +74,33 @@ impl<T: Scalar> Oversample<T> {
             oversampling: self,
             staging_buffer,
             inner: dsp,
+        }
+    }
+
+    fn zero_stuff(&mut self, inp: &[T]) -> usize {
+        let os_len = inp.len() * self.os_factor;
+        assert!(self.os_buffer.len() >= os_len);
+
+        self.os_buffer[..os_len].fill(T::zero());
+        for (i, s) in inp.iter().copied().enumerate() {
+            self.os_buffer[self.os_factor * i] = s * T::from_f64(self.os_factor as f64);
+        }
+        os_len
+    }
+
+    fn decimate(&mut self, out: &mut [T]) {
+        let os_len = out.len() * self.os_factor;
+        assert!(os_len <= self.os_buffer.len());
+
+        for (i, s) in self
+            .os_buffer
+            .iter()
+            .step_by(self.os_factor)
+            .copied()
+            .enumerate()
+            .take(out.len())
+        {
+            out[i] = s;
         }
     }
 }
@@ -88,15 +124,13 @@ impl<'a, T> DerefMut for OversampleBlock<'a, T> {
     }
 }
 
-impl<'a, T: Scalar + SimdInterpolatable> OversampleBlock<'a, T>
-where
-    Cubic: Interpolate<T, 4>,
-    <T as SimdCast<usize>>::Output: SimdIndex,
-{
+impl<'a, T: Scalar> OversampleBlock<'a, T> {
     pub fn finish(self, out: &mut [T]) {
-        let inlen = out.len() * self.filter.os_factor;
-        let input = &self.filter.os_buffer[..inlen];
-        Cubic.interpolate_slice(out, input);
+        let filter = self.filter;
+        for s in &mut filter.os_buffer[..self.os_len] {
+            *s = filter.post_filter.process([*s])[0];
+        }
+        filter.decimate(out);
     }
 }
 
@@ -130,8 +164,7 @@ where
 
 impl<T, P> DSPBlock<1, 1> for Oversampled<T, P>
 where
-    T: Scalar + SimdInterpolatable,
-    <T as SimdCast<usize>>::Output: SimdIndex,
+    T: Scalar,
     P: DSPBlock<1, 1, Sample = T>,
 {
     type Sample = T;
