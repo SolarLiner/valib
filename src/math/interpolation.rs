@@ -78,6 +78,7 @@ pub trait Interpolate<T, const N: usize> {
 }
 
 /// Zero-hold interpolation, where the output is the input without additional computation.
+#[derive(Debug, Copy, Clone)]
 pub struct ZeroHold;
 
 impl<T> Interpolate<T, 1> for ZeroHold {
@@ -91,6 +92,7 @@ impl<T> Interpolate<T, 1> for ZeroHold {
 }
 
 /// Nearest-neighbor interpolation, where the neighbor is chosen based on how close it is to the floating index.
+#[derive(Debug, Copy, Clone)]
 pub struct Nearest;
 
 impl<T: SimdPartialOrd + FromPrimitive> Interpolate<T, 2> for Nearest {
@@ -104,6 +106,7 @@ impl<T: SimdPartialOrd + FromPrimitive> Interpolate<T, 2> for Nearest {
 }
 
 /// Standard-issue linear interpolation algorithm.
+#[derive(Debug, Copy, Clone)]
 pub struct Linear;
 
 impl<T: Scalar> Interpolate<T, 2> for Linear {
@@ -119,6 +122,7 @@ impl<T: Scalar> Interpolate<T, 2> for Linear {
 /// Sine interpolation, which is linear interpolation where the control input is first modulated by
 /// a cosine function. Produes smoother results than bare linear interpolation because the interpolation
 /// is smooth at the limits, as all derivatives are 0 there.
+#[derive(Debug, Copy, Clone)]
 pub struct MappedLinear<F>(pub F);
 
 pub fn sine_interpolation<T: Scalar>() -> MappedLinear<impl Fn(T) -> T> {
@@ -139,6 +143,7 @@ where
 }
 
 /// Cubic algorithm, smoother than [`Linear`], but needs 4 taps instead of 2.
+#[derive(Debug, Copy, Clone)]
 pub struct Cubic;
 
 impl<T: Scalar> Interpolate<T, 4> for Cubic {
@@ -158,6 +163,7 @@ impl<T: Scalar> Interpolate<T, 4> for Cubic {
 }
 
 /// 4-tap cubic Hermite spline interpolation
+#[derive(Debug, Copy, Clone)]
 pub struct Hermite;
 
 impl<T: Scalar> Interpolate<T, 4> for Hermite {
@@ -175,6 +181,41 @@ impl<T: Scalar> Interpolate<T, 4> for Hermite {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+pub struct Lanczos;
+
+impl<T: Scalar> Interpolate<T, 7> for Lanczos {
+    fn indices(index: usize) -> [usize; 7] {
+        std::array::from_fn(|i| (index + i).saturating_sub(3))
+    }
+
+    fn interpolate(&self, t: T, taps: [T; 7]) -> T {
+        let a = T::from_f64(3.0);
+        let x = T::from_f64(4.0) + t;
+        taps.iter()
+            .copied()
+            .enumerate()
+            .map(|(i, s)| {
+                let i = x.simd_floor() - a + T::one() + T::from_f64(i as _);
+                s * Self::window::<T>(x - i)
+            })
+            .reduce(|a, b| a + b)
+            .unwrap_or_else(T::zero)
+    }
+}
+
+impl Lanczos {
+    fn window<T: Scalar>(t: T) -> T {
+        fn sinc<T: Scalar>(x: T) -> T {
+            let nx = x * T::simd_pi();
+            let y = nx.simd_sin() / nx;
+            T::one().select(x.simd_eq(T::zero()), y)
+        }
+
+        sinc(t) * sinc(t / T::from_f64(3.0))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -183,7 +224,16 @@ mod tests {
 
     #[rstest]
     fn test_interpolate<Interp, const TAPS: usize>(
-        #[values(ZeroHold, Nearest, Linear, Cubic, Hermite, sine_interpolation())] interp: Interp,
+        #[values(
+            ZeroHold,
+            Nearest,
+            Linear,
+            Cubic,
+            Hermite,
+            sine_interpolation(),
+            Lanczos
+        )]
+        interp: Interp,
     ) where
         Interp: Interpolate<f64, TAPS>,
     {
