@@ -243,9 +243,9 @@ impl Plugin for LadderFilterPlugin {
             let mut os_fc = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
             let mut os_q = [0.; OVERSAMPLE * MAX_BUFFER_SIZE];
 
-            Cubic::interpolate_slice(&mut os_drive[..os_len], &drive[..len]);
-            Cubic::interpolate_slice(&mut os_fc[..os_len], &fc[..len]);
-            Cubic::interpolate_slice(&mut os_q[..os_len], &q[..len]);
+            Cubic.interpolate_slice(&mut os_drive[..os_len], &drive[..len]);
+            Cubic.interpolate_slice(&mut os_fc[..os_len], &fc[..len]);
+            Cubic.interpolate_slice(&mut os_q[..os_len], &q[..len]);
 
             let buffer = &mut simd_slice[..len];
             let mut os_buffer = self.oversample.oversample(buffer);

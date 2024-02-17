@@ -1,66 +1,91 @@
-use crate::{util::simd_index_simd, SimdCast, SimdValue};
-
 use nalgebra::SimdPartialOrd;
-use num_traits::{FromPrimitive, Num};
+use num_traits::{AsPrimitive, FromPrimitive, NumAssignOps, NumOps};
 use numeric_literals::replace_float_literals;
+use simba::simd::{SimdSigned, SimdValue};
 
 use crate::Scalar;
+use crate::{util::simd_index_simd, SimdCast};
+
+pub trait SimdIndex:
+    Copy + NumAssignOps + NumOps + SimdPartialOrd + SimdValue<Element = usize>
+{
+}
+
+impl<T: Copy + NumAssignOps + NumOps + SimdPartialOrd + SimdValue<Element = usize>> SimdIndex
+    for T
+{
+}
+
+pub trait SimdInterpolatable: SimdCast<usize>
+where
+    <Self as SimdCast<usize>>::Output: SimdIndex,
+{
+    fn index_from_usize(value: usize) -> Self::Output {
+        Self::Output::splat(value)
+    }
+}
+
+impl<T: SimdCast<usize>> SimdInterpolatable for T where <T as SimdCast<usize>>::Output: SimdIndex {}
 
 /// Interpolation trait. Interpolators implement function that connect discrete points into a continuous function.
 /// Functions can have any number of taps, both in the forward and bacward directions. It's up to the called to provide
 /// either actual existing points or extrapolated values when the indices would be out of bounds.
 pub trait Interpolate<T, const N: usize> {
-    /// Provide the relative indices needed to compute the interpolation
-    fn rel_indices() -> [isize; N];
+    /// Provide the indices needed for interpolating around the input index, where the index is the element that corresponds to t = 0.
+    fn indices(index: usize) -> [usize; N];
 
-    /// Interpolate a single point from the given taps (in the same order as the indices defined in [`Self::rel_indices`]).
+    /// Interpolate a single point from the given taps (in the same order as the indices defined in [`Interpolate::indices`]).
     /// The t parameter is assumed to be in the 0..=1 range, and it's up to the caller to provide values in the valid range.
-    fn interpolate(t: T, taps: [T; N]) -> T;
+    fn interpolate(&self, t: T, taps: [T; N]) -> T;
 
     /// Interpolate a value from an entire slice, where the t parameter is the "floating index" into the slice
     /// (meaning 3.5 is halfway between index 3 and 4 on the given slice).
-    fn interpolate_on_slice(t: T, values: &[T]) -> T
+    fn interpolate_on_slice(&self, t: T, values: &[T]) -> T
     where
-        T: Scalar + SimdCast<isize>,
-        <T as SimdCast<isize>>::Output: Copy + Num + SimdPartialOrd,
+        T: Scalar + SimdInterpolatable,
+        <T as SimdCast<usize>>::Output: SimdIndex,
     {
-        let ix_max = <T as SimdCast<isize>>::Output::splat(values.len() as isize - 1);
-        // let rate = input.len() as f64 / output.len() as f64;
-        let taps_ix = Self::rel_indices();
-
-        let zero = <T as SimdCast<isize>>::Output::splat(0);
         let input_frac = t.simd_fract();
         let input_index = t.simd_floor().cast();
-        let taps = taps_ix
-            .map(|tap| <T as SimdCast<isize>>::Output::splat(tap) + input_index)
-            .map(|tap| simd_index_simd(values, tap.simd_clamp(zero, ix_max)));
-        Self::interpolate(input_frac, taps)
+        let taps_ix: [_; N] = std::array::from_fn(|i| {
+            let mut output = input_index;
+            for j in 0..<T as SimdCast<usize>>::Output::lanes() {
+                output.replace(j, Self::indices(output.extract(j))[i]);
+            }
+            output
+        });
+
+        let zero = T::index_from_usize(0);
+        let ix_max = T::index_from_usize(values.len() - 1);
+        let taps = taps_ix.map(|tap| simd_index_simd(values, tap.simd_clamp(zero, ix_max)));
+        self.interpolate(input_frac, taps)
     }
 
     /// Interpolate one slice into another, where the output slice ends up containing the same "range" of values as
     /// the input slice, but also automatically performs interpolation using this instance.
-    fn interpolate_slice(output: &mut [T], input: &[T])
+    fn interpolate_slice(&self, output: &mut [T], input: &[T])
     where
-        T: Scalar + SimdCast<isize>,
-        <T as SimdCast<isize>>::Output: Copy + Num + SimdPartialOrd,
+        T: Scalar + SimdInterpolatable,
+        <T as SimdCast<usize>>::Output: SimdIndex,
     {
         let rate = input.len() as f64 / output.len() as f64;
 
         for (i, o) in output.iter_mut().enumerate() {
             let t = T::from_f64(rate * i as f64);
-            *o = Self::interpolate_on_slice(t, input);
+            *o = self.interpolate_on_slice(t, input);
         }
     }
 }
 
+/// Zero-hold interpolation, where the output is the input without additional computation.
 pub struct ZeroHold;
 
 impl<T> Interpolate<T, 1> for ZeroHold {
-    fn rel_indices() -> [isize; 1] {
-        [0]
+    fn indices(index: usize) -> [usize; 1] {
+        [index]
     }
 
-    fn interpolate(_: T, [x]: [T; 1]) -> T {
+    fn interpolate(&self, _: T, [x]: [T; 1]) -> T {
         x
     }
 }
@@ -69,11 +94,11 @@ impl<T> Interpolate<T, 1> for ZeroHold {
 pub struct Nearest;
 
 impl<T: SimdPartialOrd + FromPrimitive> Interpolate<T, 2> for Nearest {
-    fn rel_indices() -> [isize; 2] {
-        [0, 1]
+    fn indices(index: usize) -> [usize; 2] {
+        [index, index + 1]
     }
 
-    fn interpolate(t: T, [a, b]: [T; 2]) -> T {
+    fn interpolate(&self, t: T, [a, b]: [T; 2]) -> T {
         b.select(t.simd_gt(T::from_f64(0.5).unwrap()), a)
     }
 }
@@ -82,12 +107,34 @@ impl<T: SimdPartialOrd + FromPrimitive> Interpolate<T, 2> for Nearest {
 pub struct Linear;
 
 impl<T: Scalar> Interpolate<T, 2> for Linear {
-    fn rel_indices() -> [isize; 2] {
-        [0, 1]
+    fn indices(index: usize) -> [usize; 2] {
+        [index, index + 1]
     }
 
-    fn interpolate(t: T, [a, b]: [T; 2]) -> T {
+    fn interpolate(&self, t: T, [a, b]: [T; 2]) -> T {
         a + (b - a) * t
+    }
+}
+
+/// Sine interpolation, which is linear interpolation where the control input is first modulated by
+/// a cosine function. Produes smoother results than bare linear interpolation because the interpolation
+/// is smooth at the limits, as all derivatives are 0 there.
+pub struct MappedLinear<F>(pub F);
+
+pub fn sine_interpolation<T: Scalar>() -> MappedLinear<impl Fn(T) -> T> {
+    MappedLinear(|t| T::simd_cos(t * T::simd_pi()))
+}
+
+impl<T, F: Fn(T) -> T> Interpolate<T, 2> for MappedLinear<F>
+where
+    Linear: Interpolate<T, 2>,
+{
+    fn indices(index: usize) -> [usize; 2] {
+        Linear::indices(index)
+    }
+
+    fn interpolate(&self, t: T, taps: [T; 2]) -> T {
+        Linear.interpolate(self.0(t), taps)
     }
 }
 
@@ -95,12 +142,12 @@ impl<T: Scalar> Interpolate<T, 2> for Linear {
 pub struct Cubic;
 
 impl<T: Scalar> Interpolate<T, 4> for Cubic {
-    fn rel_indices() -> [isize; 4] {
-        [-1, 0, 1, 2]
+    fn indices(index: usize) -> [usize; 4] {
+        [index.saturating_sub(1), index, index + 1, index + 2]
     }
 
     #[replace_float_literals(T::from_f64(literal))]
-    fn interpolate(t: T, taps: [T; 4]) -> T {
+    fn interpolate(&self, t: T, taps: [T; 4]) -> T {
         taps[1]
             + 0.5
                 * t
@@ -114,12 +161,12 @@ impl<T: Scalar> Interpolate<T, 4> for Cubic {
 pub struct Hermite;
 
 impl<T: Scalar> Interpolate<T, 4> for Hermite {
-    fn rel_indices() -> [isize; 4] {
-        [-1, 0, 1, 2]
+    fn indices(index: usize) -> [usize; 4] {
+        [index.saturating_sub(1), index, index + 1, index + 2]
     }
 
     #[replace_float_literals(T::from_f64(literal))]
-    fn interpolate(t: T, taps: [T; 4]) -> T {
+    fn interpolate(&self, t: T, taps: [T; 4]) -> T {
         let c0 = taps[1];
         let c1 = 0.5 * (taps[2] - taps[0]);
         let c2 = taps[0] - 2.5 * taps[1] + 2.0 * taps[2] - 0.5 * taps[3];
@@ -128,62 +175,27 @@ impl<T: Scalar> Interpolate<T, 4> for Hermite {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Sine;
-
-impl<T: Scalar> Interpolate<T, 2> for Sine {
-    fn rel_indices() -> [isize; 2] {
-        [0, 1]
-    }
-
-    #[replace_float_literals(T::from_f64(literal))]
-    fn interpolate(t: T, taps: [T; 2]) -> T {
-        let fac = T::simd_cos(t * T::simd_pi()) * 0.5 + 0.5;
-        Linear::interpolate(fac, taps)
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
-    #[test]
-    fn test_interpolate_nearest() {
+    #[rstest]
+    fn test_interpolate<Interp, const TAPS: usize>(
+        #[values(ZeroHold, Nearest, Linear, Cubic, Hermite, sine_interpolation())] interp: Interp,
+    ) where
+        Interp: Interpolate<f64, TAPS>,
+    {
         let a = [0., 1., 1.];
         let mut actual = [0.; 12];
-        let expected = [0., 0., 0., 1., 1., 1., 1., 1., 1., 1., 1., 1.];
-        Nearest::interpolate_slice(&mut actual, &a);
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_interpolate_linear() {
-        let a = [0., 1., 1.];
-        let mut actual = [0.; 12];
-        let expected = [0., 0.25, 0.5, 0.75, 1., 1., 1., 1., 1., 1., 1., 1.];
-        Linear::interpolate_slice(&mut actual, &a);
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_interpolate_cubic() {
-        let a = [0., 1., 1.];
-        let mut actual = [0.; 12];
-        let expected = [
-            0.0, 0.203125, 0.5, 0.796875, 1.0, 1.0703125, 1.0625, 1.0234375, 1.0, 1.0, 1.0, 1.0,
-        ];
-        Cubic::interpolate_slice(&mut actual, &a);
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn test_interpolate_hermite() {
-        let a = [0., 1., 1.];
-        let mut actual = [0.; 12];
-        let expected = [
-            0.0, 0.203125, 0.5, 0.796875, 1.0, 1.0703125, 1.0625, 1.0234375, 1.0, 1.0, 1.0, 1.0,
-        ];
-        Hermite::interpolate_slice(&mut actual, &a);
-        assert_eq!(actual, expected);
+        interp.interpolate_slice(&mut actual, &a);
+        let name = format!(
+            "test_interpolate_{}",
+            std::any::type_name::<Interp>()
+                .replace(['<', '>'], "__")
+                .replace("::", "__")
+        );
+        insta::assert_csv_snapshot!(name, &actual as &[_], { "[]" => insta::rounded_redaction(6) });
     }
 }

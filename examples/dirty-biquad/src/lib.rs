@@ -256,9 +256,9 @@ impl nih_plug::prelude::Plugin for Plugin {
                 .drive
                 .smoothed
                 .next_block_exact(&mut drive[..len]);
-            Cubic::interpolate_slice(&mut os_fc[..os_len], &fc[..len]);
-            Cubic::interpolate_slice(&mut os_q[..os_len], &q[..len]);
-            Cubic::interpolate_slice(&mut os_drive[..os_len], &drive[..len]);
+            Cubic.interpolate_slice(&mut os_fc[..os_len], &fc[..len]);
+            Cubic.interpolate_slice(&mut os_q[..os_len], &q[..len]);
+            Cubic.interpolate_slice(&mut os_drive[..os_len], &drive[..len]);
 
             let mut simd_block = [Sample::from_f64(0.0); MAX_BLOCK_SIZE];
             let actual_len =
