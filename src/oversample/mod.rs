@@ -1,3 +1,5 @@
+use nalgebra::Complex;
+use simba::simd::SimdComplexField;
 use std::ops::{Deref, DerefMut};
 
 use crate::dsp::parameter::{HasParameters, Parameter};
@@ -5,6 +7,7 @@ use crate::dsp::{
     utils::{mono_block_to_slice, mono_block_to_slice_mut, slice_to_mono_block_mut},
     DSP,
 };
+use crate::filters::biquad::design::biquad_butterworth;
 use crate::saturators::Linear;
 use crate::Scalar;
 use crate::{
@@ -12,31 +15,28 @@ use crate::{
     filters::biquad::Biquad,
 };
 
-const CASCADE: usize = 5;
-
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
     os_factor: usize,
     os_buffer: Box<[T]>,
-    pre_filter: Series<[Biquad<T, Linear>; CASCADE]>,
-    post_filter: Series<[Biquad<T, Linear>; CASCADE]>,
+    pre_filter: Series<Vec<Biquad<T, Linear>>>,
+    post_filter: Series<Vec<Biquad<T, Linear>>>,
 }
 
 impl<T: Scalar> Oversample<T> {
-    pub fn new(os_factor: usize, max_block_size: usize) -> Self {
+    pub fn new(os_factor: usize, max_block_size: usize) -> Self
+    where
+        Complex<T>: SimdComplexField,
+    {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
-        let fc_raw = f64::recip(2.0 * os_factor as f64);
-        let cascade_adjustment = f64::sqrt(2f64.powf(1.0 / CASCADE as f64) - 1.0).recip();
-        let fc_corr = fc_raw * cascade_adjustment;
-        println!("cascade adjustment {cascade_adjustment}: {fc_raw} -> {fc_corr}");
-        let filters =
-            std::array::from_fn(|_| Biquad::lowpass(T::from_f64(fc_raw), T::from_f64(0.707)));
+        let fc = f64::recip(2.0 * os_factor as f64);
+        let filters = biquad_butterworth(6, T::from_f64(fc));
         Self {
             os_factor,
             os_buffer,
-            pre_filter: Series(filters),
-            post_filter: Series(filters),
+            pre_filter: filters.clone(),
+            post_filter: filters,
         }
     }
 

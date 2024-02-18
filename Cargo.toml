@@ -44,6 +44,10 @@ rstest = "0.18.2"
 serde = "*"
 
 [features]
+default = ["biquad-design", "oversample"]
+biquad-design = ["math-polynom"]
+math-polynom = []
+oversample = ["biquad-design"]
 fundsp = ["dep:fundsp", "dep:numeric-array", "dep:typenum"]
 nih-plug = ["dep:nih_plug"]
 
