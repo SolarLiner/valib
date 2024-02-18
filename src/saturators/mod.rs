@@ -5,6 +5,7 @@ use clippers::DiodeClipperModel;
 
 use crate::Scalar;
 
+pub mod adaa;
 pub mod clippers;
 
 #[allow(unused_variables)]
