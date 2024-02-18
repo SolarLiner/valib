@@ -5,33 +5,33 @@ use crate::dsp::{
     utils::{mono_block_to_slice, mono_block_to_slice_mut, slice_to_mono_block_mut},
     DSP,
 };
-use crate::saturators::{Clipper, Linear};
+use crate::saturators::Linear;
 use crate::Scalar;
 use crate::{
     dsp::{blocks::Series, DSPBlock},
     filters::biquad::Biquad,
 };
 
-const CASCADE: usize = 4;
+const CASCADE: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
     os_factor: usize,
     os_buffer: Box<[T]>,
-    pre_filter: Series<[Biquad<T, Clipper>; CASCADE]>,
-    post_filter: Series<[Biquad<T, Clipper>; CASCADE]>,
+    pre_filter: Series<[Biquad<T, Linear>; CASCADE]>,
+    post_filter: Series<[Biquad<T, Linear>; CASCADE]>,
 }
 
 impl<T: Scalar> Oversample<T> {
     pub fn new(os_factor: usize, max_block_size: usize) -> Self {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
-        let fc_raw = f64::recip(2.1 * os_factor as f64);
+        let fc_raw = f64::recip(2.0 * os_factor as f64);
         let cascade_adjustment = f64::sqrt(2f64.powf(1.0 / CASCADE as f64) - 1.0).recip();
         let fc_corr = fc_raw * cascade_adjustment;
         println!("cascade adjustment {cascade_adjustment}: {fc_raw} -> {fc_corr}");
         let filters =
-            std::array::from_fn(|_| Biquad::lowpass(T::from_f64(fc_corr), T::from_f64(0.707)));
+            std::array::from_fn(|_| Biquad::lowpass(T::from_f64(fc_raw), T::from_f64(0.707)));
         Self {
             os_factor,
             os_buffer,
@@ -65,15 +65,17 @@ impl<T: Scalar> Oversample<T> {
         DSP::reset(&mut self.post_filter);
     }
 
-    pub fn with_dsp<P: DSPBlock<1, 1>>(self, dsp: P) -> Oversampled<T, P> {
+    pub fn with_dsp<P: DSPBlock<1, 1>>(self, samplerate: f32, mut dsp: P) -> Oversampled<T, P> {
         let max_block_size = dsp.max_block_size().unwrap_or(self.os_buffer.len());
         // Verify that we satisfy the inner DSPBlock instance's requirement on maximum block size
         assert!(self.os_buffer.len() <= max_block_size);
         let staging_buffer = vec![[T::zero(); 1]; max_block_size].into_boxed_slice();
+        dsp.set_samplerate(samplerate * self.os_factor as f32);
         Oversampled {
             oversampling: self,
             staging_buffer,
             inner: dsp,
+            samplerate,
         }
     }
 
@@ -138,6 +140,7 @@ pub struct Oversampled<T, P> {
     oversampling: Oversample<T>,
     staging_buffer: Box<[[T; 1]]>,
     pub inner: P,
+    samplerate: f32,
 }
 
 impl<T, P> Oversampled<T, P> {
@@ -150,15 +153,20 @@ impl<T, P> Oversampled<T, P>
 where
     T: Scalar,
 {
-    #[deprecated = "Use Oversample::with_dsp"]
-    pub fn new(oversampling: Oversample<T>, inner: P) -> Self
-    where
-        P: DSP<1, 1, Sample = T>,
-    {
-        oversampling.with_dsp(inner)
-    }
     pub fn into_inner(self) -> P {
         self.inner
+    }
+}
+
+impl<T, P> Oversampled<T, P>
+where
+    T: Scalar,
+    P: DSPBlock<1, 1, Sample = T>,
+{
+    pub fn set_oversampling_amount(&mut self, amt: usize) {
+        assert!(amt > 1);
+        self.oversampling.os_factor = amt;
+        self.set_samplerate(self.samplerate);
     }
 }
 
@@ -187,7 +195,7 @@ where
     fn max_block_size(&self) -> Option<usize> {
         Some(match self.inner.max_block_size() {
             Some(size) => size.min(self.oversampling.max_block_size() / self.os_factor()),
-            None => self.oversampling.max_block_size(),
+            None => self.oversampling.max_block_size() / self.os_factor(),
         })
     }
 
@@ -260,7 +268,7 @@ mod tests {
             frequency: freq,
             phase: 0.0,
         };
-        let mut os = Oversample::<f32>::new(4, 64).with_dsp(dsp);
+        let mut os = Oversample::<f32>::new(4, 64).with_dsp(samplerate, dsp);
 
         let input = [[0.0]; 64];
         let mut output = [[0.0]; 64];

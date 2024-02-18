@@ -1,8 +1,9 @@
 use enum_map::Enum;
+use nih_plug::util::gain_to_db_fast;
 use num_traits::Zero;
 
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::{PerSampleBlockAdapter, DSP};
+use valib::dsp::{DSPBlock, DSP};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::{DiodeClipper, DiodeClipperModel};
@@ -33,20 +34,20 @@ impl<T: Scalar> DSP<1, 1> for DcBlocker<T> {
         self.0.process(x)
     }
 
-    fn reset(&mut self) {
-        self.0.reset()
-    }
-
-    fn latency(&self) -> usize {
-        self.0.latency()
-    }
-
     fn set_samplerate(&mut self, samplerate: f32) {
-        self.0.set_samplerate(samplerate);
+        DSP::set_samplerate(&mut self.0, samplerate);
         self.0.update_coefficients(&Biquad::highpass(
             T::from_f64((Self::CUTOFF_HZ / samplerate) as f64),
             T::from_f64(Self::Q as f64),
         ));
+    }
+
+    fn latency(&self) -> usize {
+        DSP::latency(&self.0)
+    }
+
+    fn reset(&mut self) {
+        self.0.reset()
     }
 }
 
@@ -189,29 +190,38 @@ impl DSP<1, 1> for DspInner {
 }
 
 pub struct Dsp {
-    inner: PerSampleBlockAdapter<Oversampled<Sample, DspInner>, 1, 1>,
+    inner: Oversampled<Sample, DspInner>,
+    max_oversampling: usize,
     dc_blocker: DcBlocker<Sample>,
 }
 
-impl DSP<1, 1> for Dsp {
+impl DSPBlock<1, 1> for Dsp {
     type Sample = Sample;
 
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.dc_blocker.process(self.inner.process(x))
+    fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
+        self.inner.process_block(inputs, outputs);
+
+        for o in outputs {
+            *o = self.dc_blocker.process(*o);
+        }
     }
 
     fn set_samplerate(&mut self, samplerate: f32) {
-        DSP::set_samplerate(&mut self.inner, samplerate);
-        DSP::set_samplerate(&mut self.dc_blocker, samplerate);
+        DSPBlock::set_samplerate(&mut self.inner, samplerate);
+        DSPBlock::set_samplerate(&mut self.dc_blocker, samplerate);
+    }
+
+    fn max_block_size(&self) -> Option<usize> {
+        DSPBlock::max_block_size(&self.inner)
     }
 
     fn latency(&self) -> usize {
-        DSP::latency(&self.inner) + DSP::latency(&self.dc_blocker)
+        DSPBlock::latency(&self.inner) + DSPBlock::latency(&self.dc_blocker)
     }
 
     fn reset(&mut self) {
-        DSP::reset(&mut self.inner);
-        DSP::reset(&mut self.dc_blocker);
+        DSPBlock::reset(&mut self.inner);
+        DSPBlock::reset(&mut self.dc_blocker);
     }
 }
 
@@ -224,11 +234,11 @@ impl HasParameters for Dsp {
 }
 
 pub fn create_dsp(samplerate: f32, oversample: usize, max_block_size: usize) -> Dsp {
-    let inner = PerSampleBlockAdapter::new(
-        Oversample::new(oversample, max_block_size).with_dsp(DspInner::new(samplerate)),
-    );
+    let mut inner =
+        Oversample::new(oversample, max_block_size).with_dsp(samplerate, DspInner::new(samplerate));
     Dsp {
         inner,
+        max_oversampling: oversample,
         dc_blocker: DcBlocker::new(samplerate),
     }
 }

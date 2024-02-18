@@ -20,8 +20,9 @@ struct SvfMixerPlugin {
 
 impl Default for SvfMixerPlugin {
     fn default() -> Self {
-        let dsp_inner = DspInner::new(44100.0);
-        let dsp = Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE).with_dsp(dsp_inner);
+        let samplerate = 44100.0;
+        let dsp_inner = DspInner::new(samplerate);
+        let dsp = Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE).with_dsp(samplerate, dsp_inner);
         let params_controller = NihParamsController::new(&dsp, |param, _| match param {
             DspParam::Drive => FloatParam::new(
                 "Drive",
