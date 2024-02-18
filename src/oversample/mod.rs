@@ -191,7 +191,8 @@ where
     }
 
     fn set_samplerate(&mut self, samplerate: f32) {
-        self.inner.set_samplerate(self.oversampling.os_factor as f32 * samplerate);
+        self.inner
+            .set_samplerate(self.oversampling.os_factor as f32 * samplerate);
     }
 }
 
