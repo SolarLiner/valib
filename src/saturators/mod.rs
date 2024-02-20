@@ -124,6 +124,7 @@ impl<T: Scalar, S: Default> Default for Blend<T, S> {
 pub enum Dynamic<T> {
     Linear,
     Tanh,
+    Asinh,
     HardClipper,
     DiodeClipper(DiodeClipperModel<T>),
     SoftClipper(Blend<T, DiodeClipperModel<T>>),
@@ -136,6 +137,7 @@ impl<T: Scalar> Saturator<T> for Dynamic<T> {
             Self::Linear => Linear.saturate(x),
             Self::HardClipper => Clipper.saturate(x),
             Self::Tanh => Tanh.saturate(x),
+            Self::Asinh => Asinh.saturate(x),
             Self::DiodeClipper(clip) => clip.saturate(x),
             Self::SoftClipper(clip) => clip.saturate(x),
         }
@@ -146,6 +148,7 @@ impl<T: Scalar> Saturator<T> for Dynamic<T> {
         match self {
             Self::Linear => Linear.sat_diff(x),
             Self::HardClipper => Clipper.sat_diff(x),
+            Self::Asinh => Asinh.sat_diff(x),
             Self::Tanh => Tanh.sat_diff(x),
             Self::DiodeClipper(clip) => clip.sat_diff(x),
             Self::SoftClipper(clip) => clip.sat_diff(x),
