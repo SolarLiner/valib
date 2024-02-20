@@ -2,6 +2,7 @@ use num_traits::Zero;
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdBool;
 
+use crate::dsp::DSP;
 use crate::saturators::{Blend, Clipper, Saturator, Tanh};
 use crate::Scalar;
 
@@ -82,19 +83,25 @@ pub struct Adaa<T, S, const ORDER: usize> {
     memory: [T; ORDER],
 }
 
-impl<T: Scalar, S: Default, const ORDER: usize> Default for Adaa<T, S, ORDER> {
-    fn default() -> Self {
+impl<T: Scalar, S, const ORDER: usize> Adaa<T, S, ORDER> {
+    pub fn new(inner: S) -> Self {
         Self {
-            epsilon: T::from_f64(1e-5),
-            inner: S::default(),
+            epsilon: T::from_f64(1e-3),
+            inner,
             memory: [T::zero(); ORDER],
         }
     }
 }
 
-impl<T: Scalar, S: Antiderivative<T> + Saturator<T>> Saturator<T> for Adaa<T, S, 1> {
+impl<T: Scalar, S: Default, const ORDER: usize> Default for Adaa<T, S, ORDER> {
+    fn default() -> Self {
+        Self::new(S::default())
+    }
+}
+
+impl<T: Scalar, S: Antiderivative<T>> Adaa<T, S, 1> {
     #[replace_float_literals(T::from_f64(literal))]
-    fn saturate(&self, x: T) -> T {
+    pub fn next_sample_immutable(&self, x: T) -> T {
         let den = x - self.memory[0];
         let below = den.simd_abs().simd_lt(self.epsilon);
         below.if_else(
@@ -106,13 +113,37 @@ impl<T: Scalar, S: Antiderivative<T> + Saturator<T>> Saturator<T> for Adaa<T, S,
         )
     }
 
-    fn update_state(&mut self, x: T, y: T) {
-        self.inner.update_state(x, y);
+    pub fn commit_sample(&mut self, x: T) {
         self.memory = [x];
+    }
+
+    pub fn next_sample(&mut self, x: T) -> T {
+        let y = self.next_sample_immutable(x);
+        self.commit_sample(x);
+        y
+    }
+}
+
+impl<T: Scalar, S: Antiderivative<T> + Saturator<T>> Saturator<T> for Adaa<T, S, 1> {
+    fn saturate(&self, x: T) -> T {
+        self.next_sample_immutable(x)
+    }
+
+    fn update_state(&mut self, x: T, y: T) {
+        self.commit_sample(x);
+        self.inner.update_state(x, y);
     }
 
     fn sat_diff(&self, x: T) -> T {
         self.inner.sat_diff(x)
+    }
+}
+
+impl<T: Scalar, S: Antiderivative<T> + DSP<1, 1, Sample = T>> DSP<1, 1> for Adaa<T, S, 1> {
+    type Sample = T;
+
+    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        [self.next_sample(x)]
     }
 }
 

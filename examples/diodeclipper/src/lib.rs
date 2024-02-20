@@ -6,6 +6,7 @@ use nih_plug::{buffer::Block, prelude::*};
 use valib::dsp::DSP;
 use valib::math::interpolation::{Cubic, Interpolate};
 use valib::oversample::Oversample;
+use valib::saturators::adaa::Adaa;
 use valib::{
     filters::biquad::Biquad,
     saturators::{
@@ -101,7 +102,7 @@ type Sample64 = AutoF64x2;
 struct ClipperPlugin {
     params: Arc<ClipperParams>,
     clipper_nr: DiodeClipper<Sample64>,
-    clipper_model: DiodeClipperModel<Sample64>,
+    clipper_model: Adaa<Sample64, DiodeClipperModel<Sample64>, 1>,
     dc_couple_in: Biquad<Sample, Linear>,
     dc_couple_out: Biquad<Sample, Linear>,
     oversample: Oversample<Sample64>,
@@ -115,7 +116,7 @@ impl Default for ClipperPlugin {
         Self {
             params: Arc::new(ClipperParams::new(force_reset.clone())),
             clipper_nr: DiodeClipper::new_silicon(1, 1, Sample64::from_f64(0.0)),
-            clipper_model: DiodeClipperModel::new_silicon(1, 1),
+            clipper_model: Adaa::new(DiodeClipperModel::new_silicon(1, 1)),
             dc_couple_in: Biquad::highpass(Sample::from_f64(20. / 44.1e3), Sample::from_f64(1.0)),
             dc_couple_out: Biquad::highpass(Sample::from_f64(20. / 44.1e3), Sample::from_f64(1.0)),
             oversample: Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE),
@@ -239,7 +240,7 @@ impl Plugin for ClipperPlugin {
             .value()
             .get_clipper_model(self.params.nf.value() as _, self.params.nb.value() as _);
         self.clipper_nr.max_iter = self.params.quality.value() as _;
-        self.clipper_model = self
+        self.clipper_model.inner = self
             .params
             .dtype
             .value()

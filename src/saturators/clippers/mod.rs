@@ -10,6 +10,8 @@ use simba::simd::SimdBool;
 use crate::{dsp::DSP, math::newton_rhapson_tol_max_iter};
 use crate::{math::RootEq, saturators::Saturator, Scalar};
 
+use super::adaa::Antiderivative;
+
 #[derive(Debug, Copy, Clone)]
 pub struct DiodeClipper<T> {
     pub isat: T,
@@ -150,6 +152,38 @@ impl<T: Scalar> DiodeClipperModel<T> {
     }
 }
 
+impl<T: Scalar> Antiderivative<T> for DiodeClipperModel<T> {
+    fn evaluate(&self, x: T) -> T {
+        self.eval(x) / (self.si * self.so)
+    }
+
+    #[replace_float_literals(T::from_f64(literal))]
+    fn antiderivative(&self, x: T) -> T {
+        let cx = self.si * x;
+        let lower = cx.simd_lt(-self.a);
+        lower.if_else(
+            || {
+                let x0 = self.a + cx - 1.0;
+                let num = (self.a - 1.0) * cx + x0 * T::simd_ln(-x0);
+                let den = self.si * self.si;
+                -num / den
+            },
+            || {
+                let higher = cx.simd_gt(self.b);
+                higher.if_else(
+                    || {
+                        let x0 = -self.b + cx + 1.0;
+                        let num = (self.b - 1.0) * cx + x0 * T::simd_ln(x0);
+                        let den = self.si * self.si;
+                        num / den
+                    },
+                    || x * x / 2.0,
+                )
+            },
+        ) / 2.0
+    }
+}
+
 impl<T: Scalar> Default for DiodeClipperModel<T> {
     fn default() -> Self {
         Self::new_silicon(1, 1)
@@ -176,7 +210,7 @@ impl<T: Scalar> Saturator<T> for DiodeClipperModel<T> {
 mod tests {
     use std::hint;
 
-    use crate::dsp::DSP;
+    use crate::{dsp::DSP, saturators::adaa::Adaa};
     use simba::simd::SimdValue;
 
     use super::{DiodeClipper, DiodeClipperModel};
@@ -194,10 +228,10 @@ mod tests {
     fn drive_test(name: &str, mut dsp: impl DSP<1, 1, Sample = f32>) {
         let sine_it = (0..).map(|i| i as f64 / 10.).map(f64::sin);
         let amp = (0..5000).map(|v| v as f64 / 5000. * 500.);
-        let output = sine_it.zip(amp).map(|(a, b)| a * b).map(|v| {
-            let out = dsp.process([v as f32])[0];
-            hint::black_box(out)
-        });
+        let output = sine_it
+            .zip(amp)
+            .map(|(a, b)| a * b)
+            .map(|v| hint::black_box(dsp.process([v as f32])[0]));
         let results = Vec::from_iter(output.map(|v| v.extract(0)));
         let full_name = format!("{name}/drive_test");
         insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
@@ -215,5 +249,12 @@ mod tests {
         let clipper = DiodeClipperModel::<f32>::new_led(3, 5);
         dc_sweep("regressions/clipper_model", clipper);
         drive_test("regressions/clipper_model", clipper);
+    }
+
+    #[test]
+    fn test_diode_clipper_model_adaa1() {
+        let clipper = Adaa::new(DiodeClipperModel::<f32>::new_led(3, 5));
+        dc_sweep("regressions/clipper_model_adaa1", clipper);
+        drive_test("regressions/clipper_model_adaa1", clipper);
     }
 }
