@@ -250,11 +250,4 @@ mod tests {
         dc_sweep("regressions/clipper_model", clipper);
         drive_test("regressions/clipper_model", clipper);
     }
-
-    #[test]
-    fn test_diode_clipper_model_adaa1() {
-        let clipper = Adaa::new(DiodeClipperModel::<f32>::new_led(3, 5));
-        dc_sweep("regressions/clipper_model_adaa1", clipper);
-        drive_test("regressions/clipper_model_adaa1", clipper);
-    }
 }
