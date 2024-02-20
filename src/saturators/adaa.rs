@@ -3,7 +3,7 @@ use numeric_literals::replace_float_literals;
 use simba::simd::SimdBool;
 
 use crate::dsp::DSP;
-use crate::saturators::{Blend, Clipper, Saturator, Tanh};
+use crate::saturators::{Asinh, Blend, Clipper, Saturator, Tanh};
 use crate::Scalar;
 
 /// Trait for functions that have antiderivatives.
@@ -24,6 +24,28 @@ impl<T: Scalar> Antiderivative<T> for Tanh {
 
     fn antiderivative(&self, x: T) -> T {
         x.simd_cosh().simd_ln()
+    }
+}
+
+impl<T: Scalar> Antiderivative<T> for Asinh {
+    fn evaluate(&self, x: T) -> T {
+        x.simd_asinh()
+    }
+
+    fn antiderivative(&self, x: T) -> T {
+        let x0 = x * x + T::one();
+        x * x.simd_asinh() - x0.simd_sqrt()
+    }
+}
+
+impl<T: Scalar> Antiderivative2<T> for Asinh {
+    #[replace_float_literals(T::from_f64(literal))]
+    fn antiderivative2(&self, x: T) -> T {
+        let x0 = x * x + 1.0;
+        let x1 = 2.0 * x * x - 1.0;
+        let x2 = -x * 3.0 * x0.simd_sqrt() / 4.0;
+        let x3 = x1 * x.simd_asinh() / 4.0;
+        x2 + x3
     }
 }
 
@@ -185,9 +207,13 @@ mod tests {
     use std::f64::consts::TAU;
 
     #[rstest]
-    #[case(Adaa::<_, Tanh, 1>::default())]
-    #[case(Adaa::<_, Clipper, 1>::default())]
-    fn test_adaa1<S: Antiderivative<f64> + Saturator<f64>>(#[case] mut adaa: Adaa<f64, S, 1>) {
+    #[case("tanh", Adaa::<_, Tanh, 1>::default())]
+    #[case("asinh", Adaa::<_, Asinh, 1>::default())]
+    #[case("clipper", Adaa::<_, Clipper, 1>::default())]
+    fn test_adaa1<S: Antiderivative<f64> + Saturator<f64>>(
+        #[case] name: &str,
+        #[case] mut adaa: Adaa<f64, S, 1>,
+    ) {
         let samplerate = 100.0;
         let f = 10.0;
         let input: [_; 100] =
@@ -198,18 +224,17 @@ mod tests {
             y
         });
 
-        let name = format!(
-            "test_adaa1_{}",
-            std::any::type_name::<Adaa<f64, S, 1>>()
-                .replace("::", "__")
-                .replace(['<', '>'], "__")
-        );
+        let name = format!("test_adaa1_{name}");
         insta::assert_csv_snapshot!(name, &output as &[_], { "[]" => insta::rounded_redaction(3) })
     }
 
     #[rstest]
-    #[case(Adaa::<_, Clipper, 2>::default())]
-    fn test_adaa2<S: Antiderivative2<f64> + Saturator<f64>>(#[case] mut adaa: Adaa<f64, S, 2>) {
+    #[case("clipper", Adaa::<_, Clipper, 2>::default())]
+    #[case("asinh", Adaa::<_, Asinh, 2>::default())]
+    fn test_adaa2<S: Antiderivative2<f64> + Saturator<f64>>(
+        #[case] name: &str,
+        #[case] mut adaa: Adaa<f64, S, 2>,
+    ) {
         let samplerate = 100.0;
         let f = 10.0;
         let input: [_; 100] =
@@ -220,12 +245,7 @@ mod tests {
             y
         });
 
-        let name = format!(
-            "test_adaa2_{}",
-            std::any::type_name::<Adaa<f64, S, 1>>()
-                .replace("::", "__")
-                .replace(['<', '>'], "__")
-        );
+        let name = format!("test_adaa2_{name}",);
         insta::assert_csv_snapshot!(name, &output as &[_], { "[]" => insta::rounded_redaction(3) })
     }
 }

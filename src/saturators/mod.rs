@@ -1,6 +1,7 @@
 use crate::dsp::DSP;
 use numeric_literals::replace_float_literals;
 
+use crate::saturators::adaa::{Antiderivative, Antiderivative2};
 use clippers::DiodeClipperModel;
 
 use crate::Scalar;
@@ -52,6 +53,20 @@ impl<S: Scalar> Saturator<S> for Tanh {
     #[replace_float_literals(S::from_f64(literal))]
     fn sat_diff(&self, x: S) -> S {
         1. - x.simd_tanh().simd_powi(2)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
+pub struct Asinh;
+
+impl<T: Scalar> Saturator<T> for Asinh {
+    fn saturate(&self, x: T) -> T {
+        x.simd_asinh()
+    }
+
+    fn sat_diff(&self, x: T) -> T {
+        let x0 = x * x + T::one();
+        x0.simd_sqrt().simd_recip()
     }
 }
 
