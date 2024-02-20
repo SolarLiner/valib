@@ -1,6 +1,5 @@
 ---
 source: src/saturators/adaa.rs
-assertion_line: 245
 expression: "&output as &[_]"
 ---
 0.0
