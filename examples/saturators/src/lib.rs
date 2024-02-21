@@ -60,6 +60,21 @@ impl Default for SaturatorsPlugin {
             .with_unit(" %")
             .with_value_to_string(formatters::v2s_f32_percentage(2))
             .with_string_to_value(formatters::s2v_f32_percentage()),
+            DspParams::InnerParam(DspInnerParams::AdaaLevel) => {
+                FloatParam::new("ADAA Level", 2.0, FloatRange::Linear { min: 0.0, max: 2.0 })
+                    .with_step_size(1.0)
+                    .with_value_to_string(formatters::v2s_f32_rounded(0))
+            }
+            DspParams::InnerParam(DspInnerParams::AdaaEpsilon) => FloatParam::new(
+                "ADAA Epsilon",
+                1e-4,
+                FloatRange::Skewed {
+                    min: 1e-10,
+                    max: 1.0,
+                    factor: 2.0,
+                },
+            )
+            .with_value_to_string(Arc::new(|f| format!("{f:.1e}"))),
             DspParams::Oversampling => FloatParam::new(
                 "Oversampling",
                 OVERSAMPLE as _,

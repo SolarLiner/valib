@@ -146,32 +146,9 @@ impl<T: Scalar, S: Antiderivative<T>> Adaa<T, S, 1> {
     }
 }
 
-impl<T: Scalar, S: Antiderivative<T> + Saturator<T>> Saturator<T> for Adaa<T, S, 1> {
-    fn saturate(&self, x: T) -> T {
-        self.next_sample_immutable(x)
-    }
-
-    fn update_state(&mut self, x: T, y: T) {
-        self.commit_sample(x);
-        self.inner.update_state(x, y);
-    }
-
-    fn sat_diff(&self, x: T) -> T {
-        self.inner.sat_diff(x)
-    }
-}
-
-impl<T: Scalar, S: Antiderivative<T> + DSP<1, 1, Sample = T>> DSP<1, 1> for Adaa<T, S, 1> {
-    type Sample = T;
-
-    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        [self.next_sample(x)]
-    }
-}
-
-impl<T: Scalar, S: Antiderivative2<T> + Saturator<T>> Saturator<T> for Adaa<T, S, 2> {
+impl<T: Scalar, S: Antiderivative2<T>> Adaa<T, S, 2> {
     #[replace_float_literals(T::from_f64(literal))]
-    fn saturate(&self, x: T) -> T {
+    pub fn next_sample_immutable(&self, x: T) -> T {
         let [x1, x2] = self.memory;
         let den1 = x - x1;
         let den2 = x1 - x2;
@@ -189,14 +166,71 @@ impl<T: Scalar, S: Antiderivative2<T> + Saturator<T>> Saturator<T> for Adaa<T, S
         )
     }
 
-    fn update_state(&mut self, x: T, y: T) {
-        self.inner.update_state(x, y);
+    pub fn commit_sample(&mut self, x: T) {
         self.memory.swap(0, 1);
         self.memory[0] = x;
     }
 
+    pub fn next_sample(&mut self, x: T) -> T {
+        let y = self.next_sample_immutable(x);
+        self.commit_sample(x);
+        y
+    }
+}
+
+impl<T: Scalar, S: Antiderivative<T> + Saturator<T>> Saturator<T> for Adaa<T, S, 1> {
+    fn saturate(&self, x: T) -> T {
+        self.next_sample_immutable(x)
+    }
+
+    fn update_state(&mut self, x: T, y: T) {
+        self.commit_sample(x);
+        self.inner.update_state(x, y);
+    }
+
     fn sat_diff(&self, x: T) -> T {
         self.inner.sat_diff(x)
+    }
+}
+
+impl<T: Scalar, S: Antiderivative<T>> DSP<1, 1> for Adaa<T, S, 1> {
+    type Sample = T;
+
+    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        [self.next_sample(x)]
+    }
+}
+
+impl<T: Scalar, S: Antiderivative2<T> + Saturator<T>> Saturator<T> for Adaa<T, S, 2> {
+    #[replace_float_literals(T::from_f64(literal))]
+    fn saturate(&self, x: T) -> T {
+        self.next_sample_immutable(x)
+    }
+
+    fn update_state(&mut self, x: T, y: T) {
+        self.commit_sample(x);
+        self.inner.update_state(x, y);
+    }
+
+    fn sat_diff(&self, x: T) -> T {
+        self.inner.sat_diff(x)
+    }
+}
+
+impl<T: Scalar, S: Antiderivative2<T>> DSP<1, 1> for Adaa<T, S, 2> {
+    type Sample = T;
+
+    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        let y = self.next_sample(x);
+        [y]
+    }
+
+    fn latency(&self) -> usize {
+        1
+    }
+
+    fn reset(&mut self) {
+        self.memory.fill_with(T::zero);
     }
 }
 
