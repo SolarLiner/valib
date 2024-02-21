@@ -16,6 +16,7 @@ const CASCADE: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
+    max_factor: usize,
     os_factor: usize,
     os_buffer: Box<[T]>,
     pre_filter: Series<[Biquad<T, Linear>; CASCADE]>,
@@ -26,19 +27,35 @@ impl<T: Scalar> Oversample<T> {
     pub fn new(os_factor: usize, max_block_size: usize) -> Self {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
-        let cascade_adjustment = f64::sqrt(2f64.powf(1.0 / CASCADE as f64) - 1.0);
-        println!("cascade adjustment {cascade_adjustment}");
         let filters = std::array::from_fn(|_| {
             Biquad::lowpass(
-                T::from_f64(2.0 * os_factor as f64).simd_recip() * T::from_f64(cascade_adjustment),
+                T::from_f64(2.0 * os_factor as f64).simd_recip(),
                 T::from_f64(0.707),
             )
         });
         Self {
+            max_factor: os_factor,
             os_factor,
             os_buffer,
             pre_filter: Series(filters),
             post_filter: Series(filters),
+        }
+    }
+
+    pub(crate) fn set_oversampling_amount(&mut self, amt: usize) {
+        assert!(amt <= self.max_factor);
+        self.os_factor = amt;
+        let new_biquad = Biquad::lowpass(
+            T::from_f64(2.0 * amt as f64).simd_recip(),
+            T::from_f64(0.707),
+        );
+        for filt in self
+            .pre_filter
+            .0
+            .iter_mut()
+            .chain(self.post_filter.0.iter_mut())
+        {
+            filt.update_coefficients(&new_biquad);
         }
     }
 
@@ -159,6 +176,11 @@ where
     {
         oversampling.with_dsp(inner)
     }
+
+    pub fn set_oversampling_amount(&mut self, amt: usize) {
+        self.oversampling.set_oversampling_amount(amt);
+    }
+
     pub fn into_inner(self) -> P {
         self.inner
     }
