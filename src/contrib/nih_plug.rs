@@ -15,13 +15,16 @@ use crate::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
 use crate::dsp::DSPBlock;
 use crate::Scalar;
 
-pub fn enum_int_param<E: Enum + ToString>(param_name: impl Into<String>) -> IntParam {
+pub fn enum_int_param<E: Enum + ToString>(
+    param_name: impl Into<String>,
+    default_value: E,
+) -> IntParam {
     IntParam::new(
         param_name,
-        0,
+        default_value.into_usize() as _,
         IntRange::Linear {
             min: 0,
-            max: (E::LENGTH - 1) as i32,
+            max: (E::LENGTH - 1) as _,
         },
     )
     .with_value_to_string(Arc::new(|x| E::from_usize(x as _).to_string()))

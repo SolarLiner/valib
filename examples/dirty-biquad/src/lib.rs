@@ -54,16 +54,18 @@ impl Default for Plugin {
                 "Resonance",
                 0.5,
                 FloatRange::Skewed {
-                    min: 0.0,
+                    min: 0.02,
                     max: 30.0,
                     factor: FloatRange::skew_factor(-2.0),
                 },
             )
             .with_value_to_string(formatters::v2s_f32_rounded(2))
             .into(),
-            DspParameters::FilterType => enum_int_param::<FilterType>("Filter type").into(),
+            DspParameters::FilterType => {
+                enum_int_param::<FilterType>("Filter type", FilterType::Lowpass).into()
+            }
             DspParameters::SaturatorType => {
-                enum_int_param::<SaturatorType>("Saturator type").into()
+                enum_int_param::<SaturatorType>("Saturator type", SaturatorType::Linear).into()
             }
         });
         Self {

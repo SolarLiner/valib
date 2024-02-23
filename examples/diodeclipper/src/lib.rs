@@ -5,7 +5,7 @@ use nih_plug::prelude::*;
 use nih_plug::util::db_to_gain;
 
 use dsp::Dsp;
-use valib::contrib::nih_plug::{process_buffer_simd, NihParamsController};
+use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, NihParamsController};
 use valib::dsp::DSPBlock;
 
 use crate::dsp::{create_dsp, DiodeType, DspParams};
@@ -41,24 +41,17 @@ impl Default for ClipperPlugin {
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
             .into(),
-            DspParams::ModelSwitch => {
-                IntParam::new("Model", 0, IntRange::Linear { min: 0, max: 1 })
-                    .with_value_to_string(Arc::new(|x| {
-                        match x {
-                            0 => "Newton-Rhapson",
-                            1 => "Model",
-                            _ => "INVALID",
-                        }
-                        .to_string()
-                    }))
-                    .into()
-            }
+            DspParams::ModelSwitch => BoolParam::new("Model", false)
+                .with_value_to_string(Arc::new(|x| {
+                    match x {
+                        false => "Newton-Rhapson",
+                        true => "Model",
+                    }
+                    .to_string()
+                }))
+                .into(),
             DspParams::DiodeType => {
-                IntParam::new("Diode type", 0, IntRange::Linear { min: 0, max: 2 })
-                    .with_value_to_string(Arc::new(|x| {
-                        DiodeType::from_usize(nih_dbg!(x as _)).name()
-                    }))
-                    .into()
+                enum_int_param::<DiodeType>("Diode type", DiodeType::Silicon).into()
             }
             DspParams::NumForward => {
                 IntParam::new("# Forward", 1, IntRange::Linear { min: 1, max: 5 }).into()

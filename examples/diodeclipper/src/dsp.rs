@@ -1,6 +1,8 @@
 use enum_map::Enum;
 use nih_plug::util::gain_to_db_fast;
 use num_traits::Zero;
+use std::fmt;
+use std::fmt::Formatter;
 
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
 use valib::dsp::{DSPBlock, DSP};
@@ -61,14 +63,13 @@ pub enum DiodeType {
     Led,
 }
 
-impl DiodeType {
-    pub fn name(&self) -> String {
+impl fmt::Display for DiodeType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Silicon => "Silicon",
-            Self::Germanium => "Germanium",
-            Self::Led => "LED",
+            Self::Silicon => write!(f, "Silicon"),
+            Self::Germanium => write!(f, "Germanium"),
+            Self::Led => write!(f, "LED"),
         }
-        .to_string()
     }
 }
 
