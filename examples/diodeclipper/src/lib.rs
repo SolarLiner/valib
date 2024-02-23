@@ -39,39 +39,34 @@ impl Default for ClipperPlugin {
             )
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .into(),
             DspParams::ModelSwitch => {
-                FloatParam::new("Model", 0.0, FloatRange::Linear { min: 0.0, max: 1.0 })
-                    .with_step_size(1.0)
+                IntParam::new("Model", 0, IntRange::Linear { min: 0, max: 1 })
                     .with_value_to_string(Arc::new(|x| {
-                        if x > 0.5 {
-                            "Analytic".to_string()
-                        } else {
-                            "Newton-Rhapson".to_string()
+                        match x {
+                            0 => "Newton-Rhapson",
+                            1 => "Model",
+                            _ => "INVALID",
                         }
+                        .to_string()
                     }))
+                    .into()
             }
             DspParams::DiodeType => {
-                FloatParam::new("Diode type", 0.0, FloatRange::Linear { min: 0.0, max: 2.0 })
-                    .with_step_size(1.0)
+                IntParam::new("Diode type", 0, IntRange::Linear { min: 0, max: 2 })
                     .with_value_to_string(Arc::new(|x| {
                         DiodeType::from_usize(nih_dbg!(x as _)).name()
                     }))
+                    .into()
             }
             DspParams::NumForward => {
-                FloatParam::new("# Forward", 1.0, FloatRange::Linear { min: 1.0, max: 5.0 })
-                    .with_step_size(1.0)
+                IntParam::new("# Forward", 1, IntRange::Linear { min: 1, max: 5 }).into()
             }
             DspParams::NumBackward => {
-                FloatParam::new("# Backward", 1.0, FloatRange::Linear { min: 1.0, max: 5.0 })
-                    .with_step_size(1.0)
+                IntParam::new("# Backward", 1, IntRange::Linear { min: 1, max: 5 }).into()
             }
-            DspParams::ForceReset => FloatParam::new(
-                "Force reset",
-                0.0,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            )
-            .with_step_size(1.0),
+            DspParams::ForceReset => BoolParam::new("Force reset", false).into(),
         });
         Self {
             dsp,
