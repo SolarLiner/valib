@@ -107,6 +107,11 @@ impl<T: Scalar> P1<T> {
         }
     }
 
+    pub fn with_state(mut self, state: T) -> Self {
+        self.s = state;
+        self
+    }
+
     pub fn set_fc(&mut self, fc: T) {
         self.fc = fc;
     }

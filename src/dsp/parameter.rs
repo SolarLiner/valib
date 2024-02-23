@@ -88,8 +88,7 @@ impl Parameter {
 
     pub fn get_enum<E: Enum>(&self) -> E {
         let index = self.get_value().min(E::LENGTH as f32 - 1.0);
-        eprintln!("get_enum index {index}");
-        return E::from_usize(index.floor() as _);
+        E::from_usize(index.floor() as _)
     }
 
     pub fn set_enum<E: Enum>(&self, value: E) {
@@ -193,10 +192,11 @@ impl SmoothedParam {
     /// * `duration_ms`: Maximum duration of a sweep, that is the duration it would take to go from one extreme to the other.
     pub fn linear(param: Parameter, samplerate: f32, duration_ms: f32) -> Self {
         let max_diff = 1000.0 / duration_ms;
+        let initial_state = param.get_value();
         Self {
             param,
             smoothing: Smoothing::Linear {
-                slew: Slew::new(samplerate, max_diff),
+                slew: Slew::new(samplerate, max_diff).with_state(initial_state),
                 max_diff,
             },
         }
@@ -211,10 +211,11 @@ impl SmoothedParam {
     /// * `t60_ms`: "Time to decay by 60 dB" -- the time it takes for the output to be within 0.1% of the target value.
     pub fn exponential(param: Parameter, samplerate: f32, t60_ms: f32) -> Self {
         let tau = 6.91 * t60_ms / 1e3;
+        let initial_value = param.get_value();
         Self {
             param,
             smoothing: Smoothing::Exponential(Series2::new(
-                P1::new(samplerate, tau.recip()),
+                P1::new(samplerate, tau.recip()).with_state(initial_value),
                 ModMatrix {
                     weights: SMatrix::<_, 1, 3>::new(1.0, 0.0, 0.0),
                     ..ModMatrix::default()

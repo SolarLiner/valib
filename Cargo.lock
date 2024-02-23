@@ -1221,6 +1221,7 @@ dependencies = [
 name = "dirty-biquad"
 version = "0.1.0"
 dependencies = [
+ "enum-map",
  "nih_plug",
  "valib",
 ]

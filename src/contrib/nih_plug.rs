@@ -15,6 +15,18 @@ use crate::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
 use crate::dsp::DSPBlock;
 use crate::Scalar;
 
+pub fn enum_int_param<E: Enum + ToString>(param_name: impl Into<String>) -> IntParam {
+    IntParam::new(
+        param_name,
+        0,
+        IntRange::Linear {
+            min: 0,
+            max: (E::LENGTH - 1) as i32,
+        },
+    )
+    .with_value_to_string(Arc::new(|x| E::from_usize(x as _).to_string()))
+}
+
 /// Bind a [`valib`] [`Parameter`] to a [`nig_plug`] parameter..
 pub trait BindToParameter {
     /// Bind a [`Parameter`] to a nih-plug [`FloatParam`].
