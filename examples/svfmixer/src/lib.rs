@@ -35,7 +35,8 @@ impl Default for SvfMixerPlugin {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit(" dB"),
+            .with_unit(" dB")
+            .into(),
             DspParam::Cutoff => FloatParam::new(
                 "Frequency",
                 300.,
@@ -46,9 +47,10 @@ impl Default for SvfMixerPlugin {
                 },
             )
             .with_value_to_string(formatters::v2s_f32_hz_then_khz_with_note_name(2, false))
-            .with_string_to_value(formatters::s2v_f32_hz_then_khz()),
+            .with_string_to_value(formatters::s2v_f32_hz_then_khz())
+            .into(),
             DspParam::Resonance => {
-                FloatParam::new("Q", 0.5, FloatRange::Linear { min: 0., max: 1.25 })
+                FloatParam::new("Q", 0.5, FloatRange::Linear { min: 0., max: 1.25 }).into()
             }
             DspParam::LpGain => FloatParam::new(
                 "LP Gain",
@@ -62,7 +64,8 @@ impl Default for SvfMixerPlugin {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit(" dB"),
+            .with_unit(" dB")
+            .into(),
             DspParam::BpGain => FloatParam::new(
                 "BP Gain",
                 0.,
@@ -75,7 +78,8 @@ impl Default for SvfMixerPlugin {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit(" dB"),
+            .with_unit(" dB")
+            .into(),
             DspParam::HpGain => FloatParam::new(
                 "HP Gain",
                 0.,
@@ -88,7 +92,8 @@ impl Default for SvfMixerPlugin {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit(" dB"),
+            .with_unit(" dB")
+            .into(),
         });
         Self {
             params: Arc::new(params_controller),
