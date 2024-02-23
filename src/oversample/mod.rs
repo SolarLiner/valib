@@ -1,13 +1,13 @@
+use std::ops::{Deref, DerefMut};
+
 use nalgebra::Complex;
 use simba::simd::SimdComplexField;
-use std::ops::{Deref, DerefMut};
 
 use crate::dsp::parameter::{HasParameters, Parameter};
 use crate::dsp::{
     utils::{mono_block_to_slice, mono_block_to_slice_mut, slice_to_mono_block_mut},
     DSP,
 };
-use crate::filters::biquad::design::biquad_butterworth;
 use crate::saturators::Linear;
 use crate::Scalar;
 use crate::{
@@ -15,12 +15,14 @@ use crate::{
     filters::biquad::Biquad,
 };
 
+const CASCADE: usize = 16;
+
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
     os_factor: usize,
     os_buffer: Box<[T]>,
-    pre_filter: Series<Vec<Biquad<T, Linear>>>,
-    post_filter: Series<Vec<Biquad<T, Linear>>>,
+    pre_filter: Series<[Biquad<T, Linear>; CASCADE]>,
+    post_filter: Series<[Biquad<T, Linear>; CASCADE]>,
 }
 
 impl<T: Scalar> Oversample<T> {
@@ -31,7 +33,11 @@ impl<T: Scalar> Oversample<T> {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
         let fc = f64::recip(2.0 * os_factor as f64);
-        let filters = biquad_butterworth(6, T::from_f64(fc));
+        let filter = Biquad::lowpass(
+            T::from_f64(fc),
+            T::from_f64(std::f64::consts::FRAC_1_SQRT_2),
+        );
+        let filters = Series([filter; CASCADE]);
         Self {
             os_factor,
             os_buffer,
