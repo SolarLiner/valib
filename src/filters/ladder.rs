@@ -223,14 +223,10 @@ impl<T: Scalar, Topo: LadderTopology<T>> DspAnalysis<1, 1> for Ladder<T, Topo> {
 
 #[cfg(test)]
 mod tests {
-    use num_traits::real::Real;
     use rstest::rstest;
     use simba::simd::SimdComplexField;
 
-    use crate::dsp::{
-        utils::{slice_to_mono_block, slice_to_mono_block_mut},
-        DSPBlock,
-    };
+    use crate::dsp::{buffer::AudioBuffer, DSPBlock};
     use crate::saturators::clippers::DiodeClipperModel;
 
     use super::*;
@@ -245,19 +241,19 @@ mod tests {
         let mut filter =
             Ladder::<f64, Ideal>::new(1024.0, 200.0, resonance).with_topology::<Topo>(topology);
         filter.compensated = compensated;
-        let mut input = [1.0; 1024];
-        let mut output = [0.0; 1024];
-        input[0] = 0.0;
-        filter.process_block(
-            slice_to_mono_block(&input),
-            slice_to_mono_block_mut(&mut output),
-        );
+        let input = AudioBuffer::new([std::iter::once(0.0)
+            .chain(std::iter::repeat(1.0))
+            .take(1024)
+            .collect::<Box<_>>()])
+        .unwrap();
+        let mut output = AudioBuffer::zeroed(1024);
+        filter.process_block(input.as_ref(), output.as_mut());
 
         let topo = std::any::type_name::<Topo>()
             .replace("::", "__")
             .replace(['<', '>'], "_");
         let name = format!("test_ladder_ir_{topo}_c{compensated}_r{resonance}");
-        insta::assert_csv_snapshot!(name, &output as &[_], { "[]" => insta::rounded_redaction(3) })
+        insta::assert_csv_snapshot!(name, output.get_channel(0), { "[]" => insta::rounded_redaction(3) })
     }
 
     #[rstest]

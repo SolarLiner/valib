@@ -1,4 +1,6 @@
+use crate::dsp::buffer::{AudioBufferBox, AudioBufferMut, AudioBufferRef};
 use nalgebra::Complex;
+use num_traits::Zero;
 
 use crate::Scalar;
 
@@ -6,6 +8,7 @@ use self::analysis::DspAnalysis;
 
 pub mod analysis;
 pub mod blocks;
+pub mod buffer;
 pub mod parameter;
 pub mod utils;
 
@@ -53,7 +56,11 @@ pub trait DSPBlock<const I: usize, const O: usize> {
     /// and as such, a simultaneous implementation of both onto one struct is impossible.
     ///
     /// Implementors should assume inputs and outputs are of the same length, as it is the caller's responsibility to make sure of that.
-    fn process_block(&mut self, inputs: &[[Self::Sample; I]], outputs: &mut [[Self::Sample; O]]);
+    fn process_block(
+        &mut self,
+        inputs: AudioBufferRef<Self::Sample, I>,
+        outputs: AudioBufferMut<Self::Sample, O>,
+    );
 
     /// Sets the processing samplerate for this [`DSP`] instance.
     fn set_samplerate(&mut self, samplerate: f32) {}
@@ -85,10 +92,16 @@ where
     type Sample = <Self as DSP<I, O>>::Sample;
 
     #[inline(never)]
-    fn process_block(&mut self, inputs: &[[Self::Sample; I]], outputs: &mut [[Self::Sample; O]]) {
-        let len = inputs.len();
-        for i in 0..len {
-            outputs[i] = self.process(inputs[i]);
+    fn process_block(
+        &mut self,
+        inputs: AudioBufferRef<P::Sample, I>,
+        mut outputs: AudioBufferMut<P::Sample, O>,
+    ) {
+        if I == 0 || O == 0 {
+            return;
+        }
+        for i in 0..inputs.samples() {
+            outputs.set_frame(i, self.process(inputs.get_frame(i)))
         }
     }
 
@@ -116,11 +129,12 @@ pub struct PerSampleBlockAdapter<P, const I: usize, const O: usize>
 where
     P: DSPBlock<I, O>,
 {
-    input_buffer: Box<[[P::Sample; I]]>,
+    input_buffer: AudioBufferBox<P::Sample, I>,
     input_filled: usize,
-    output_buffer: Box<[[P::Sample; O]]>,
+    output_buffer: AudioBufferBox<P::Sample, O>,
     output_filled: usize,
     inner: P,
+    pub buffer_size: usize,
 }
 
 impl<P, const I: usize, const O: usize> std::ops::Deref for PerSampleBlockAdapter<P, I, O>
@@ -158,10 +172,11 @@ where
             .map(|mbs| mbs.min(max_buffer_size))
             .unwrap_or(max_buffer_size);
         Self {
-            input_buffer: vec![[P::Sample::from_f64(0.0); I]; buffer_size].into_boxed_slice(),
+            input_buffer: AudioBufferBox::zeroed(buffer_size),
             input_filled: 0,
-            output_buffer: vec![[P::Sample::from_f64(0.0); O]; buffer_size].into_boxed_slice(),
+            output_buffer: AudioBufferBox::zeroed(buffer_size),
             output_filled: buffer_size,
+            buffer_size,
             inner: dsp_block,
         }
     }
@@ -178,32 +193,32 @@ where
     type Sample = P::Sample;
 
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
-        self.input_buffer[self.input_filled] = x;
+        self.input_buffer.set_frame(self.input_filled, x);
         self.input_filled += 1;
-        if self.input_buffer.len() == self.input_filled {
+        if self.input_buffer.samples() == self.input_filled {
             self.inner
-                .process_block(&self.input_buffer, &mut self.output_buffer);
+                .process_block(self.input_buffer.as_ref(), self.output_buffer.as_mut());
             self.input_filled = 0;
             self.output_filled = 0;
         }
 
-        if self.output_filled < self.output_buffer.len() {
-            let ret = self.output_buffer[self.output_filled];
+        if self.output_filled < self.buffer_size {
+            let ret = self.output_buffer.get_frame(self.output_filled);
             self.output_filled += 1;
             ret
         } else {
-            [Self::Sample::from_f64(0.0); O]
+            [Self::Sample::zero(); O]
         }
     }
 
     fn latency(&self) -> usize {
-        (self.inner.latency() + self.input_buffer.len()).saturating_sub(1)
+        (self.inner.latency() + self.input_buffer.samples()).saturating_sub(1)
     }
 
     fn reset(&mut self) {
         self.inner.reset();
         self.input_filled = 0;
-        self.output_filled = self.output_buffer.len();
+        self.output_filled = self.output_buffer.samples();
     }
 }
 
@@ -224,40 +239,42 @@ mod tests {
 
     #[test]
     fn test_per_sample_block_adapter() {
-        struct Echo<T>(PhantomData<T>);
+        struct Counter<T>(PhantomData<T>);
 
-        impl<T: Scalar> Echo<T> {
+        impl<T: Scalar> Counter<T> {
             pub fn new() -> Self {
                 Self(PhantomData)
             }
         }
 
-        impl<T: Scalar> DSPBlock<0, 1> for Echo<T> {
+        impl<T: Scalar> DSPBlock<0, 1> for Counter<T> {
             type Sample = T;
 
             fn process_block(
                 &mut self,
-                inputs: &[[Self::Sample; 0]],
-                outputs: &mut [[Self::Sample; 1]],
+                inputs: AudioBufferRef<T, 0>,
+                mut outputs: AudioBufferMut<T, 1>,
             ) {
-                let len = inputs.len();
-                assert_eq!(len, outputs.len());
+                let len = inputs.samples();
+                assert_eq!(len, outputs.samples());
 
-                for (i, [out]) in outputs.iter_mut().enumerate() {
-                    *out = T::from_f64((i + 1) as _);
+                for (i, out) in outputs.get_channel_mut(0).iter_mut().enumerate() {
+                    *out = T::from_f64(i as _);
                 }
             }
         }
 
-        let mut adaptor = PerSampleBlockAdapter::new_with_max_buffer_size(Echo::<f32>::new(), 4);
+        let mut adaptor = PerSampleBlockAdapter::new_with_max_buffer_size(Counter::<f32>::new(), 4);
         assert_eq!(3, DSP::latency(&adaptor));
 
-        let expected = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 1.0].map(|v| [v]);
-        let mut actual = [[0.0]; 8];
-        let input = [[]; 8];
+        let expected = [0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 0.0];
+        let mut actual = [0.0; 8];
 
         // Calling `process_block` but it's actually calling the impl for all `DSP` passing each sample through.
-        adaptor.process_block(&input, &mut actual);
+        adaptor.process_block(
+            AudioBufferRef::new([]).unwrap(),
+            AudioBufferMut::new([&mut actual]).unwrap(),
+        );
 
         assert_eq!(expected, actual);
     }

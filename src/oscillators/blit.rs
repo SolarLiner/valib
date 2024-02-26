@@ -171,7 +171,8 @@ impl<T: Scalar> Square<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{utils::slice_to_mono_block_mut, DSPBlock};
+    use crate::dsp::buffer::AudioBuffer;
+    use crate::dsp::DSPBlock;
 
     use super::*;
 
@@ -179,35 +180,39 @@ mod tests {
     fn test_blit() {
         let mut blit = Blit::new(8192.0, 10.0);
         insta::assert_debug_snapshot!(&blit);
-        let mut actual = [0.0; 8192];
-        blit.process_block(&[[]; 8192], slice_to_mono_block_mut(&mut actual));
-        insta::assert_csv_snapshot!(&actual as &[_], { "[]" => insta::rounded_redaction(4) });
+        let input = AudioBuffer::zeroed(8192);
+        let mut actual = AudioBuffer::zeroed(8192);
+        blit.process_block(input.as_ref(), actual.as_mut());
+        insta::assert_csv_snapshot!(actual.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 
     #[test]
     fn test_sawtooth() {
         let mut saw = Sawtooth::new(8192.0, 10.0);
         insta::assert_debug_snapshot!(&saw);
-        let mut actual = [0.0; 8192];
-        saw.process_block(&[[]; 8192], slice_to_mono_block_mut(&mut actual));
-        insta::assert_csv_snapshot!(&actual as &[_], { "[]" => insta::rounded_redaction(4) });
+        let input = AudioBuffer::zeroed(8192);
+        let mut actual = AudioBuffer::zeroed(8192);
+        saw.process_block(input.as_ref(), actual.as_mut());
+        insta::assert_csv_snapshot!(actual.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 
     #[test]
     fn test_square() {
         let mut square = Square::new(8192.0, 10.0, 0.5);
         insta::assert_debug_snapshot!(&square);
-        let mut actual = [0.0; 8192];
-        square.process_block(&[[]; 8192], slice_to_mono_block_mut(&mut actual));
-        insta::assert_csv_snapshot!(&actual as &[_], { "[]" => insta::rounded_redaction(4) });
+        let input = AudioBuffer::zeroed(8192);
+        let mut actual = AudioBuffer::zeroed(8192);
+        square.process_block(input.as_ref(), actual.as_mut());
+        insta::assert_csv_snapshot!(actual.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 
     #[test]
     fn test_square_pw() {
         let mut square = Square::new(8192.0, 10.0, 0.1);
         insta::assert_debug_snapshot!(&square);
-        let mut actual = [0.0; 8192];
-        square.process_block(&[[]; 8192], slice_to_mono_block_mut(&mut actual));
-        insta::assert_csv_snapshot!(&actual as &[_], { "[]" => insta::rounded_redaction(4) });
+        let input = AudioBuffer::zeroed(8192);
+        let mut actual = AudioBuffer::zeroed(8192);
+        square.process_block(input.as_ref(), actual.as_mut());
+        insta::assert_csv_snapshot!(actual.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 }

@@ -60,7 +60,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{utils::slice_to_mono_block_mut, DSPBlock};
+    use crate::dsp::{buffer::AudioBufferBox, DSPBlock};
 
     use crate::dsp::blocks::Integrator;
     use fundsp::hacker32::*;
@@ -70,11 +70,11 @@ mod tests {
     #[test]
     fn test_wrapper() {
         let mut dsp = sine_hz(440.0) * sine_hz(10.0);
-        let input = [[]; 512];
-        let mut output = [0.0; 512];
-        dsp.process_block(&input, slice_to_mono_block_mut(&mut output));
+        let input = AudioBufferBox::zeroed(512);
+        let mut output = AudioBufferBox::zeroed(512);
+        dsp.process_block(input.as_ref(), output.as_mut());
 
-        insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(3) })
+        insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(3) })
     }
 
     #[test]

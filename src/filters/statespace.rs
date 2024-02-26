@@ -102,10 +102,8 @@ mod tests {
     use nalgebra::ComplexField;
     use numeric_literals::replace_float_literals;
 
-    use crate::dsp::{
-        utils::{slice_to_mono_block, slice_to_mono_block_mut},
-        DSPBlock,
-    };
+    use crate::dsp::buffer::AudioBuffer;
+    use crate::dsp::DSPBlock;
 
     use super::*;
 
@@ -136,14 +134,11 @@ mod tests {
     #[test]
     fn test_rc_filter() {
         let mut filter = RC::new(0.25);
-        let mut input = [0.0; 1024];
-        let mut output = [0.0; 1024];
-        input[0] = 1.0;
-        filter.process_block(
-            slice_to_mono_block(&input),
-            slice_to_mono_block_mut(&mut output),
-        );
-        insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(3) });
+        let mut input = AudioBuffer::zeroed(1024);
+        let mut output = input.clone();
+        input[0][0] = 1.0;
+        filter.process_block(input.as_ref(), output.as_mut());
+        insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(3) });
     }
 
     #[test]

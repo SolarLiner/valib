@@ -187,7 +187,6 @@ impl SmoothedParam {
                 P1::new(samplerate, tau.recip()),
                 ModMatrix {
                     weights: SMatrix::<_, 1, 3>::new(1.0, 0.0, 0.0),
-                    ..ModMatrix::default()
                 },
             )),
         }

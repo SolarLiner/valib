@@ -1,9 +1,9 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::dsp::parameter::{HasParameters, Parameter};
+use crate::dsp::DSP;
 use crate::dsp::{
-    utils::{mono_block_to_slice, mono_block_to_slice_mut, slice_to_mono_block_mut},
-    DSP,
+    buffer::{AudioBufferMut, AudioBufferRef},
+    parameter::{HasParameters, Parameter},
 };
 use crate::saturators::Linear;
 use crate::Scalar;
@@ -67,7 +67,7 @@ impl<T: Scalar> Oversample<T> {
         let max_block_size = dsp.max_block_size().unwrap_or(self.os_buffer.len());
         // Verify that we satisfy the inner DSPBlock instance's requirement on maximum block size
         assert!(self.os_buffer.len() <= max_block_size);
-        let staging_buffer = vec![[T::zero(); 1]; max_block_size].into_boxed_slice();
+        let staging_buffer = vec![T::zero(); max_block_size].into_boxed_slice();
         Oversampled {
             oversampling: self,
             staging_buffer,
@@ -134,7 +134,7 @@ impl<'a, T: Scalar> OversampleBlock<'a, T> {
 
 pub struct Oversampled<T, P> {
     oversampling: Oversample<T>,
-    staging_buffer: Box<[[T; 1]]>,
+    staging_buffer: Box<[T]>,
     pub inner: P,
 }
 
@@ -180,18 +180,20 @@ where
         self.inner.reset();
     }
 
-    fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
-        let inputs = mono_block_to_slice(inputs);
-        let mut os_block = self.oversampling.oversample(inputs);
-        let inner_outputs = slice_to_mono_block_mut(&mut os_block);
-        self.staging_buffer[..inner_outputs.len()].copy_from_slice(inner_outputs);
-        self.inner
-            .process_block(&self.staging_buffer, inner_outputs);
-        os_block.finish(mono_block_to_slice_mut(outputs));
+    fn process_block(&mut self, inputs: AudioBufferRef<T, 1>, mut outputs: AudioBufferMut<T, 1>) {
+        let mut os_block = self.oversampling.oversample(inputs.get_channel(0));
+        let input = &mut self.staging_buffer[..os_block.len()];
+        input.copy_from_slice(&os_block);
+        self.inner.process_block(
+            AudioBufferRef::from(&*input),
+            AudioBufferMut::from(&mut *os_block),
+        );
+        os_block.finish(outputs.get_channel_mut(0));
     }
 
     fn set_samplerate(&mut self, samplerate: f32) {
-        self.inner.set_samplerate(self.oversampling.os_factor as f32 * samplerate);
+        self.inner
+            .set_samplerate(self.oversampling.os_factor as f32 * samplerate);
     }
 }
 
@@ -209,7 +211,10 @@ mod tests {
 
     use numeric_literals::replace_float_literals;
 
-    use crate::{dsp::DSPBlock as _, Scalar};
+    use crate::{
+        dsp::{buffer::AudioBufferBox, DSPBlock as _},
+        Scalar,
+    };
 
     use super::Oversample;
 
@@ -256,9 +261,9 @@ mod tests {
         };
         let mut os = Oversample::<f32>::new(4, 64).with_dsp(dsp);
 
-        let input = [[0.0]; 64];
-        let mut output = [[0.0]; 64];
-        os.process_block(&input, &mut output);
-        insta::assert_csv_snapshot!(&output as &[_], { "[][]" => insta::rounded_redaction(3) });
+        let input = AudioBufferBox::zeroed(64);
+        let mut output = AudioBufferBox::zeroed(64);
+        os.process_block(input.as_ref(), output.as_mut());
+        insta::assert_csv_snapshot!(output.get_channel(0), { "[][]" => insta::rounded_redaction(3) });
     }
 }

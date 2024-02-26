@@ -171,25 +171,21 @@ pub mod kernels {
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{
-        utils::{slice_to_mono_block, slice_to_mono_block_mut},
-        DSPBlock,
-    };
+    use crate::dsp::buffer::AudioBuffer;
+    use crate::dsp::DSPBlock;
 
     use super::*;
 
     #[test]
     fn test_fir_direct() {
         let input = Box::from_iter([1.0, 0.0, 0.0, 0.0].into_iter().cycle().take(16));
+        let input = AudioBuffer::new([input]).unwrap();
         let mut output = input.clone();
         let mut fir = Fir::new([0.25, 0.5, 0.25], 1);
 
         output.fill(0.0);
-        fir.process_block(
-            slice_to_mono_block(&input),
-            slice_to_mono_block_mut(&mut output),
-        );
-        insta::assert_csv_snapshot!(&output, { "[]" => insta::rounded_redaction(4) })
+        fir.process_block(input.as_ref(), output.as_mut());
+        insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(4) })
     }
 
     #[test]

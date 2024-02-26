@@ -240,7 +240,7 @@ where
 mod tests {
     use crate::{
         dsp::{
-            utils::{slice_to_mono_block, slice_to_mono_block_mut},
+            buffer::{AudioBufferBox, AudioBufferRef},
             DSPBlock,
         },
         saturators::clippers::DiodeClipperModel,
@@ -257,12 +257,9 @@ mod tests {
 
         let input: [_; 512] =
             std::array::from_fn(|i| i as f64 / samplerate).map(|t| (10.0 * t).fract() * 2.0 - 1.0);
-        let mut output = [0.0; 512];
-        biquad.process_block(
-            slice_to_mono_block(&input),
-            slice_to_mono_block_mut(&mut output),
-        );
+        let mut output = AudioBufferBox::zeroed(512);
+        biquad.process_block(AudioBufferRef::from(&input as &[_]), output.as_mut());
 
-        insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(4) });
+        insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 }
