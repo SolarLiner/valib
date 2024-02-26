@@ -11,10 +11,10 @@ use atomic_float::AtomicF32;
 use nih_plug::{params::persist::PersistentField, prelude::*};
 use std::sync::{Arc, Mutex};
 use valib::dsp::blocks::Series;
-use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
+use valib::dsp::buffer::AudioBuffer;
+
 use valib::dsp::DSPBlock;
 use valib::simd::{AutoF32x2, SimdValue};
-use valib::Scalar;
 
 pub mod editor;
 mod filter;
@@ -187,6 +187,7 @@ impl Abrasive<NUM_BANDS> {
     fn set_filterbank_samplerate(&mut self, _sr: f32) {
         for filter in self.filters.0.iter_mut() {
             filter.reset();
+            filter.set_samplerate(_sr);
         }
     }
 
@@ -205,24 +206,22 @@ impl Abrasive<NUM_BANDS> {
                 .scale
                 .smoothed
                 .next_block_exact(&mut scale[..len]);
-            let mut simd_input = [Sample::from_f64(0.0); BLOCK_SIZE];
-            let mut simd_output = simd_input;
+            let mut simd_input = AudioBuffer::zeroed(BLOCK_SIZE);
+            let mut simd_output = simd_input.clone();
             for (i, mut samples) in block.iter_samples().enumerate() {
-                simd_input[i] =
+                simd_input[0][i] =
                     Sample::from([*samples.get_mut(0).unwrap(), *samples.get_mut(1).unwrap()]);
-                simd_input[i] *= Sample::splat(drive[i]);
+                simd_input[0][i] *= Sample::splat(drive[i]);
             }
 
-            self.filters.process_block(
-                slice_to_mono_block(&simd_input[..len]),
-                slice_to_mono_block_mut(&mut simd_output[..len]),
-            );
+            self.filters
+                .process_block(simd_input.as_ref(), simd_output.as_mut());
 
             for (i, mut samples) in block.iter_samples().enumerate() {
                 let drive = Sample::splat(drive[i]);
-                simd_output[i] /= drive;
-                *samples.get_mut(0).unwrap() = simd_output[i].extract(0);
-                *samples.get_mut(1).unwrap() = simd_output[i].extract(1);
+                simd_output[0][i] /= drive;
+                *samples.get_mut(0).unwrap() = simd_output[0][i].extract(0);
+                *samples.get_mut(1).unwrap() = simd_output[0][i].extract(1);
             }
         }
     }

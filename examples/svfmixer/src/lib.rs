@@ -3,9 +3,12 @@ use std::sync::Arc;
 use nih_plug::prelude::*;
 
 use extend::FloatParamExt;
-use valib::dsp::parameter::HasParameters;
-use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
+
 use valib::dsp::DSPBlock;
+use valib::dsp::{
+    buffer::{AudioBufferMut, AudioBufferRef},
+    parameter::HasParameters,
+};
 use valib::oversample::Oversample;
 use valib::Scalar;
 
@@ -216,7 +219,10 @@ fn process_buffer_simd<
         let input = &input[..block.samples()];
         let output = &mut output[..block.samples()];
 
-        dsp.process_block(slice_to_mono_block(input), slice_to_mono_block_mut(output));
+        dsp.process_block(
+            AudioBufferRef::from(input),
+            AudioBufferMut::from(&mut *output),
+        );
 
         for (i, mut c) in block.iter_samples().enumerate() {
             for (ch, s) in c.iter_mut().enumerate() {

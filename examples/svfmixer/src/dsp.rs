@@ -62,7 +62,6 @@ impl DspInner {
                 Sample::splat(0.0),
                 Sample::splat(0.0),
             ),
-            ..ModMatrix::default()
         };
         Self {
             params,
