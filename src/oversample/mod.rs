@@ -264,6 +264,6 @@ mod tests {
         let input = AudioBufferBox::zeroed(64);
         let mut output = AudioBufferBox::zeroed(64);
         os.process_block(input.as_ref(), output.as_mut());
-        insta::assert_csv_snapshot!(output.get_channel(0), { "[][]" => insta::rounded_redaction(3) });
+        insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(3) });
     }
 }

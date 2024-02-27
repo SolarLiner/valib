@@ -97,7 +97,7 @@ where
         inputs: AudioBufferRef<P::Sample, I>,
         mut outputs: AudioBufferMut<P::Sample, O>,
     ) {
-        if I == 0 || O == 0 {
+        if I == 0 && O == 0 {
             return;
         }
         for i in 0..inputs.samples() {
@@ -272,7 +272,7 @@ mod tests {
 
         // Calling `process_block` but it's actually calling the impl for all `DSP` passing each sample through.
         adaptor.process_block(
-            AudioBufferRef::new([]).unwrap(),
+            AudioBufferRef::empty(8),
             AudioBufferMut::new([&mut actual]).unwrap(),
         );
 

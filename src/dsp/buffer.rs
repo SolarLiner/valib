@@ -211,6 +211,19 @@ impl<'a, T> From<&'a [T]> for AudioBufferRef<'a, T, 1> {
     }
 }
 
+impl<C> AudioBuffer<C, 0> {
+    /// Creates a 0-channel empty buffer with the specified buffer size. This constructor is required to provide a non-
+    /// zero block size that matches the companion buffer passed into `process_block`.
+    ///
+    /// Better API design is needed to remove this need.
+    pub fn empty(block_size: usize) -> Self {
+        Self {
+            containers: [],
+            inner_size: block_size,
+        }
+    }
+}
+
 pub type AudioBufferMut<'a, T, const CHANNELS: usize> = AudioBuffer<&'a mut [T], CHANNELS>;
 
 impl<'a, T> From<&'a mut [T]> for AudioBufferMut<'a, T, 1> {
@@ -244,5 +257,19 @@ impl<T: Zero, const CHANNELS: usize> AudioBufferBox<T, CHANNELS> {
             }),
             inner_size: size,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_as_mut_write() {
+        let mut buffer = AudioBuffer::<_, 1>::zeroed(1);
+        let mut slice_mut = buffer.as_mut();
+        slice_mut[0][0] = 1;
+
+        assert_eq!(1, buffer[0][0]);
     }
 }
