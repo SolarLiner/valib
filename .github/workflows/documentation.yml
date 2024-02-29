@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-22.04
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}/valib
     permissions:
       id-token: write
       pages: write
@@ -33,16 +33,16 @@ jobs:
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
       - name: Build documentation
-        run: cargo doc
+        run: cargo doc --all-features --no-deps
       - name: Fix permissions
         run: |
-          chmod -c -R +rX "target/doc/valib" | while read line; do
+          chmod -c -R +rX "target/doc" | while read line; do
             echo "::warning title=Invalid file permissions automatically fixed::$line"
           done
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: target/doc/valib
+          path: target/doc
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4 # or specific "vX.X.X" version tag for this action
