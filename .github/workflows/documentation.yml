@@ -39,7 +39,6 @@ jobs:
         uses: actions/upload-pages-artifact@v2
         with:
           path: target/doc
-          retention-days: 31
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4 # or specific "vX.X.X" version tag for this action
