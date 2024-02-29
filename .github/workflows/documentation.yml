@@ -9,6 +9,7 @@ jobs:
     runs-on: ubuntu-22.04
     permissions:
       id-token: write
+      pages: write
     steps:
       - name: Install dependencies
         if: startsWith(matrix.os, 'ubuntu')
