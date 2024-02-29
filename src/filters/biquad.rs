@@ -1,4 +1,4 @@
-//! Transposed Direct Form II Biquad implementation - nonlinearities based on https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-5-nonlinear-feedback-filters-115e65fc0402
+//! Transposed Direct Form II Biquad implementation - nonlinearities based on <https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-5-nonlinear-feedback-filters-115e65fc0402>
 
 use nalgebra::Complex;
 use numeric_literals::replace_float_literals;
@@ -10,7 +10,7 @@ use crate::{
     Scalar,
 };
 
-/// Biquad struct in Transposed Direct Form II. Optionally, a [`Saturator`](crate::saturators::Saturator) instance can be used
+/// Biquad struct in Transposed Direct Form II. Optionally, a [`Saturator`] instance can be used
 /// to apply waveshaping to the internal states.
 #[derive(Debug, Copy, Clone)]
 pub struct Biquad<T, S> {

@@ -1,5 +1,5 @@
 //! Implementation of various blocks of DSP code from the VA Filter Design book.
-//! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
+//! Downloaded from <https://www.discodsp.net/VAFilterDesign_2.1.2.pdf>
 //! All references in this module, unless specified otherwise, are taken from this book.
 
 use std::fmt;
