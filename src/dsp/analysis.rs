@@ -1,3 +1,4 @@
+//! Defines the methods to provide frequency and phase response analysis.
 use nalgebra::Complex;
 use simba::simd::SimdComplexField;
 

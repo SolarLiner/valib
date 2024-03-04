@@ -1,4 +1,5 @@
 #![cfg_attr(feature = "fundsp", feature(generic_const_exprs))]
+#![doc = include_str!("./README.md")]
 use az::CastFrom;
 use num_traits::Zero;
 use simba::simd::{AutoSimd, SimdRealField, SimdValue};

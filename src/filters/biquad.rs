@@ -1,4 +1,13 @@
-//! Transposed Direct Form II Biquad implementation - nonlinearities based on <https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-5-nonlinear-feedback-filters-115e65fc0402>
+//! Transposed Direct Form II Biquad implementation
+//! 
+//! Nonlinearities based on <https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-5-nonlinear-feedback-filters-115e65fc0402>
+//! 
+//! # Usage
+//! 
+//! ```rust
+//! let mut lowpass = Biquad::lowpass(0.25 /* normalized frequency */, 0.707 /* Q */);
+//! let output = lowpass.process([0.0]);
+//! ```
 
 use nalgebra::Complex;
 use numeric_literals::replace_float_literals;
@@ -20,6 +29,7 @@ pub struct Biquad<T, S> {
     sats: [S; 2],
 }
 
+// TODO: No need to restrict this on dynamic saturators only
 impl<T> Biquad<T, Dynamic<T>> {
     /// Apply these new saturators to this Biquad instance, returning a new instance of it.
     pub fn with_saturators(mut self, a: Dynamic<T>, b: Dynamic<T>) -> Biquad<T, Dynamic<T>> {
@@ -40,6 +50,7 @@ impl<T: Copy, S> Biquad<T, S> {
     }
 }
 
+// TODO: Make those return linear biquads, where the user can then pass their saturators directly through `with_saturators`
 impl<T: Scalar, S: Default> Biquad<T, S> {
     /// Create a new instance of a Biquad with the provided poles and zeros coefficients.
     pub fn new(b: [T; 3], a: [T; 2]) -> Self {
