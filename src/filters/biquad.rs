@@ -1,11 +1,14 @@
 //! Transposed Direct Form II Biquad implementation
-//! 
+//!
 //! Nonlinearities based on <https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-5-nonlinear-feedback-filters-115e65fc0402>
-//! 
+//!
 //! # Usage
-//! 
+//!
 //! ```rust
-//! let mut lowpass = Biquad::lowpass(0.25 /* normalized frequency */, 0.707 /* Q */);
+//! use valib::dsp::DSP;
+//! use valib::filters::biquad::Biquad;
+//! use valib::saturators::Tanh;
+//! let mut lowpass = Biquad::<f32, Tanh>::lowpass(0.25 /* normalized frequency */, 0.707 /* Q */);
 //! let output = lowpass.process([0.0]);
 //! ```
 

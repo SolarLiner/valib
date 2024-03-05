@@ -1,21 +1,24 @@
 //! Linear state-space model implementation for arbitrary I/O.
-//! 
+//!
 //! # Example
-//! 
+//!
 //! ```rust
-//! fn create_filter(fc: T) -> Self {
+//! use nalgebra::SMatrix;
+//! use valib::dsp::DSP;
+//! use valib::filters::statespace::StateSpace;
+//! use valib::Scalar;
+//!
+//! /// Implements a 1-pole lowpass filter as a linear state-space model
+//! fn create_filter(fc: f32) -> StateSpace<f32, 1, 1, 1> {
 //!     let new = SMatrix::<_, 1, 1>::new;
-//!     // Implementes a 1-pole lowpass filter with the given normalized frequency as
-//!     // cutoff.
-//!     Self(StateSpace {
-//!         a: new(-(fc - 2.0) / (fc + 2.0)),
-//!         b: new(1.0),
-//!         c: new(-fc * (fc - 2.0) / (fc + 2.0).simd_powi(2) + fc / (fc + 2.0)),
-//!         d: new(fc / (fc + 2.0)),
-//!         ..StateSpace::zeros()
-//!     })
+//!     StateSpace ::new(
+//!         new(-(fc - 2.0) / (fc + 2.0)),
+//!         new(1.0),
+//!         new(-fc * (fc - 2.0) / (fc + 2.0).powi(2) + fc / (fc + 2.0)),
+//!         new(fc / (fc + 2.0)),
+//!     )
 //! }
-//! 
+//!
 //! let mut filter = create_filter(0.25);
 //! let output = filter.process([0.0]);
 //! ```
