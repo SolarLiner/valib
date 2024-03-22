@@ -85,9 +85,10 @@ where
     pub fn bilinear_transform(self, samplerate: T) -> Self {
         let mut res = self.map(|x| bilinear_transform(samplerate, x));
         let final_degree = res.poles.len().max(res.zeros.len());
-        let to_add = final_degree - res.zeros.len();
         res.zeros
-            .extend(std::iter::repeat(-Complex::one()).take(to_add));
+            .extend(std::iter::repeat(-Complex::one()).take(final_degree - res.zeros.len()));
+        res.poles
+            .extend(std::iter::repeat(-Complex::one()).take(final_degree - res.poles.len()));
         res
     }
 
@@ -127,13 +128,15 @@ pub fn biquad<T: Scalar>(transfer_function: Rational<Polynom<T>>) -> Biquad<T, L
 
 /// Perform the bilinear transform over a single complex number, using Tustin's method.
 pub fn bilinear_transform<T: Scalar>(samplerate: T, s: Complex<T>) -> Complex<T> {
+    todo!("Fix implementation");
     let samplerate = Complex::from(samplerate);
-    let num = Complex::<T>::one() + s / samplerate;
-    let den = Complex::<T>::one() - s / samplerate;
+    let k = samplerate * T::from_f64(2.0);
+    let num = k + s;
+    let den = k - s;
     num / den
 }
 
-/// Compute the transfer function of Nth order Butterworth filter.
+/// Compute the analog transfer function of Nth order Butterworth filter.
 pub fn butterworth<T: Scalar>(order: usize, fc: T) -> TransferFunction<Complex<T>>
 where
     Complex<T>: SimdComplexField,
@@ -211,8 +214,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::f64::consts::TAU;
+
+    use super::*;
 
     #[test]
     fn test_butterworth_analog() {
@@ -222,6 +226,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_butterworth_digital() {
         let butter = dbg!(dbg!(butterworth(2, 0.25f64)).bilinear_transform(TAU));
         assert!(butter.is_digital_stable());

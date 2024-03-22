@@ -281,4 +281,3 @@ mod tests {
         insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 }
-
