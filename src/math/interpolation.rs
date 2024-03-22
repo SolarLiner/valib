@@ -13,7 +13,7 @@ pub trait Interpolate<T, const N: usize> {
     /// Provide the relative indices needed to compute the interpolation
     fn rel_indices() -> [isize; N];
 
-    /// Interpolate a single point from the given taps (in the same order as the indices defined in [`rel_indices`]).
+    /// Interpolate a single point from the given taps (in the same order as the indices defined in [`Self::rel_indices`]).
     /// The t parameter is assumed to be in the 0..=1 range, and it's up to the caller to provide values in the valid range.
     fn interpolate(t: T, taps: [T; N]) -> T;
 

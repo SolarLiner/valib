@@ -1,3 +1,5 @@
+//! Utilities for [`DSP`](crate::dsp::DSP) implementors and users.
+
 /// Transmutes a mono block slice into a regular slice.
 /// Safety: safe because [T; 1] has the same representation as T, so in turn
 /// any access of &[T; 1] is also a valid access of &T.

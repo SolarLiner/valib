@@ -1,3 +1,15 @@
+//! Shared values for passing parameters into DSP code.
+//! 
+//! By design, those parameters are not used by the implementations in this
+//! library. This is because it would be too limiting and cumbersome to go from
+//! single-valued parameter values to potentially multi-valied values (eg. a
+//! filter cutoff of a stereo filter, where the stereo signal is represented as
+//! a single f32x2 SIMD type). They are provided as is for bigger modules, and
+//! the traits implemented by "container" modules (like [`Series`] or
+//! [`Parallel`]) to ease their use in propagating parameters.
+//!
+//! [`Series`]: crate::dsp::blocks::Series
+//! [`Parallel`]: crate::dsp::blocks::Parallel
 use core::fmt;
 use std::fmt::Formatter;
 use std::ops::Deref;
