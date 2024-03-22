@@ -22,7 +22,6 @@ use crate::{
     Scalar,
 };
 
-#[cfg(never)]
 pub mod design;
 
 /// Biquad struct in Transposed Direct Form II. Optionally, a [`Saturator`] instance can be used
@@ -282,3 +281,4 @@ mod tests {
         insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 }
+
