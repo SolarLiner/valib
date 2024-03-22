@@ -14,6 +14,7 @@
 
 use nalgebra::Complex;
 use numeric_literals::replace_float_literals;
+use simba::simd::SimdValue;
 
 use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::{DSPMeta, DSPProcess};
@@ -65,6 +66,15 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
             s: [T::zero(); 2],
             sats: Default::default(),
         }
+    }
+
+    pub fn is_stable(&self) -> T::SimdBool
+    where
+        T::SimdBool: SimdValue<Element = bool>,
+    {
+        self.na.iter().fold(T::SimdBool::splat(false), |acc, x| {
+            acc & x.simd_abs().simd_lt(T::one())
+        })
     }
 
     /// Create a lowpass with the provided frequency cutoff coefficient (normalized where 1 == samplerate) and resonance factor.

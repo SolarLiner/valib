@@ -1,8 +1,10 @@
 use std::f64::consts::PI;
+use std::ops::Neg;
 use std::{fmt, ops};
 
 use nalgebra::Complex;
 use num_traits::{NumOps, One, Zero};
+use numeric_literals::replace_float_literals;
 use simba::simd::{SimdComplexField, SimdValue};
 
 use crate::dsp::blocks::Series;
@@ -112,6 +114,42 @@ where
     }
 }
 
+#[replace_float_literals(Complex::from(T::from_f64(literal)))]
+pub fn biquad_analog<T: Scalar>(
+    samplerate: T,
+    transfer_function: TransferFunction<Complex<T>>,
+) -> Biquad<T, Linear> {
+    let dt = samplerate.simd_recip();
+    let poly = transfer_function.as_polynom_rational();
+    assert!(poly.0.degree().max(poly.1.degree()) <= 2);
+
+    let b0s = poly.0.get(2);
+    let b1s = poly.0.get(1);
+    let b2s = poly.0.get(0);
+    let a0s = poly.1.get(2);
+    let a1s = poly.1.get(1);
+    let a2s = poly.1.get(0);
+
+    let x0 = a0s * dt * dt;
+    let x1 = 4. * a2s;
+    let x2 = 2.0 * a1s * dt;
+    let x3 = b0s * dt * dt;
+    let x4 = 4. * b2s;
+    let x5 = 2.0 * b1s * dt;
+
+    let a0 = x0 + x2 + x1;
+    let a1 = 2.0 * (x0 - x1);
+    let a2 = x0 - x2 + x1;
+    let b0 = x3 + x5 + x4;
+    let b1 = 2.0 * (x3 - x4);
+    let b2 = x3 - x5 + x4;
+
+    Biquad::new(
+        [b0 / a0, b1 / a0, b2 / a0].map(|c| c.re),
+        [a1 / a0, a2 / a0].map(|c| c.re),
+    )
+}
+
 /// Creates a [`Biquad`] instance matching the given expanded digital transfer function.
 /// Only biquadratic transfer functions (degree <= 2) can be passed into this function. Use the
 /// [`cascaded_biquad_sections`] function to create a series of cascaded biquads instead.
@@ -159,9 +197,25 @@ where
 /// the original one when applied in series.
 /// The order of the input transfer function can be either even or odd; if it is odd, the last biquad
 /// will only be a 1-st order filter.
-pub fn into_biquadratic<T>(transfer_function: TransferFunction<T>) -> Vec<TransferFunction<T>> {
-    let mut zeros2 = transfer_function.zeros.into_iter().array_chunks::<2>();
-    let mut poles2 = transfer_function.poles.into_iter().array_chunks::<2>();
+pub fn into_biquadratic<T: Clone + One + Neg<Output = T>>(
+    transfer_function: TransferFunction<T>,
+) -> Vec<TransferFunction<T>> {
+    let maxlen = transfer_function
+        .poles
+        .len()
+        .max(transfer_function.zeros.len());
+    let mut zeros2 = transfer_function
+        .zeros
+        .into_iter()
+        .chain(std::iter::repeat(-T::one()))
+        .take(maxlen)
+        .array_chunks::<2>();
+    let mut poles2 = transfer_function
+        .poles
+        .into_iter()
+        .chain(std::iter::repeat(-T::one()))
+        .take(maxlen)
+        .array_chunks::<2>();
     let mut res =
         Vec::from_iter(
             zeros2
@@ -188,28 +242,33 @@ pub fn into_biquadratic<T>(transfer_function: TransferFunction<T>) -> Vec<Transf
             poles: p.collect(),
         }),
     }
+    res.retain(|tf| !tf.poles.is_empty() && !tf.zeros.is_empty());
     res
 }
 
 /// Instanciates a set of biquads in series which implement the Nth order transfer function given as argument.
 pub fn cascaded_biquad_sections<T: Scalar>(
+    samplerate: T,
     transfer_function: TransferFunction<Complex<T>>,
 ) -> Series<Vec<Biquad<T, Linear>>> {
     let v = into_biquadratic(transfer_function)
         .into_iter()
-        .map(|tf| tf.as_polynom_rational().map(|p| p.map(|x| x.re)))
-        .map(biquad)
+        .map(|h| biquad_analog(samplerate, h))
         .collect();
     Series(v)
 }
 
 /// Computes a filter that implements the given Nth order Butterworth filter as a series of cascaded
 /// Biquad filters.
-pub fn biquad_butterworth<T: Scalar>(order: usize, fc: T) -> Series<Vec<Biquad<T, Linear>>>
+pub fn biquad_butterworth<T: Scalar>(
+    order: usize,
+    samplerate: T,
+    cutoff: T,
+) -> Series<Vec<Biquad<T, Linear>>>
 where
     Complex<T>: SimdComplexField,
 {
-    cascaded_biquad_sections(butterworth(order, fc))
+    cascaded_biquad_sections(samplerate, butterworth(order, cutoff))
 }
 
 #[cfg(test)]
@@ -231,5 +290,13 @@ mod tests {
         let butter = dbg!(dbg!(butterworth(2, 0.25f64)).bilinear_transform(TAU));
         assert!(butter.is_digital_stable());
         insta::assert_debug_snapshot!(butter);
+    }
+
+    #[test]
+    fn test_butterworth_biquad() {
+        let butter = biquad_butterworth(8, 100.0, 10.0);
+        eprintln!("{butter:#?}");
+        assert_eq!(4, butter.0.len());
+        assert!(butter.0.iter().all(|b| b.is_stable()));
     }
 }
