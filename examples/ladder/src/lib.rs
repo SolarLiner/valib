@@ -4,7 +4,7 @@ use nih_plug::prelude::*;
 
 use valib::math::interpolation::{Cubic, Interpolate};
 use valib::oversample::Oversample;
-use valib::{dsp::DSP, Scalar};
+use valib::{dsp::DSPProcess, Scalar};
 use valib::{
     filters::ladder::{Ideal, Ladder, Transistor, OTA},
     saturators::{clippers::DiodeClipperModel, Tanh},
@@ -107,7 +107,7 @@ impl Dsp {
     }
 }
 
-impl DSP<1, 1> for Dsp {
+impl DSPProcess<1, 1> for Dsp {
     type Sample = Sample;
 
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {

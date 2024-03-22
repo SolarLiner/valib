@@ -3,7 +3,7 @@ use nalgebra::SMatrix;
 use nih_plug::util::db_to_gain_fast;
 use valib::dsp::blocks::ModMatrix;
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::DSP;
+use valib::dsp::DSPProcess;
 use valib::filters::svf::Svf;
 use valib::oversample::Oversampled;
 use valib::saturators::{Clipper, Saturator, Slew};
@@ -79,7 +79,7 @@ impl HasParameters for DspInner {
     }
 }
 
-impl DSP<1, 1> for DspInner {
+impl DSPProcess<1, 1> for DspInner {
     type Sample = Sample;
 
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {

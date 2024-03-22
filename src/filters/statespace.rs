@@ -4,7 +4,7 @@
 //!
 //! ```rust
 //! use nalgebra::SMatrix;
-//! use valib::dsp::DSP;
+//! use valib::dsp::DSPProcess;
 //! use valib::filters::statespace::StateSpace;
 //! use valib::Scalar;
 //!
@@ -27,7 +27,7 @@ use std::f64::NAN;
 use nalgebra::{Complex, SMatrix, SVector, SimdComplexField};
 use num_traits::Zero;
 
-use crate::dsp::{analysis::DspAnalysis, DSP};
+use crate::dsp::{analysis::DspAnalysis, DSPMeta, DSPProcess};
 use crate::Scalar;
 
 // TODO: Add saturators
@@ -109,11 +109,15 @@ impl<T: Copy + nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT:
     }
 }
 
-impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSP<IN, OUT>
+impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSPMeta
     for StateSpace<T, IN, STATE, OUT>
 {
     type Sample = T;
+}
 
+impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSPProcess<IN, OUT>
+    for StateSpace<T, IN, STATE, OUT>
+{
     fn process(&mut self, x: [Self::Sample; IN]) -> [Self::Sample; OUT] {
         let x = SVector::from(x);
         let y = self.c * self.state + self.d * x;
@@ -128,15 +132,17 @@ mod tests {
     use numeric_literals::replace_float_literals;
 
     use crate::dsp::buffer::AudioBuffer;
-    use crate::dsp::DSPBlock;
+    use crate::dsp::DSPProcessBlock;
 
     use super::*;
 
     struct RC<T: nalgebra::Scalar>(StateSpace<T, 1, 1, 1>);
 
-    impl<T: Scalar> DSP<1, 1> for RC<T> {
+    impl<T: Scalar> DSPMeta for RC<T> {
         type Sample = T;
+    }
 
+    impl<T: Scalar> DSPProcess<1, 1> for RC<T> {
         fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
             self.0.process(x)
         }

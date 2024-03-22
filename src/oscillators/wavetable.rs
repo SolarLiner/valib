@@ -2,8 +2,9 @@ use std::{marker::PhantomData, ops::Range};
 
 use num_traits::Num;
 
+use crate::dsp::DSPMeta;
 use crate::{
-    dsp::DSP,
+    dsp::DSPProcess,
     math::interpolation::{Interpolate, Linear},
     simd::SimdPartialOrd,
     Scalar, SimdCast,
@@ -16,12 +17,15 @@ pub struct Wavetable<T, const N: usize, Interp = Linear, const I: usize = 2> {
     __interp: PhantomData<Interp>,
 }
 
+impl<T: Scalar, Interp, const I: usize, const N: usize> DSPMeta for Wavetable<T, N, Interp, I> {
+    type Sample = T;
+}
+
 impl<T: Scalar + SimdCast<isize>, const N: usize, const I: usize, Interp: Interpolate<T, I>>
-    DSP<1, 1> for Wavetable<T, N, Interp, I>
+    DSPProcess<1, 1> for Wavetable<T, N, Interp, I>
 where
     <T as SimdCast<isize>>::Output: Copy + Num + SimdPartialOrd,
 {
-    type Sample = T;
     fn process(&mut self, [phase]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let y = Interp::interpolate_on_slice(phase.simd_fract(), &self.array);
         [y]

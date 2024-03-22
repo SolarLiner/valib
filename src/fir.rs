@@ -2,7 +2,8 @@ use std::{collections::VecDeque, ops};
 
 use numeric_literals::replace_float_literals;
 
-use crate::{dsp::DSP, Scalar};
+use crate::dsp::DSPMeta;
+use crate::{dsp::DSPProcess, Scalar};
 
 fn slice_add<T: Copy + ops::Add<T, Output = T>>(in1: &[T], in2: &[T], out: &mut [T]) {
     let len = in1.len().min(in2.len()).min(out.len());
@@ -109,7 +110,7 @@ impl<T: Scalar> Fir<T> {
     }
 }
 
-impl<T: Scalar> DSP<1, 1> for Fir<T> {
+impl<T: Scalar> DSPMeta for Fir<T> {
     type Sample = T;
 
     fn latency(&self) -> usize {
@@ -119,7 +120,9 @@ impl<T: Scalar> DSP<1, 1> for Fir<T> {
     fn reset(&mut self) {
         self.memory = VecDeque::from(vec![T::from_f64(0.0); self.kernel.len()]);
     }
+}
 
+impl<T: Scalar> DSPProcess<1, 1> for Fir<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let [x] = x;
         self.memory.pop_front();
@@ -172,7 +175,7 @@ pub mod kernels {
 #[cfg(test)]
 mod tests {
     use crate::dsp::buffer::AudioBuffer;
-    use crate::dsp::DSPBlock;
+    use crate::dsp::DSPProcessBlock;
 
     use super::*;
 

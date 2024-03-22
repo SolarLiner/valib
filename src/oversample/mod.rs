@@ -1,14 +1,14 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::dsp::DSP;
 use crate::dsp::{
     buffer::{AudioBufferMut, AudioBufferRef},
     parameter::{HasParameters, Parameter},
 };
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::Linear;
 use crate::Scalar;
 use crate::{
-    dsp::{blocks::Series, DSPBlock},
+    dsp::{blocks::Series, DSPProcessBlock},
     filters::biquad::Biquad,
 };
 
@@ -39,7 +39,7 @@ impl<T: Scalar> Oversample<T> {
     }
 
     pub fn latency(&self) -> usize {
-        2 * self.os_factor + DSP::latency(&self.pre_filter) + DSP::latency(&self.post_filter)
+        2 * self.os_factor + self.pre_filter.latency() + self.post_filter.latency()
     }
 
     pub fn max_block_size(&self) -> usize {
@@ -59,11 +59,11 @@ impl<T: Scalar> Oversample<T> {
 
     pub fn reset(&mut self) {
         self.os_buffer.fill(T::zero());
-        DSP::reset(&mut self.pre_filter);
-        DSP::reset(&mut self.post_filter);
+        self.pre_filter.reset();
+        self.post_filter.reset();
     }
 
-    pub fn with_dsp<P: DSPBlock<1, 1>>(self, dsp: P) -> Oversampled<T, P> {
+    pub fn with_dsp<P: DSPProcessBlock<1, 1>>(self, dsp: P) -> Oversampled<T, P> {
         let max_block_size = dsp.max_block_size().unwrap_or(self.os_buffer.len());
         // Verify that we satisfy the inner DSPBlock instance's requirement on maximum block size
         assert!(self.os_buffer.len() <= max_block_size);
@@ -151,7 +151,7 @@ where
     #[deprecated = "Use Oversample::with_dsp"]
     pub fn new(oversampling: Oversample<T>, inner: P) -> Self
     where
-        P: DSP<1, 1, Sample = T>,
+        P: DSPProcess<1, 1, Sample = T>,
     {
         oversampling.with_dsp(inner)
     }
@@ -160,26 +160,29 @@ where
     }
 }
 
-impl<T, P> DSPBlock<1, 1> for Oversampled<T, P>
-where
-    T: Scalar,
-    P: DSPBlock<1, 1, Sample = T>,
-{
+impl<T: Scalar, P: DSPMeta> DSPMeta for Oversampled<T, P> {
     type Sample = T;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.inner
+            .set_samplerate(self.oversampling.os_factor as f32 * samplerate);
+    }
 
     fn latency(&self) -> usize {
         self.oversampling.latency() + self.inner.latency()
-    }
-
-    fn max_block_size(&self) -> Option<usize> {
-        Some(self.oversampling.max_block_size())
     }
 
     fn reset(&mut self) {
         self.oversampling.reset();
         self.inner.reset();
     }
+}
 
+impl<T, P> DSPProcessBlock<1, 1> for Oversampled<T, P>
+where
+    T: Scalar,
+    P: DSPProcessBlock<1, 1, Sample = T>,
+{
     fn process_block(&mut self, inputs: AudioBufferRef<T, 1>, mut outputs: AudioBufferMut<T, 1>) {
         let mut os_block = self.oversampling.oversample(inputs.get_channel(0));
         let input = &mut self.staging_buffer[..os_block.len()];
@@ -191,9 +194,8 @@ where
         os_block.finish(outputs.get_channel_mut(0));
     }
 
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.inner
-            .set_samplerate(self.oversampling.os_factor as f32 * samplerate);
+    fn max_block_size(&self) -> Option<usize> {
+        Some(self.oversampling.max_block_size())
     }
 }
 
@@ -211,8 +213,9 @@ mod tests {
 
     use numeric_literals::replace_float_literals;
 
+    use crate::dsp::DSPMeta;
     use crate::{
-        dsp::{buffer::AudioBufferBox, DSPBlock as _},
+        dsp::{buffer::AudioBufferBox, DSPProcessBlock as _},
         Scalar,
     };
 
@@ -238,10 +241,11 @@ mod tests {
             frequency: T,
             phase: T,
         }
-
-        impl<T: Scalar> crate::dsp::DSP<1, 1> for NaiveSquare<T> {
+        impl<T: Scalar> DSPMeta for NaiveSquare<T> {
             type Sample = T;
+        }
 
+        impl<T: Scalar> crate::dsp::DSPProcess<1, 1> for NaiveSquare<T> {
             #[replace_float_literals(T::from_f64(literal))]
             fn process(&mut self, _: [Self::Sample; 1]) -> [Self::Sample; 1] {
                 let step = self.frequency / self.samplerate;

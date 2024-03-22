@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 use valib::dsp::blocks::Series;
 use valib::dsp::buffer::AudioBuffer;
 
-use valib::dsp::DSPBlock;
+use valib::dsp::DSPProcessBlock;
 use valib::simd::{AutoF32x2, SimdValue};
 
 pub mod editor;

@@ -5,7 +5,7 @@
 //! # Example
 //!
 //! ```rust
-//! use valib::dsp::DSP;
+//! use valib::dsp::DSPProcess;
 //! use valib::filters::ladder::{Ladder, OTA};
 //! use valib::saturators::Tanh;
 //! let mut filter = Ladder::<f32, OTA<Tanh>>::new(44100.0, 300.0, 0.5);
@@ -17,8 +17,9 @@ use std::fmt;
 use nalgebra::{Complex, SVector};
 use numeric_literals::replace_float_literals;
 
+use crate::dsp::DSPMeta;
 use crate::{
-    dsp::{analysis::DspAnalysis, DSP},
+    dsp::{analysis::DspAnalysis, DSPProcess},
     math::bilinear_prewarming_bounded,
     saturators::{Saturator, Tanh},
     Scalar,
@@ -94,7 +95,7 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
     }
 }
 
-/// Ladder filter. This [`DSP`] instance implements a saturated 4-pole lowpass filter, with feedback negatively added
+/// Ladder filter. This [`DSPProcess`] instance implements a saturated 4-pole lowpass filter, with feedback negatively added
 /// back into the input.
 #[derive(Debug, Copy, Clone)]
 pub struct Ladder<T, Topo = OTA<Tanh>> {
@@ -188,19 +189,8 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
     }
 }
 
-impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSP<1, 1> for Ladder<T, Topo> {
+impl<T: Scalar, Topo: LadderTopology<T>> DSPMeta for Ladder<T, Topo> {
     type Sample = T;
-
-    #[inline(always)]
-    #[replace_float_literals(T::from_f64(literal))]
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let input_gain = if self.compensated { self.k + 1.0 } else { 1.0 };
-        let x = input_gain * x[0];
-        let y0 = x - self.k * self.s[3];
-        let g = self.wc * self.inv_2fs;
-        self.s = self.topology.next_output(g, y0, self.s);
-        [self.s[3]]
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.samplerate = T::from_f64(samplerate as _);
@@ -213,6 +203,19 @@ impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSP<1, 1> for Ladder<T, To
 
     fn reset(&mut self) {
         self.s = SVector::zeros();
+    }
+}
+
+impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSPProcess<1, 1> for Ladder<T, Topo> {
+    #[inline(always)]
+    #[replace_float_literals(T::from_f64(literal))]
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        let input_gain = if self.compensated { self.k + 1.0 } else { 1.0 };
+        let x = input_gain * x[0];
+        let y0 = x - self.k * self.s[3];
+        let g = self.wc * self.inv_2fs;
+        self.s = self.topology.next_output(g, y0, self.s);
+        [self.s[3]]
     }
 }
 
@@ -236,7 +239,7 @@ mod tests {
     use rstest::rstest;
     use simba::simd::SimdComplexField;
 
-    use crate::dsp::{buffer::AudioBuffer, DSPBlock};
+    use crate::dsp::{buffer::AudioBuffer, DSPProcessBlock};
     use crate::saturators::clippers::DiodeClipperModel;
 
     use super::*;

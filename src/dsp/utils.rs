@@ -1,4 +1,4 @@
-//! Utilities for [`DSP`](crate::dsp::DSP) implementors and users.
+//! Utilities for [`DSP`](crate::dsp::DSPProcess) implementors and users.
 
 /// Transmutes a mono block slice into a regular slice.
 #[inline(always)]

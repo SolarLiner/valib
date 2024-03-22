@@ -1,8 +1,8 @@
-use crate::dsp::DSP;
 use numeric_literals::replace_float_literals;
 
 use clippers::DiodeClipperModel;
 
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::Scalar;
 
 pub mod clippers;
@@ -158,7 +158,7 @@ impl<T: Scalar> Default for Slew<T> {
     }
 }
 
-impl<T: Scalar> DSP<1, 1> for Slew<T> {
+impl<T: Scalar> DSPMeta for Slew<T> {
     type Sample = T;
 
     fn latency(&self) -> usize {
@@ -168,7 +168,9 @@ impl<T: Scalar> DSP<1, 1> for Slew<T> {
     fn reset(&mut self) {
         self.last_out = T::from_f64(0.0);
     }
+}
 
+impl<T: Scalar> DSPProcess<1, 1> for Slew<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let y = self.slew(x[0]);
         self.last_out = y;

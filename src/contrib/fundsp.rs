@@ -1,11 +1,11 @@
 //! fundsp integration for statically-defined graphs.
-//! 
+//!
 //! The integration provides impls for `An` objects, taking their defined input and output counts as the number of
-//! input and output channels for the [`DSP`] implementation.
-//! 
-//! Conversly, a [`DspNode`] struct is defined for wrapping [`DSP`] implementations into usable `fundsp` nodes.
+//! input and output channels for the [`DSPProcess`] implementation.
+//!
+//! Conversly, a [`DspNode`] struct is defined for wrapping [`DSPProcess`] implementations into usable `fundsp` nodes.
 
-use crate::dsp::DSP;
+use crate::dsp::DSPProcess;
 use fundsp::audionode::{AudioNode, Frame};
 use fundsp::combinator::An;
 use fundsp::Float;
@@ -13,7 +13,7 @@ use numeric_array::ArrayLength;
 use std::marker::PhantomData;
 use typenum::Unsigned;
 
-impl<Node: AudioNode> DSP<{ Node::Inputs::USIZE }, { Node::Outputs::USIZE }> for An<Node>
+impl<Node: AudioNode> DSPProcess<{ Node::Inputs::USIZE }, { Node::Outputs::USIZE }> for An<Node>
 where
     Node::Sample: crate::Scalar,
 {
@@ -29,14 +29,14 @@ where
     }
 }
 
-/// Wrap a [`DSP`] impl as a `fundsp`  node.
-/// 
+/// Wrap a [`DSPProcess`] impl as a `fundsp`  node.
+///
 /// This is the implementation struct; to us this node in `fundsp` graphs, refer to the [`dsp_node`] function.
 #[derive(Debug, Clone)]
 pub struct DspNode<In, Out, P>(PhantomData<In>, PhantomData<Out>, P);
 
-/// Wrap a [`DSP`] impl as a [`fundsp`]  node.
-pub fn dsp_node<In: Unsigned, Out: Unsigned, P: DSP<{ In::USIZE }, { Out::USIZE }>>(
+/// Wrap a [`DSPProcess`] impl as a [`fundsp`]  node.
+pub fn dsp_node<In: Unsigned, Out: Unsigned, P: DSPProcess<{ In::USIZE }, { Out::USIZE }>>(
     dsp: P,
 ) -> DspNode<In, Out, P> {
     DspNode(PhantomData, PhantomData, dsp)
@@ -45,7 +45,7 @@ pub fn dsp_node<In: Unsigned, Out: Unsigned, P: DSP<{ In::USIZE }, { Out::USIZE 
 impl<
         In: Send + Sync + Unsigned,
         Out: Send + Sync + Unsigned,
-        P: Send + Sync + DSP<{ In::USIZE }, { Out::USIZE }>,
+        P: Send + Sync + DSPProcess<{ In::USIZE }, { Out::USIZE }>,
     > AudioNode for DspNode<In, Out, P>
 where
     Self: Clone,
@@ -71,7 +71,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{buffer::AudioBufferBox, DSPBlock};
+    use crate::dsp::{buffer::AudioBufferBox, DSPProcessBlock};
 
     use crate::dsp::blocks::Integrator;
     use fundsp::hacker32::*;

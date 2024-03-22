@@ -4,7 +4,7 @@ use nih_plug::prelude::*;
 
 use extend::FloatParamExt;
 
-use valib::dsp::DSPBlock;
+use valib::dsp::DSPProcessBlock;
 use valib::dsp::{
     buffer::{AudioBufferMut, AudioBufferRef},
     parameter::HasParameters,
@@ -202,7 +202,7 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
 
 fn process_buffer_simd<
     T: Scalar<Element = f32> + From<[f32; 2]>,
-    Dsp: DSPBlock<1, 1, Sample = T>,
+    Dsp: DSPProcessBlock<1, 1, Sample = T>,
     const BUFSIZE: usize,
 >(
     dsp: &mut Dsp,

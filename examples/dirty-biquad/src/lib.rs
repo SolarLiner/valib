@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::dsp::DSP;
+use valib::dsp::DSPProcess;
 use valib::filters::biquad::Biquad;
 use valib::math::interpolation::{Cubic, Interpolate};
 use valib::oversample::Oversample;
@@ -175,7 +175,7 @@ fn simd_array_to_block<T, const N: usize>(
 }
 
 #[cfg(never)] // Not used but nice to keep around
-fn apply<P: DSP<1, 1, Sample = AutoSimd<[f32; N]>>, const N: usize>(
+fn apply<P: DSPProcess<1, 1, Sample = AutoSimd<[f32; N]>>, const N: usize>(
     buffer: &mut Buffer,
     dsp: &mut P,
 ) where
