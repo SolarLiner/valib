@@ -1,3 +1,5 @@
+//! Utilities for [`DSP`](crate::dsp::DSP) implementors and users.
+
 /// Transmutes a mono block slice into a regular slice.
 #[inline(always)]
 pub fn mono_block_to_slice<T>(inputs: [&[T]; 1]) -> &[T] {

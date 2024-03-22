@@ -1,3 +1,4 @@
+#![doc = include_str!("./README.md")]
 use crate::dsp::buffer::{AudioBufferBox, AudioBufferMut, AudioBufferRef};
 use nalgebra::Complex;
 use num_traits::Zero;

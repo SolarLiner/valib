@@ -1,3 +1,10 @@
+//! fundsp integration for statically-defined graphs.
+//! 
+//! The integration provides impls for `An` objects, taking their defined input and output counts as the number of
+//! input and output channels for the [`DSP`] implementation.
+//! 
+//! Conversly, a [`DspNode`] struct is defined for wrapping [`DSP`] implementations into usable `fundsp` nodes.
+
 use crate::dsp::DSP;
 use fundsp::audionode::{AudioNode, Frame};
 use fundsp::combinator::An;
@@ -22,9 +29,13 @@ where
     }
 }
 
+/// Wrap a [`DSP`] impl as a `fundsp`  node.
+/// 
+/// This is the implementation struct; to us this node in `fundsp` graphs, refer to the [`dsp_node`] function.
 #[derive(Debug, Clone)]
 pub struct DspNode<In, Out, P>(PhantomData<In>, PhantomData<Out>, P);
 
+/// Wrap a [`DSP`] impl as a [`fundsp`]  node.
 pub fn dsp_node<In: Unsigned, Out: Unsigned, P: DSP<{ In::USIZE }, { Out::USIZE }>>(
     dsp: P,
 ) -> DspNode<In, Out, P> {

@@ -1,6 +1,16 @@
 //! Implementation of various blocks of DSP code from the VA Filter Design book.
-//! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
-//! All references in this module, unless specified otherwise, are taken from this book.
+//!
+//! Downloaded from <https://www.discodsp.net/VAFilterDesign_2.1.2.pdf>
+//!
+//! # Example
+//!
+//! ```rust
+//! use valib::dsp::DSP;
+//! use valib::filters::ladder::{Ladder, OTA};
+//! use valib::saturators::Tanh;
+//! let mut filter = Ladder::<f32, OTA<Tanh>>::new(44100.0, 300.0, 0.5);
+//! let output = filter.process([0.0]);
+//! ```
 
 use std::fmt;
 

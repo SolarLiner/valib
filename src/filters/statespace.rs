@@ -1,3 +1,27 @@
+//! Linear state-space model implementation for arbitrary I/O.
+//!
+//! # Example
+//!
+//! ```rust
+//! use nalgebra::SMatrix;
+//! use valib::dsp::DSP;
+//! use valib::filters::statespace::StateSpace;
+//! use valib::Scalar;
+//!
+//! /// Implements a 1-pole lowpass filter as a linear state-space model
+//! fn create_filter(fc: f32) -> StateSpace<f32, 1, 1, 1> {
+//!     let new = SMatrix::<_, 1, 1>::new;
+//!     StateSpace ::new(
+//!         new(-(fc - 2.0) / (fc + 2.0)),
+//!         new(1.0),
+//!         new(-fc * (fc - 2.0) / (fc + 2.0).powi(2) + fc / (fc + 2.0)),
+//!         new(fc / (fc + 2.0)),
+//!     )
+//! }
+//!
+//! let mut filter = create_filter(0.25);
+//! let output = filter.process([0.0]);
+//! ```
 use std::f64::NAN;
 
 use nalgebra::{Complex, SMatrix, SVector, SimdComplexField};
@@ -6,6 +30,7 @@ use num_traits::Zero;
 use crate::dsp::{analysis::DspAnalysis, DSP};
 use crate::Scalar;
 
+// TODO: Add saturators
 /// Linear discrete state-space method implementation with direct access to the state space matrices.
 #[derive(Debug, Copy, Clone)]
 pub struct StateSpace<T: nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize> {

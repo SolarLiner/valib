@@ -1,3 +1,4 @@
+//! Small [`DSP`] building blocks for reusability.
 use std::marker::PhantomData;
 
 use nalgebra::{Complex, ComplexField, SMatrix, SVector};
