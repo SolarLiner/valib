@@ -203,6 +203,11 @@ impl<T: Scalar> Slew<T> {
         }
     }
 
+    pub fn with_state(mut self, state: T) -> Self {
+        self.last_out = state;
+        self
+    }
+
     pub fn set_max_diff(&mut self, max: T, samplerate: T) {
         self.max_diff = max / samplerate;
     }

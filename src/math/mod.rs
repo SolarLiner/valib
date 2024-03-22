@@ -9,6 +9,8 @@ use crate::Scalar;
 
 pub mod interpolation;
 pub mod lut;
+#[cfg(feature = "math-polynom")]
+pub mod polynom;
 
 /// Trait desciring a multivariate root equation. Root equations are solved with numerical methods such as
 /// Newton-Rhapson, when linear algebra cannot be used (e.g. in the case of nonlinear systems).

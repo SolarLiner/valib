@@ -1,5 +1,7 @@
 #![cfg(feature = "nih-plug")]
 
+use std::fmt;
+use std::fmt::Formatter;
 use std::sync::Arc;
 
 use enum_map::{Enum, EnumArray, EnumMap};
@@ -13,6 +15,21 @@ use crate::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
 use crate::dsp::DSPBlock;
 use crate::Scalar;
 
+pub fn enum_int_param<E: Enum + ToString>(
+    param_name: impl Into<String>,
+    default_value: E,
+) -> IntParam {
+    IntParam::new(
+        param_name,
+        default_value.into_usize() as _,
+        IntRange::Linear {
+            min: 0,
+            max: (E::LENGTH - 1) as _,
+        },
+    )
+    .with_value_to_string(Arc::new(|x| E::from_usize(x as _).to_string()))
+}
+
 /// Bind a [`valib`] [`Parameter`] to a [`nig_plug`] parameter..
 pub trait BindToParameter {
     /// Bind a [`Parameter`] to a nih-plug [`FloatParam`].
@@ -23,6 +40,13 @@ impl BindToParameter for FloatParam {
     fn bind_to_parameter(self, param: &Parameter) -> Self {
         let param = param.clone();
         self.with_callback(Arc::new(move |value| param.set_value(value)))
+    }
+}
+
+impl BindToParameter for IntParam {
+    fn bind_to_parameter(self, param: &Parameter) -> Self {
+        let param = param.clone();
+        self.with_callback(Arc::new(move |x| param.set_value(x as _)))
     }
 }
 
@@ -42,20 +66,83 @@ impl<E: 'static + PartialEq + Enum + nih_plug::params::enums::Enum> BindToParame
     }
 }
 
+#[derive(Debug)]
+pub enum AnyParam {
+    FloatParam(FloatParam),
+    IntParam(IntParam),
+    BoolParam(BoolParam),
+}
+
+impl fmt::Display for AnyParam {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::FloatParam(fp) => write!(f, "{}", fp),
+            Self::IntParam(fp) => write!(f, "{}", fp),
+            Self::BoolParam(fp) => write!(f, "{}", fp),
+        }
+    }
+}
+
+impl From<FloatParam> for AnyParam {
+    fn from(value: FloatParam) -> Self {
+        Self::FloatParam(value)
+    }
+}
+
+impl From<IntParam> for AnyParam {
+    fn from(value: IntParam) -> Self {
+        Self::IntParam(value)
+    }
+}
+
+impl From<BoolParam> for AnyParam {
+    fn from(value: BoolParam) -> Self {
+        Self::BoolParam(value)
+    }
+}
+
+impl BindToParameter for AnyParam {
+    fn bind_to_parameter(self, param: &Parameter) -> Self {
+        match self {
+            Self::FloatParam(fp) => Self::FloatParam(fp.bind_to_parameter(param)),
+            Self::IntParam(ip) => Self::IntParam(ip.bind_to_parameter(param)),
+            Self::BoolParam(bp) => Self::BoolParam(bp.bind_to_parameter(param)),
+        }
+    }
+}
+
+impl AnyParam {
+    pub fn as_ptr(&self) -> ParamPtr {
+        match self {
+            Self::FloatParam(fp) => fp.as_ptr(),
+            Self::IntParam(fp) => fp.as_ptr(),
+            Self::BoolParam(fp) => fp.as_ptr(),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        match self {
+            Self::FloatParam(fp) => fp.name(),
+            Self::IntParam(ip) => ip.name(),
+            Self::BoolParam(bp) => bp.name(),
+        }
+    }
+}
+
 /// Adapter struct for processors with parameters
 #[derive(Debug)]
 pub struct NihParamsController<P: HasParameters>
 where
-    P::Enum: EnumArray<Parameter> + EnumArray<FloatParam>,
+    P::Enum: EnumArray<AnyParam>,
 {
-    nih_map: EnumMap<P::Enum, FloatParam>,
+    nih_map: EnumMap<P::Enum, AnyParam>,
 }
 
 impl<P: HasParameters> NihParamsController<P>
 where
-    P::Enum: EnumArray<Parameter> + EnumArray<FloatParam>,
+    P::Enum: EnumArray<AnyParam>,
 {
-    pub fn new(inner: &P, param_map: impl Fn(P::Enum, String) -> FloatParam) -> Self {
+    pub fn new(inner: &P, param_map: impl Fn(P::Enum, String) -> AnyParam) -> Self {
         let nih_map = EnumMap::from_fn(|k| {
             param_map(k, inner.full_name(k)).bind_to_parameter(inner.get_parameter(k))
         });
@@ -65,9 +152,8 @@ where
 
 unsafe impl<P: 'static + HasParameters> Params for NihParamsController<P>
 where
-    P::Enum: EnumArray<Parameter> + EnumArray<FloatParam>,
-    <<P as HasParameters>::Enum as enum_map::EnumArray<Parameter>>::Array: Send + Sync,
-    <<P as HasParameters>::Enum as enum_map::EnumArray<FloatParam>>::Array: Send + Sync,
+    P::Enum: 'static + Send + Sync + EnumArray<AnyParam>,
+    <P::Enum as EnumArray<AnyParam>>::Array: Send + Sync,
 {
     fn param_map(&self) -> Vec<(String, ParamPtr, String)> {
         self.nih_map
