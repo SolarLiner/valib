@@ -1,5 +1,7 @@
 //! Small [`DSP`] building blocks for reusability.
 use std::marker::PhantomData;
+use std::ops;
+use std::ops::DerefMut;
 
 use nalgebra::{Complex, ComplexField, SMatrix, SVector};
 use num_traits::{One, Zero};
@@ -103,6 +105,11 @@ impl<T: Scalar> P1<T> {
             fc,
             s: T::zero(),
         }
+    }
+
+    pub fn with_state(mut self, state: T) -> Self {
+        self.s = state;
+        self
     }
 
     pub fn set_fc(&mut self, fc: T) {
@@ -283,7 +290,46 @@ impl<P: DSP<N, N>, const N: usize, const C: usize> DSP<N, N> for Series<[P; C]> 
     }
 }
 
+impl<P, const N: usize> DSP<N, N> for Series<Vec<P>>
+where
+    P: DSP<N, N>,
+{
+    type Sample = P::Sample;
+
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        self.0.iter_mut().fold(x, |x, dsp| dsp.process(x))
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        for s in &mut self.0 {
+            s.set_samplerate(samplerate);
+        }
+    }
+
+    fn latency(&self) -> usize {
+        self.0.iter().map(|dsp| dsp.latency()).sum()
+    }
+
+    fn reset(&mut self) {
+        for dsp in self.0.iter_mut() {
+            dsp.reset();
+        }
+    }
+}
+
 impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
+where
+    P: DspAnalysis<N, N>,
+{
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; N]; N] {
+        self.0.iter().fold([[Complex::one(); N]; N], |acc, f| {
+            let ret = f.h_z(z);
+            std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] * ret[i][j]))
+        })
+    }
+}
+
+impl<P, const N: usize> DspAnalysis<N, N> for Series<Vec<P>>
 where
     P: DspAnalysis<N, N>,
 {

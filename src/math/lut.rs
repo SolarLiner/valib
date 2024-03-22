@@ -5,7 +5,7 @@ use numeric_literals::replace_float_literals;
 
 use crate::{simd::SimdPartialOrd, Scalar, SimdCast};
 
-use super::interpolation::Interpolate;
+use super::interpolation::{Interpolate, SimdIndex, SimdInterpolatable};
 
 #[derive(Debug, Clone)]
 pub struct Lut<T, const N: usize> {
@@ -18,15 +18,15 @@ impl<T, const N: usize> Lut<T, N> {
         Self { array, range }
     }
 
-    pub fn get<Interp, const I: usize>(&self, index: T) -> T
+    pub fn get<Interp, const I: usize>(&self, interp: &Interp, index: T) -> T
     where
-        T: Scalar + SimdCast<isize>,
+        T: Scalar + SimdInterpolatable,
+        <T as SimdCast<usize>>::Output: SimdIndex,
         Interp: Interpolate<T, I>,
-        <T as SimdCast<isize>>::Output: Copy + Num + SimdPartialOrd,
     {
         let normalized = (index - self.range.start) / (self.range.end - self.range.start);
         let array_index = normalized * T::from_f64(N as f64);
-        Interp::interpolate_on_slice(array_index, &self.array)
+        interp.interpolate_on_slice(array_index, &self.array)
     }
 }
 
