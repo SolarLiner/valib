@@ -41,7 +41,7 @@ impl<T: Scalar> Oversample<T> {
         Self {
             os_factor,
             os_buffer,
-            pre_filter: filters.clone(),
+            pre_filter: filters,
             post_filter: filters,
         }
     }
