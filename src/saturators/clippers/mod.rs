@@ -9,6 +9,8 @@ use crate::dsp::DSPMeta;
 use crate::{dsp::DSPProcess, math::newton_rhapson_tol_max_iter};
 use crate::{math::RootEq, saturators::Saturator, Scalar};
 
+use super::adaa::Antiderivative;
+
 mod diode_clipper_model_data;
 
 #[derive(Debug, Copy, Clone)]
@@ -163,6 +165,38 @@ impl<T: Scalar> DiodeClipperModel<T> {
     }
 }
 
+impl<T: Scalar> Antiderivative<T> for DiodeClipperModel<T> {
+    fn evaluate(&self, x: T) -> T {
+        self.eval(x) / (self.si * self.so)
+    }
+
+    #[replace_float_literals(T::from_f64(literal))]
+    fn antiderivative(&self, x: T) -> T {
+        let cx = self.si * x;
+        let lower = cx.simd_lt(-self.a);
+        lower.if_else(
+            || {
+                let x0 = self.a + cx - 1.0;
+                let num = (self.a - 1.0) * cx + x0 * T::simd_ln(-x0);
+                let den = self.si * self.si;
+                -num / den
+            },
+            || {
+                let higher = cx.simd_gt(self.b);
+                higher.if_else(
+                    || {
+                        let x0 = -self.b + cx + 1.0;
+                        let num = (self.b - 1.0) * cx + x0 * T::simd_ln(x0);
+                        let den = self.si * self.si;
+                        num / den
+                    },
+                    || x * x / 2.0,
+                )
+            },
+        ) / 2.0
+    }
+}
+
 impl<T: Scalar> Default for DiodeClipperModel<T> {
     fn default() -> Self {
         Self::new_silicon(1, 1)
@@ -189,7 +223,7 @@ mod tests {
 
     use simba::simd::SimdValue;
 
-    use crate::dsp::DSPProcess;
+    use crate::{dsp::DSPProcess, saturators::adaa::Adaa};
 
     use super::{DiodeClipper, DiodeClipperModel};
 
@@ -206,10 +240,10 @@ mod tests {
     fn drive_test(name: &str, mut dsp: impl DSPProcess<1, 1, Sample = f32>) {
         let sine_it = (0..).map(|i| i as f64 / 10.).map(f64::sin);
         let amp = (0..5000).map(|v| v as f64 / 5000. * 500.);
-        let output = sine_it.zip(amp).map(|(a, b)| a * b).map(|v| {
-            let out = dsp.process([v as f32])[0];
-            hint::black_box(out)
-        });
+        let output = sine_it
+            .zip(amp)
+            .map(|(a, b)| a * b)
+            .map(|v| hint::black_box(dsp.process([v as f32])[0]));
         let results = Vec::from_iter(output.map(|v| v.extract(0)));
         let full_name = format!("{name}/drive_test");
         insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });

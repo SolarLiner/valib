@@ -12,6 +12,7 @@
       <sourceFolder url="file://$MODULE_DIR$/plugins/refuzz/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/plugins/abrasive/examples" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/ladder/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/saturators/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/slew/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/slew/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
