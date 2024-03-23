@@ -19,6 +19,7 @@ const CASCADE: usize = 16;
 
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
+    max_factor: usize,
     os_factor: usize,
     os_buffer: Box<[T]>,
     pre_filter: Series<[Biquad<T, Linear>; CASCADE]>,
@@ -39,10 +40,28 @@ impl<T: Scalar> Oversample<T> {
         );
         let filters = Series([filter; CASCADE]);
         Self {
+            max_factor: os_factor,
             os_factor,
             os_buffer,
             pre_filter: filters.clone(),
             post_filter: filters,
+        }
+    }
+
+    pub(crate) fn set_oversampling_amount(&mut self, amt: usize) {
+        assert!(amt <= self.max_factor);
+        self.os_factor = amt;
+        let new_biquad = Biquad::lowpass(
+            T::from_f64(2.0 * amt as f64).simd_recip(),
+            T::from_f64(0.707),
+        );
+        for filt in self
+            .pre_filter
+            .0
+            .iter_mut()
+            .chain(self.post_filter.0.iter_mut())
+        {
+            filt.update_coefficients(&new_biquad);
         }
     }
 
@@ -153,12 +172,7 @@ impl<T, P> Oversampled<T, P> {
     pub fn os_factor(&self) -> usize {
         self.oversampling.os_factor
     }
-}
 
-impl<T, P> Oversampled<T, P>
-where
-    T: Scalar,
-{
     pub fn into_inner(self) -> P {
         self.inner
     }

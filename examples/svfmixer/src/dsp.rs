@@ -1,6 +1,7 @@
 use enum_map::{enum_map, Enum, EnumMap};
 use nalgebra::SMatrix;
 use nih_plug::util::db_to_gain_fast;
+
 use valib::dsp::blocks::ModMatrix;
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
 use valib::dsp::DSP;

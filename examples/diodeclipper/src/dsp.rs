@@ -1,8 +1,8 @@
-use enum_map::Enum;
-use nih_plug::util::gain_to_db_fast;
-use num_traits::Zero;
 use std::fmt;
 use std::fmt::Formatter;
+
+use enum_map::Enum;
+use num_traits::Zero;
 
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
 use valib::dsp::{DSPBlock, DSP};
@@ -36,20 +36,20 @@ impl<T: Scalar> DSP<1, 1> for DcBlocker<T> {
         self.0.process(x)
     }
 
-    fn set_samplerate(&mut self, samplerate: f32) {
-        DSP::set_samplerate(&mut self.0, samplerate);
-        self.0.update_coefficients(&Biquad::highpass(
-            T::from_f64((Self::CUTOFF_HZ / samplerate) as f64),
-            T::from_f64(Self::Q as f64),
-        ));
+    fn reset(&mut self) {
+        self.0.reset()
     }
 
     fn latency(&self) -> usize {
         DSP::latency(&self.0)
     }
 
-    fn reset(&mut self) {
-        self.0.reset()
+    fn set_samplerate(&mut self, samplerate: f32) {
+        DSP::set_samplerate(&mut self.0, samplerate);
+        self.0.update_coefficients(&Biquad::highpass(
+            T::from_f64((Self::CUTOFF_HZ / samplerate) as f64),
+            T::from_f64(Self::Q as f64),
+        ));
     }
 }
 
