@@ -1,16 +1,17 @@
 use enum_map::{enum_map, Enum, EnumMap};
 use nalgebra::SMatrix;
 use nih_plug::util::db_to_gain_fast;
+
 use valib::dsp::blocks::ModMatrix;
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::DSP;
+use valib::dsp::{DSPMeta, DSPProcess};
 use valib::filters::svf::Svf;
 use valib::oversample::Oversampled;
 use valib::saturators::{Clipper, Saturator, Slew};
 use valib::simd::{AutoSimd, SimdValue};
 use valib::Scalar;
 
-type Sample = AutoSimd<[f32; 2]>;
+pub(crate) type Sample = AutoSimd<[f32; 2]>;
 
 pub type Dsp = Oversampled<Sample, DspInner>;
 
@@ -62,7 +63,6 @@ impl DspInner {
                 Sample::splat(0.0),
                 Sample::splat(0.0),
             ),
-            ..ModMatrix::default()
         };
         Self {
             params,
@@ -80,23 +80,8 @@ impl HasParameters for DspInner {
     }
 }
 
-impl DSP<1, 1> for DspInner {
+impl DSPMeta for DspInner {
     type Sample = Sample;
-
-    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.filter
-            .set_cutoff(Sample::splat(self.params[DspParam::Cutoff].next_sample()));
-        self.filter.set_r(Sample::splat(
-            1.0 - self.params[DspParam::Resonance].next_sample(),
-        ));
-        self.mod_matrix.weights.x = Sample::splat(self.params[DspParam::LpGain].next_sample());
-        self.mod_matrix.weights.y = Sample::splat(self.params[DspParam::BpGain].next_sample());
-        self.mod_matrix.weights.z = Sample::splat(self.params[DspParam::HpGain].next_sample());
-
-        let drive = Sample::splat(db_to_gain_fast(self.params[DspParam::Drive].next_sample()));
-        let [out] = self.mod_matrix.process(self.filter.process([x * drive]));
-        [out / drive]
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         for s in self.params.values_mut() {
@@ -113,6 +98,23 @@ impl DSP<1, 1> for DspInner {
     fn reset(&mut self) {
         self.filter.reset();
         self.mod_matrix.reset();
+    }
+}
+
+impl DSPProcess<1, 1> for DspInner {
+    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        self.filter
+            .set_cutoff(Sample::splat(self.params[DspParam::Cutoff].next_sample()));
+        self.filter.set_r(Sample::splat(
+            1.0 - self.params[DspParam::Resonance].next_sample(),
+        ));
+        self.mod_matrix.weights.x = Sample::splat(self.params[DspParam::LpGain].next_sample());
+        self.mod_matrix.weights.y = Sample::splat(self.params[DspParam::BpGain].next_sample());
+        self.mod_matrix.weights.z = Sample::splat(self.params[DspParam::HpGain].next_sample());
+
+        let drive = Sample::splat(db_to_gain_fast(self.params[DspParam::Drive].next_sample()));
+        let [out] = self.mod_matrix.process(self.filter.process([x * drive]));
+        [out / drive]
     }
 }
 

@@ -1,3 +1,4 @@
+//! Small [`DSPProcess`] building blocks for reusability.
 use std::marker::PhantomData;
 
 use nalgebra::{Complex, ComplexField, SMatrix, SVector};
@@ -5,16 +6,21 @@ use num_traits::{One, Zero};
 use numeric_literals::replace_float_literals;
 
 use crate::dsp::analysis::DspAnalysis;
-use crate::dsp::DSP;
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::Scalar;
 
 /// "Bypass" struct, which simply forwards the input to the output.
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Bypass<S>(PhantomData<S>);
 
-impl<S: Scalar, const N: usize> DSP<N, N> for Bypass<S> {
-    type Sample = S;
+impl<T: Scalar> DSPMeta for Bypass<T> {
+    type Sample = T;
+}
 
+impl<T: Scalar, const N: usize> DSPProcess<N, N> for Bypass<T>
+where
+    Self: DSPMeta<Sample = T>,
+{
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
         x
     }
@@ -30,17 +36,35 @@ impl<T: Scalar> Default for Integrator<T> {
     }
 }
 
-impl<T: Scalar> DSP<1, 1> for Integrator<T> {
+impl<T: Scalar> DSPMeta for Integrator<T> {
     type Sample = T;
 
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let in0 = x[0] + self.0;
-        self.0 += in0;
-        [self.0]
+    fn latency(&self) -> usize {
+        1
+    }
+
+    fn reset(&mut self) {
+        self.0 = T::zero();
     }
 }
 
-impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
+impl<T: Scalar> DSPProcess<1, 1> for Integrator<T>
+where
+    Self: DSPMeta<Sample = T>,
+{
+    #[replace_float_literals(T::from_f64(literal))]
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        let x2 = x[0] / 2.0;
+        let out = x2 + self.0;
+        self.0 = x2 + out;
+        [out]
+    }
+}
+
+impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T>
+where
+    Self: DSPProcess<1, 1, Sample = T>,
+{
     #[replace_float_literals(Complex::from(T::from_f64(literal)))]
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
         [[1. / 2. * (z + 1.) / (z - 1.)]]
@@ -51,12 +75,15 @@ impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
 #[derive(Debug, Copy, Clone, Default)]
 pub struct Sum<T, const N: usize>(PhantomData<[T; N]>);
 
-impl<T, const N: usize> DSP<N, 1> for Sum<T, N>
+impl<T: Scalar, const N: usize> DSPMeta for Sum<T, N> {
+    type Sample = T;
+}
+
+impl<T, const N: usize> DSPProcess<N, 1> for Sum<T, N>
 where
+    Self: DSPMeta<Sample = T>,
     T: Scalar,
 {
-    type Sample = T;
-
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; 1] {
         [x.into_iter().fold(T::zero(), |a, b| a + b)]
     }
@@ -64,7 +91,7 @@ where
 
 impl<T, const N: usize> DspAnalysis<N, 1> for Sum<T, N>
 where
-    Self: DSP<N, 1>,
+    Self: DSPProcess<N, 1>,
 {
     fn h_z(&self, _z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; N] {
         [[Complex::one()]; N]
@@ -80,8 +107,25 @@ pub struct P1<T> {
     s: T,
 }
 
+impl<T: Scalar> DSPMeta for P1<T> {
+    type Sample = T;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.w_step = T::simd_pi() / T::from_f64(samplerate as _)
+    }
+
+    fn latency(&self) -> usize {
+        1
+    }
+
+    fn reset(&mut self) {
+        self.s = T::zero();
+    }
+}
+
 impl<T: Scalar> DspAnalysis<1, 3> for P1<T>
 where
+    Self: DSPProcess<1, 3, Sample = T>,
     Self::Sample: nalgebra::RealField,
 {
     #[replace_float_literals(Complex::from_real(< T as Scalar >::from_f64(literal)))]
@@ -102,14 +146,20 @@ impl<T: Scalar> P1<T> {
         }
     }
 
+    pub fn with_state(mut self, state: T) -> Self {
+        self.s = state;
+        self
+    }
+
     pub fn set_fc(&mut self, fc: T) {
         self.fc = fc;
     }
 }
 
-impl<T: Scalar> DSP<1, 3> for P1<T> {
-    type Sample = T;
-
+impl<T: Scalar> DSPProcess<1, 3> for P1<T>
+where
+    Self: DSPMeta<Sample = T>,
+{
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
@@ -125,29 +175,24 @@ impl<T: Scalar> DSP<1, 3> for P1<T> {
         let ap = 2. * lp - x[0];
         [lp, hp, ap]
     }
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.w_step = T::simd_pi() / T::from_f64(samplerate as _)
-    }
-
-    fn latency(&self) -> usize {
-        1
-    }
-
-    fn reset(&mut self) {
-        self.s = T::zero();
-    }
 }
 
-/// Process inner DSP blocks in series. `DSP` is implemented for tuples up to 8 elements all of the same I/O configuration.
+/// Process inner DSP blocks in series. `DSP` is implemented for tuples up to 8 elements all the same I/O configuration.
 #[derive(Debug, Copy, Clone)]
 pub struct Series<T>(pub T);
 
 macro_rules! series_tuple {
     ($($p:ident),*) => {
         #[allow(non_snake_case)]
-        impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSP<N, N, Sample = __Sample>),*, const N: usize> DSP<N, N> for $crate::dsp::blocks::Series<($($p),*)> {
+        impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPMeta<Sample = __Sample>),*> DSPMeta for $crate::dsp::blocks::Series<($($p),*)> {
             type Sample = __Sample;
+
+            fn set_samplerate(&mut self, samplerate: f32) {
+                let Self(($($p),*)) = self;
+                $(
+                $p.set_samplerate(samplerate);
+                )*
+            }
 
             fn latency(&self) -> usize {
                 let Self(($($p),*)) = self;
@@ -162,7 +207,10 @@ macro_rules! series_tuple {
                 $p.reset();
                 )*
             }
+        }
 
+        #[allow(non_snake_case)]
+        impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPProcess<N, N, Sample = __Sample>),*, const N: usize> DSPProcess<N, N> for $crate::dsp::blocks::Series<($($p),*)> {
             #[allow(non_snake_case)]
             #[inline(always)]
             fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
@@ -171,13 +219,6 @@ macro_rules! series_tuple {
                 let x = $p.process(x);
                 )*
                 x
-            }
-
-            fn set_samplerate(&mut self, samplerate: f32) {
-                let Self(($($p),*)) = self;
-                $(
-                $p.set_samplerate(samplerate);
-                )*
             }
         }
     };
@@ -191,6 +232,48 @@ series_tuple!(A, B, C, D, E, F);
 series_tuple!(A, B, C, D, E, F, G);
 series_tuple!(A, B, C, D, E, F, G, H);
 
+impl<P: DSPMeta, const C: usize> DSPMeta for Series<[P; C]> {
+    type Sample = P::Sample;
+
+    fn latency(&self) -> usize {
+        self.0.iter().map(|p| p.latency()).sum()
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        for p in &mut self.0 {
+            p.set_samplerate(samplerate);
+        }
+    }
+
+    fn reset(&mut self) {
+        for p in &mut self.0 {
+            p.reset();
+        }
+    }
+}
+
+impl<P: DSPProcess<N, N>, const N: usize, const C: usize> DSPProcess<N, N> for Series<[P; C]>
+where
+    Self: DSPMeta<Sample = P::Sample>,
+{
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        self.0.iter_mut().fold(x, |x, dsp| dsp.process(x))
+    }
+}
+
+impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
+where
+    Self: DSPProcess<N, N, Sample = P::Sample>,
+    P: DspAnalysis<N, N>,
+{
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; N]; N] {
+        self.0.iter().fold([[Complex::one(); N]; N], |acc, f| {
+            let ret = f.h_z(z);
+            std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] * ret[i][j]))
+        })
+    }
+}
+
 /// Specialized `Series` struct that doesn't restrict the I/O count of either DSP struct
 #[derive(Debug, Copy, Clone)]
 pub struct Series2<A, B, const INNER: usize>(A, PhantomData<[(); INNER]>, B);
@@ -199,8 +282,8 @@ impl<A, B, const INNER: usize> Series2<A, B, INNER> {
     /// Construct a new `Series2` instance, with each inner DSP instance given.
     pub const fn new<const I: usize, const O: usize>(a: A, b: B) -> Self
     where
-        A: DSP<I, INNER>,
-        B: DSP<INNER, O>,
+        A: DSPProcess<I, INNER>,
+        B: DSPProcess<INNER, O>,
     {
         Self(a, PhantomData, b)
     }
@@ -226,18 +309,12 @@ impl<A, B, const INNER: usize> Series2<A, B, INNER> {
     }
 }
 
-impl<A, B, const I: usize, const J: usize, const O: usize> DSP<I, O> for Series2<A, B, J>
+impl<A, B, const J: usize> DSPMeta for Series2<A, B, J>
 where
-    A: DSP<I, J>,
-    B: DSP<J, O, Sample = A::Sample>,
+    A: DSPMeta,
+    B: DSPMeta<Sample = A::Sample>,
 {
     type Sample = A::Sample;
-
-    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
-        let Self(a, _, b) = self;
-        let j = a.process(x);
-        b.process(j)
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.0.set_samplerate(samplerate);
@@ -256,39 +333,30 @@ where
     }
 }
 
-impl<P: DSP<N, N>, const N: usize, const C: usize> DSP<N, N> for Series<[P; C]> {
-    type Sample = P::Sample;
-
-    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        self.0.iter_mut().fold(x, |x, dsp| dsp.process(x))
-    }
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        for s in &mut self.0 {
-            s.set_samplerate(samplerate);
-        }
-    }
-
-    fn latency(&self) -> usize {
-        self.0.iter().map(|dsp| dsp.latency()).sum()
-    }
-
-    fn reset(&mut self) {
-        for dsp in self.0.iter_mut() {
-            dsp.reset();
-        }
+impl<A, B, const I: usize, const J: usize, const O: usize> DSPProcess<I, O> for Series2<A, B, J>
+where
+    Self: DSPMeta<Sample = A::Sample>,
+    A: DSPProcess<I, J>,
+    B: DSPProcess<J, O, Sample = A::Sample>,
+{
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+        let Self(a, _, b) = self;
+        let j = a.process(x);
+        b.process(j)
     }
 }
 
-impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
+impl<A, B, const I: usize, const J: usize, const O: usize> DspAnalysis<I, O> for Series2<A, B, J>
 where
-    P: DspAnalysis<N, N>,
+    Self: DSPProcess<I, O>,
+    A: DspAnalysis<I, J, Sample = Self::Sample>,
+    B: DspAnalysis<J, O, Sample = Self::Sample>,
 {
-    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; N]; N] {
-        self.0.iter().fold([[Complex::one(); N]; N], |acc, f| {
-            let ret = f.h_z(z);
-            std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] * ret[i][j]))
-        })
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
+        let ha = SMatrix::<_, J, I>::from(self.0.h_z(z));
+        let hb = SMatrix::<_, O, J>::from(self.2.h_z(z));
+        let res = hb * ha;
+        res.into()
     }
 }
 
@@ -299,7 +367,7 @@ pub struct Parallel<T>(pub T);
 macro_rules! parallel_tuple {
     ($($p:ident),*) => {
         #[allow(non_snake_case)]
-        impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSP<N, N, Sample = __Sample>),*, const N: usize> $crate::dsp::DSP<N, N> for $crate::dsp::blocks::Parallel<($($p),*)> {
+        impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPMeta<Sample = __Sample>),*> $crate::dsp::DSPMeta for $crate::dsp::blocks::Parallel<($($p),*)> {
             type Sample = __Sample;
 
             fn latency(&self) -> usize {
@@ -311,14 +379,23 @@ macro_rules! parallel_tuple {
                 latency
             }
 
+            fn set_samplerate(&mut self, samplerate: f32) {
+                let Self(($($p),*)) = self;
+                $(
+                $p.set_samplerate(samplerate);
+                )*
+            }
+
             fn reset(&mut self) {
                 let Self(($($p),*)) = self;
                 $(
                 $p.reset();
                 )*
             }
+        }
 
-            #[allow(non_snake_case)]
+        #[allow(non_snake_case)]
+        impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPProcess<N, N, Sample = __Sample>),*, const N: usize> $crate::dsp::DSPProcess<N, N> for $crate::dsp::blocks::Parallel<($($p),*)> {
             #[inline(always)]
             fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
                 let Self(($($p),*)) = self;
@@ -330,13 +407,6 @@ macro_rules! parallel_tuple {
                 }
                 )*
                 ret
-            }
-
-            fn set_samplerate(&mut self, samplerate: f32) {
-                let Self(($($p),*)) = self;
-                $(
-                $p.set_samplerate(samplerate);
-                )*
             }
         }
     };
@@ -350,17 +420,8 @@ parallel_tuple!(A, B, C, D, E, F);
 parallel_tuple!(A, B, C, D, E, F, G);
 parallel_tuple!(A, B, C, D, E, F, G, H);
 
-impl<P: DSP<I, O>, const I: usize, const O: usize, const N: usize> DSP<I, O> for Parallel<[P; N]> {
+impl<P: DSPMeta, const C: usize> DSPMeta for Parallel<[P; C]> {
     type Sample = P::Sample;
-
-    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
-        self.0
-            .iter_mut()
-            .map(|dsp| dsp.process(x))
-            .fold([Self::Sample::from_f64(0.0); O], |out, dsp| {
-                std::array::from_fn(|i| out[i] + dsp[i])
-            })
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         for s in &mut self.0 {
@@ -379,8 +440,24 @@ impl<P: DSP<I, O>, const I: usize, const O: usize, const N: usize> DSP<I, O> for
     }
 }
 
+impl<P: DSPProcess<I, O>, const I: usize, const O: usize, const N: usize> DSPProcess<I, O>
+    for Parallel<[P; N]>
+where
+    Self: DSPMeta<Sample = P::Sample>,
+{
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+        self.0
+            .iter_mut()
+            .map(|dsp| dsp.process(x))
+            .fold([Self::Sample::from_f64(0.0); O], |out, dsp| {
+                std::array::from_fn(|i| out[i] + dsp[i])
+            })
+    }
+}
+
 impl<P, const I: usize, const O: usize, const N: usize> DspAnalysis<I, O> for Parallel<[P; N]>
 where
+    Self: DSPProcess<I, O, Sample = P::Sample>,
     P: DspAnalysis<I, O>,
 {
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
@@ -410,12 +487,18 @@ where
     }
 }
 
-impl<T, const I: usize, const O: usize> DSP<I, O> for ModMatrix<T, I, O>
+impl<T, const I: usize, const O: usize> DSPMeta for ModMatrix<T, I, O>
 where
     T: Scalar,
 {
     type Sample = T;
+}
 
+impl<T, const I: usize, const O: usize> DSPProcess<I, O> for ModMatrix<T, I, O>
+where
+    Self: DSPMeta<Sample = T>,
+    T: Scalar,
+{
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
         let res = self.weights * SVector::from(x);
         std::array::from_fn(|i| res[i])
@@ -425,7 +508,7 @@ where
 /// Feedback adapter with a one-sample delay and integrated mixing and summing point.
 pub struct Feedback<FF, FB, const N: usize>
 where
-    FF: DSP<N, N>,
+    FF: DSPProcess<N, N>,
 {
     memory: [FF::Sample; N],
     /// Inner DSP instance
@@ -435,44 +518,12 @@ where
     pub mix: [FF::Sample; N],
 }
 
-impl<FF: DSP<N, N>, const N: usize> DSP<N, N> for Feedback<FF, (), N> {
-    type Sample = FF::Sample;
-
-    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        let x = std::array::from_fn(|i| self.memory[i] * self.mix[i] + x[i]);
-        let y = self.feedforward.process(x);
-        self.memory = y;
-        y
-    }
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.feedforward.set_samplerate(samplerate);
-    }
-
-    fn latency(&self) -> usize {
-        self.feedforward.latency()
-    }
-
-    fn reset(&mut self) {
-        self.memory.fill(Self::Sample::zero());
-        self.feedforward.reset();
-    }
-}
-
-impl<FF, FB, const N: usize> DSP<N, N> for Feedback<FF, FB, N>
+impl<FF, FB, const N: usize> DSPMeta for Feedback<FF, FB, N>
 where
-    FF: DSP<N, N>,
-    FB: DSP<N, N, Sample = <FF as DSP<N, N>>::Sample>,
+    FF: DSPProcess<N, N>,
+    FB: DSPProcess<N, N, Sample = FF::Sample>,
 {
     type Sample = FF::Sample;
-
-    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        let fb = self.feedback.process(self.memory);
-        let x = std::array::from_fn(|i| fb[i] * self.mix[i] + x[i]);
-        let y = self.feedforward.process(x);
-        self.memory = y;
-        y
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.feedforward.set_samplerate(samplerate);
@@ -490,7 +541,54 @@ where
     }
 }
 
-impl<FF: DSP<N, N>, FB, const N: usize> Feedback<FF, FB, N> {
+impl<FF, const N: usize> DSPMeta for Feedback<FF, (), N>
+where
+    FF: DSPProcess<N, N>,
+{
+    type Sample = FF::Sample;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.feedforward.set_samplerate(samplerate);
+    }
+
+    fn latency(&self) -> usize {
+        self.feedforward.latency()
+    }
+
+    fn reset(&mut self) {
+        self.memory.fill(Self::Sample::zero());
+        self.feedforward.reset();
+    }
+}
+
+impl<FF: DSPProcess<N, N>, const N: usize> DSPProcess<N, N> for Feedback<FF, (), N>
+where
+    Self: DSPMeta<Sample = FF::Sample>,
+{
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        let x = std::array::from_fn(|i| self.memory[i] * self.mix[i] + x[i]);
+        let y = self.feedforward.process(x);
+        self.memory = y;
+        y
+    }
+}
+
+impl<FF, FB, const N: usize> DSPProcess<N, N> for Feedback<FF, FB, N>
+where
+    Self: DSPMeta<Sample = FF::Sample>,
+    FF: DSPProcess<N, N>,
+    FB: DSPProcess<N, N, Sample = FF::Sample>,
+{
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        let fb = self.feedback.process(self.memory);
+        let x = std::array::from_fn(|i| fb[i] * self.mix[i] + x[i]);
+        let y = self.feedforward.process(x);
+        self.memory = y;
+        y
+    }
+}
+
+impl<FF: DSPProcess<N, N>, FB, const N: usize> Feedback<FF, FB, N> {
     /// Create a new Feedback adapter with the provider inner DSP instance. Sets the mix to 0 by default.
     pub fn new(feedforward: FF, feedback: FB) -> Self {
         Self {

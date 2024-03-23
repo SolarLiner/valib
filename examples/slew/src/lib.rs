@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use nih_plug::{prelude::*, util::db_to_gain};
 
+use valib::dsp::DSPMeta;
 use valib::{
-    dsp::DSP,
+    dsp::DSPProcess,
     saturators::Slew,
     simd::{AutoF32x2, SimdValue},
 };

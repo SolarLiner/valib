@@ -2,7 +2,8 @@ use std::{collections::VecDeque, ops};
 
 use numeric_literals::replace_float_literals;
 
-use crate::{dsp::DSP, Scalar};
+use crate::dsp::DSPMeta;
+use crate::{dsp::DSPProcess, Scalar};
 
 fn slice_add<T: Copy + ops::Add<T, Output = T>>(in1: &[T], in2: &[T], out: &mut [T]) {
     let len = in1.len().min(in2.len()).min(out.len());
@@ -109,7 +110,7 @@ impl<T: Scalar> Fir<T> {
     }
 }
 
-impl<T: Scalar> DSP<1, 1> for Fir<T> {
+impl<T: Scalar> DSPMeta for Fir<T> {
     type Sample = T;
 
     fn latency(&self) -> usize {
@@ -119,7 +120,9 @@ impl<T: Scalar> DSP<1, 1> for Fir<T> {
     fn reset(&mut self) {
         self.memory = VecDeque::from(vec![T::from_f64(0.0); self.kernel.len()]);
     }
+}
 
+impl<T: Scalar> DSPProcess<1, 1> for Fir<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let [x] = x;
         self.memory.pop_front();
@@ -171,25 +174,21 @@ pub mod kernels {
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{
-        utils::{slice_to_mono_block, slice_to_mono_block_mut},
-        DSPBlock,
-    };
+    use crate::dsp::buffer::AudioBuffer;
+    use crate::dsp::DSPProcessBlock;
 
     use super::*;
 
     #[test]
     fn test_fir_direct() {
         let input = Box::from_iter([1.0, 0.0, 0.0, 0.0].into_iter().cycle().take(16));
+        let input = AudioBuffer::new([input]).unwrap();
         let mut output = input.clone();
         let mut fir = Fir::new([0.25, 0.5, 0.25], 1);
 
         output.fill(0.0);
-        fir.process_block(
-            slice_to_mono_block(&input),
-            slice_to_mono_block_mut(&mut output),
-        );
-        insta::assert_csv_snapshot!(&output, { "[]" => insta::rounded_redaction(4) })
+        fir.process_block(input.as_ref(), output.as_mut());
+        insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(4) })
     }
 
     #[test]

@@ -1,22 +1,26 @@
-#![cfg_attr(feature = "fundsp", feature(const_generic_exprs))]
-#![doc = include_str!("../README.md")]
+#![feature(array_methods)]
+#![cfg_attr(feature = "biquad-design", feature(iter_array_chunks))]
+#![cfg_attr(feature = "fundsp", feature(generic_const_exprs))]
+#![doc = include_str!("./README.md")]
 use az::CastFrom;
 use num_traits::Zero;
 use simba::simd::{AutoSimd, SimdRealField, SimdValue};
 
+#[cfg(feature = "fundsp")]
+pub use contrib::fundsp;
 pub use simba::simd;
 
+pub mod contrib;
 pub mod dsp;
 pub mod filters;
 pub mod fir;
 pub mod math;
 pub mod oscillators;
+#[cfg(feature = "oversample")]
 pub mod oversample;
 pub mod saturators;
 pub mod util;
 pub mod voice;
-#[cfg(feature = "unstable-wdf")]
-pub mod wdf;
 
 pub trait Scalar: Copy + SimdRealField {
     fn from_f64(value: f64) -> Self;

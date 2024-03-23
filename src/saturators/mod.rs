@@ -1,10 +1,11 @@
-use crate::dsp::DSP;
 use numeric_literals::replace_float_literals;
 
 use clippers::DiodeClipperModel;
 
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::Scalar;
 
+pub mod adaa;
 pub mod clippers;
 
 #[allow(unused_variables)]
@@ -51,6 +52,20 @@ impl<S: Scalar> Saturator<S> for Tanh {
     #[replace_float_literals(S::from_f64(literal))]
     fn sat_diff(&self, x: S) -> S {
         1. - x.simd_tanh().simd_powi(2)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
+pub struct Asinh;
+
+impl<T: Scalar> Saturator<T> for Asinh {
+    fn saturate(&self, x: T) -> T {
+        x.simd_asinh()
+    }
+
+    fn sat_diff(&self, x: T) -> T {
+        let x0 = x * x + T::one();
+        x0.simd_sqrt().simd_recip()
     }
 }
 
@@ -108,6 +123,7 @@ impl<T: Scalar, S: Default> Default for Blend<T, S> {
 pub enum Dynamic<T> {
     Linear,
     Tanh,
+    Asinh,
     HardClipper,
     DiodeClipper(DiodeClipperModel<T>),
     SoftClipper(Blend<T, DiodeClipperModel<T>>),
@@ -120,6 +136,7 @@ impl<T: Scalar> Saturator<T> for Dynamic<T> {
             Self::Linear => Linear.saturate(x),
             Self::HardClipper => Clipper.saturate(x),
             Self::Tanh => Tanh.saturate(x),
+            Self::Asinh => Asinh.saturate(x),
             Self::DiodeClipper(clip) => clip.saturate(x),
             Self::SoftClipper(clip) => clip.saturate(x),
         }
@@ -130,6 +147,7 @@ impl<T: Scalar> Saturator<T> for Dynamic<T> {
         match self {
             Self::Linear => Linear.sat_diff(x),
             Self::HardClipper => Clipper.sat_diff(x),
+            Self::Asinh => Asinh.sat_diff(x),
             Self::Tanh => Tanh.sat_diff(x),
             Self::DiodeClipper(clip) => clip.sat_diff(x),
             Self::SoftClipper(clip) => clip.sat_diff(x),
@@ -158,7 +176,7 @@ impl<T: Scalar> Default for Slew<T> {
     }
 }
 
-impl<T: Scalar> DSP<1, 1> for Slew<T> {
+impl<T: Scalar> DSPMeta for Slew<T> {
     type Sample = T;
 
     fn latency(&self) -> usize {
@@ -168,7 +186,9 @@ impl<T: Scalar> DSP<1, 1> for Slew<T> {
     fn reset(&mut self) {
         self.last_out = T::from_f64(0.0);
     }
+}
 
+impl<T: Scalar> DSPProcess<1, 1> for Slew<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let y = self.slew(x[0]);
         self.last_out = y;
@@ -182,6 +202,11 @@ impl<T: Scalar> Slew<T> {
             max_diff: max_diff / samplerate,
             last_out: T::from_f64(0.0),
         }
+    }
+
+    pub fn with_state(mut self, state: T) -> Self {
+        self.last_out = state;
+        self
     }
 
     pub fn set_max_diff(&mut self, max: T, samplerate: T) {

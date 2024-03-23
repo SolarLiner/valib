@@ -1,6 +1,7 @@
 use numeric_literals::replace_float_literals;
 
-use crate::{dsp::DSP, Scalar};
+use crate::dsp::DSPMeta;
+use crate::{dsp::DSPProcess, Scalar};
 
 pub mod blit;
 pub mod wavetable;
@@ -11,9 +12,11 @@ pub struct Phasor<T> {
     step: T,
 }
 
-impl<T: Scalar> DSP<0, 1> for Phasor<T> {
+impl<T: Scalar> DSPMeta for Phasor<T> {
     type Sample = T;
+}
 
+impl<T: Scalar> DSPProcess<0, 1> for Phasor<T> {
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
         let p = self.phase;
         let new_phase = self.phase + self.step;

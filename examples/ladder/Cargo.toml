@@ -13,5 +13,6 @@ keywords.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+enum-map.workspace = true
 nih_plug = { workspace = true }
-valib = { path = "../.." }
+valib = { path = "../..", features = ["nih-plug"] }

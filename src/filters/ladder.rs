@@ -1,14 +1,25 @@
 //! Implementation of various blocks of DSP code from the VA Filter Design book.
-//! Downloaded from https://www.discodsp.net/VAFilterDesign_2.1.2.pdf
-//! All references in this module, unless specified otherwise, are taken from this book.
+//!
+//! Downloaded from <https://www.discodsp.net/VAFilterDesign_2.1.2.pdf>
+//!
+//! # Example
+//!
+//! ```rust
+//! use valib::dsp::DSPProcess;
+//! use valib::filters::ladder::{Ladder, OTA};
+//! use valib::saturators::Tanh;
+//! let mut filter = Ladder::<f32, OTA<Tanh>>::new(44100.0, 300.0, 0.5);
+//! let output = filter.process([0.0]);
+//! ```
 
 use std::fmt;
 
 use nalgebra::{Complex, SVector};
 use numeric_literals::replace_float_literals;
 
+use crate::dsp::DSPMeta;
 use crate::{
-    dsp::{analysis::DspAnalysis, DSP},
+    dsp::{analysis::DspAnalysis, DSPProcess},
     math::bilinear_prewarming_bounded,
     saturators::{Saturator, Tanh},
     Scalar,
@@ -84,7 +95,7 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
     }
 }
 
-/// Ladder filter. This [`DSP`] instance implements a saturated 4-pole lowpass filter, with feedback negatively added
+/// Ladder filter. This [`DSPProcess`] instance implements a saturated 4-pole lowpass filter, with feedback negatively added
 /// back into the input.
 #[derive(Debug, Copy, Clone)]
 pub struct Ladder<T, Topo = OTA<Tanh>> {
@@ -178,19 +189,8 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
     }
 }
 
-impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSP<1, 1> for Ladder<T, Topo> {
+impl<T: Scalar, Topo: LadderTopology<T>> DSPMeta for Ladder<T, Topo> {
     type Sample = T;
-
-    #[inline(always)]
-    #[replace_float_literals(T::from_f64(literal))]
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let input_gain = if self.compensated { self.k + 1.0 } else { 1.0 };
-        let x = input_gain * x[0];
-        let y0 = x - self.k * self.s[3];
-        let g = self.wc * self.inv_2fs;
-        self.s = self.topology.next_output(g, y0, self.s);
-        [self.s[3]]
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.samplerate = T::from_f64(samplerate as _);
@@ -203,6 +203,19 @@ impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSP<1, 1> for Ladder<T, To
 
     fn reset(&mut self) {
         self.s = SVector::zeros();
+    }
+}
+
+impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSPProcess<1, 1> for Ladder<T, Topo> {
+    #[inline(always)]
+    #[replace_float_literals(T::from_f64(literal))]
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        let input_gain = if self.compensated { self.k + 1.0 } else { 1.0 };
+        let x = input_gain * x[0];
+        let y0 = x - self.k * self.s[3];
+        let g = self.wc * self.inv_2fs;
+        self.s = self.topology.next_output(g, y0, self.s);
+        [self.s[3]]
     }
 }
 
@@ -223,14 +236,10 @@ impl<T: Scalar, Topo: LadderTopology<T>> DspAnalysis<1, 1> for Ladder<T, Topo> {
 
 #[cfg(test)]
 mod tests {
-    use num_traits::real::Real;
     use rstest::rstest;
     use simba::simd::SimdComplexField;
 
-    use crate::dsp::{
-        utils::{slice_to_mono_block, slice_to_mono_block_mut},
-        DSPBlock,
-    };
+    use crate::dsp::{buffer::AudioBuffer, DSPProcessBlock};
     use crate::saturators::clippers::DiodeClipperModel;
 
     use super::*;
@@ -245,19 +254,19 @@ mod tests {
         let mut filter =
             Ladder::<f64, Ideal>::new(1024.0, 200.0, resonance).with_topology::<Topo>(topology);
         filter.compensated = compensated;
-        let mut input = [1.0; 1024];
-        let mut output = [0.0; 1024];
-        input[0] = 0.0;
-        filter.process_block(
-            slice_to_mono_block(&input),
-            slice_to_mono_block_mut(&mut output),
-        );
+        let input = AudioBuffer::new([std::iter::once(0.0)
+            .chain(std::iter::repeat(1.0))
+            .take(1024)
+            .collect::<Box<_>>()])
+        .unwrap();
+        let mut output = AudioBuffer::zeroed(1024);
+        filter.process_block(input.as_ref(), output.as_mut());
 
         let topo = std::any::type_name::<Topo>()
             .replace("::", "__")
             .replace(['<', '>'], "_");
         let name = format!("test_ladder_ir_{topo}_c{compensated}_r{resonance}");
-        insta::assert_csv_snapshot!(name, &output as &[_], { "[]" => insta::rounded_redaction(3) })
+        insta::assert_csv_snapshot!(name, output.get_channel(0), { "[]" => insta::rounded_redaction(3) })
     }
 
     #[rstest]

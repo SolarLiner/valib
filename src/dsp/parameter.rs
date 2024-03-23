@@ -1,6 +1,17 @@
+//! Shared values for passing parameters into DSP code.
+//!
+//! By design, those parameters are not used by the implementations in this
+//! library. This is because it would be too limiting and cumbersome to go from
+//! single-valued parameter values to potentially multi-valied values (eg. a
+//! filter cutoff of a stereo filter, where the stereo signal is represented as
+//! a single f32x2 SIMD type). They are provided as is for bigger modules, and
+//! the traits implemented by "container" modules (like [`Series`] or
+//! [`Parallel`]) to ease their use in propagating parameters.
+//!
+//! [`Series`]: crate::dsp::blocks::Series
+//! [`Parallel`]: crate::dsp::blocks::Parallel
 use core::fmt;
 use std::fmt::Formatter;
-
 use std::ops::Deref;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -10,7 +21,7 @@ use nalgebra::SMatrix;
 use portable_atomic::{AtomicBool, AtomicF32};
 
 use crate::dsp::blocks::{ModMatrix, Series2, P1};
-use crate::dsp::DSP;
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::Slew;
 
 struct ParamImpl {
@@ -67,6 +78,24 @@ impl Parameter {
         self.0.changed.swap(false, Ordering::AcqRel)
     }
 
+    pub fn get_bool(&self) -> bool {
+        self.get_value() > 0.5
+    }
+
+    pub fn set_bool(&self, value: bool) {
+        self.set_value(if value { 1.0 } else { 0.0 })
+    }
+
+    pub fn get_enum<E: Enum>(&self) -> E {
+        let index = self.get_value().min(E::LENGTH as f32 - 1.0);
+        E::from_usize(index.floor() as _)
+    }
+
+    pub fn set_enum<E: Enum>(&self, value: E) {
+        let step = f32::recip(E::LENGTH as f32);
+        self.set_value(value.into_usize() as f32 * step);
+    }
+
     pub fn filtered<P>(&self, dsp: P) -> FilteredParam<P> {
         FilteredParam {
             param: self.clone(),
@@ -89,16 +118,18 @@ pub struct FilteredParam<P> {
     pub dsp: P,
 }
 
-impl<P: DSP<1, 1, Sample = f32>> FilteredParam<P> {
+impl<P: DSPProcess<1, 1, Sample = f32>> DSPMeta for FilteredParam<P> {
+    type Sample = f32;
+}
+
+impl<P: DSPProcess<1, 1, Sample = f32>> FilteredParam<P> {
     /// Process the next sample generated from the parameter value.
     pub fn next_sample(&mut self) -> f32 {
         self.process([])[0]
     }
 }
 
-impl<P: DSP<1, 1, Sample = f32>> DSP<0, 1> for FilteredParam<P> {
-    type Sample = f32;
-
+impl<P: DSPProcess<1, 1, Sample = f32>> DSPProcess<0, 1> for FilteredParam<P> {
     fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
         self.dsp.process([self.param.get_value()])
     }
@@ -121,9 +152,11 @@ impl Smoothing {
     }
 }
 
-impl DSP<1, 1> for Smoothing {
+impl DSPMeta for Smoothing {
     type Sample = f32;
+}
 
+impl DSPProcess<1, 1> for Smoothing {
     #[inline]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         match self {
@@ -140,16 +173,18 @@ pub struct SmoothedParam {
     smoothing: Smoothing,
 }
 
-impl DSP<0, 1> for SmoothedParam {
+impl DSPMeta for SmoothedParam {
     type Sample = f32;
-
-    #[inline]
-    fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
-        self.smoothing.process([self.param.get_value()])
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.smoothing.set_samplerate(samplerate);
+    }
+}
+
+impl DSPProcess<0, 1> for SmoothedParam {
+    #[inline]
+    fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
+        self.smoothing.process([self.param.get_value()])
     }
 }
 
@@ -163,10 +198,11 @@ impl SmoothedParam {
     /// * `duration_ms`: Maximum duration of a sweep, that is the duration it would take to go from one extreme to the other.
     pub fn linear(param: Parameter, samplerate: f32, duration_ms: f32) -> Self {
         let max_diff = 1000.0 / duration_ms;
+        let initial_state = param.get_value();
         Self {
             param,
             smoothing: Smoothing::Linear {
-                slew: Slew::new(samplerate, max_diff),
+                slew: Slew::new(samplerate, max_diff).with_state(initial_state),
                 max_diff,
             },
         }
@@ -181,13 +217,13 @@ impl SmoothedParam {
     /// * `t60_ms`: "Time to decay by 60 dB" -- the time it takes for the output to be within 0.1% of the target value.
     pub fn exponential(param: Parameter, samplerate: f32, t60_ms: f32) -> Self {
         let tau = 6.91 * t60_ms / 1e3;
+        let initial_value = param.get_value();
         Self {
             param,
             smoothing: Smoothing::Exponential(Series2::new(
-                P1::new(samplerate, tau.recip()),
+                P1::new(samplerate, tau.recip()).with_state(initial_value),
                 ModMatrix {
                     weights: SMatrix::<_, 1, 3>::new(1.0, 0.0, 0.0),
-                    ..ModMatrix::default()
                 },
             )),
         }
@@ -212,9 +248,16 @@ pub trait HasParameters {
             .map(Self::Enum::from_usize)
             .map(|p| (p, self.get_parameter(p)))
     }
+
+    fn full_name(&self, param: Self::Enum) -> String {
+        self.get_parameter(param)
+            .name()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("Param {}", param.into_usize() + 1))
+    }
 }
 
-/// Separate controller for controlling parameters of a [`DSP`] instance from another place.
+/// Separate controller for controlling parameters of a [`DSPProcess`] instance from another place.
 pub struct ParamController<P: HasParameters>(EnumMap<P::Enum, Parameter>)
 where
     P::Enum: EnumArray<Parameter>;

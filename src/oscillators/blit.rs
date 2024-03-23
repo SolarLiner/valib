@@ -1,6 +1,7 @@
 use numeric_literals::replace_float_literals;
 
-use crate::{dsp::DSP, Scalar};
+use crate::dsp::DSPMeta;
+use crate::{dsp::DSPProcess, Scalar};
 
 /// Raw Band-Limited Impulse Train output. To be fed to leaky integrators to reconstruct the oscillator shape.
 #[derive(Debug, Clone, Copy)]
@@ -13,9 +14,18 @@ pub struct Blit<T> {
     samplerate: f32,
 }
 
-impl<T: Scalar> DSP<0, 1> for Blit<T> {
+impl<T: Scalar> DSPMeta for Blit<T> {
     type Sample = T;
 
+    #[replace_float_literals(T::from_f64(literal))]
+    fn reset(&mut self) {
+        self.p = 0.0;
+        self.dp = 1.0;
+        self.x = 0.0;
+    }
+}
+
+impl<T: Scalar> DSPProcess<0, 1> for Blit<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
         self.p += self.dp;
@@ -31,13 +41,6 @@ impl<T: Scalar> DSP<0, 1> for Blit<T> {
         self.x = T::simd_pi() * self.p;
         self.x = self.x.simd_max(1e-5);
         [self.x.simd_sin() / self.x]
-    }
-
-    #[replace_float_literals(T::from_f64(literal))]
-    fn reset(&mut self) {
-        self.p = 0.0;
-        self.dp = 1.0;
-        self.x = 0.0;
     }
 }
 
@@ -76,9 +79,15 @@ pub struct Sawtooth<T> {
     dc: T,
 }
 
-impl<T: Scalar> DSP<0, 1> for Sawtooth<T> {
+impl<T: Scalar> DSPMeta for Sawtooth<T> {
     type Sample = T;
 
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.blit.set_samplerate(samplerate);
+    }
+}
+
+impl<T: Scalar> DSPProcess<0, 1> for Sawtooth<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 0]) -> [Self::Sample; 1] {
         let [x] = self.blit.process(x);
@@ -119,9 +128,16 @@ pub struct Square<T> {
     integrator_state: T,
 }
 
-impl<T: Scalar> DSP<0, 1> for Square<T> {
+impl<T: Scalar> DSPMeta for Square<T> {
     type Sample = T;
 
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.blit_pos.set_samplerate(samplerate);
+        self.blit_neg.set_samplerate(samplerate);
+    }
+}
+
+impl<T: Scalar> DSPProcess<0, 1> for Square<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 0]) -> [Self::Sample; 1] {
         let [xpos] = self.blit_pos.process(x);
@@ -171,7 +187,8 @@ impl<T: Scalar> Square<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{utils::slice_to_mono_block_mut, DSPBlock};
+    use crate::dsp::buffer::AudioBuffer;
+    use crate::dsp::DSPProcessBlock;
 
     use super::*;
 
@@ -179,35 +196,39 @@ mod tests {
     fn test_blit() {
         let mut blit = Blit::new(8192.0, 10.0);
         insta::assert_debug_snapshot!(&blit);
-        let mut actual = [0.0; 8192];
-        blit.process_block(&[[]; 8192], slice_to_mono_block_mut(&mut actual));
-        insta::assert_csv_snapshot!(&actual as &[_], { "[]" => insta::rounded_redaction(4) });
+        let input = AudioBuffer::zeroed(8192);
+        let mut actual = AudioBuffer::zeroed(8192);
+        blit.process_block(input.as_ref(), actual.as_mut());
+        insta::assert_csv_snapshot!(actual.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 
     #[test]
     fn test_sawtooth() {
         let mut saw = Sawtooth::new(8192.0, 10.0);
         insta::assert_debug_snapshot!(&saw);
-        let mut actual = [0.0; 8192];
-        saw.process_block(&[[]; 8192], slice_to_mono_block_mut(&mut actual));
-        insta::assert_csv_snapshot!(&actual as &[_], { "[]" => insta::rounded_redaction(4) });
+        let input = AudioBuffer::zeroed(8192);
+        let mut actual = AudioBuffer::zeroed(8192);
+        saw.process_block(input.as_ref(), actual.as_mut());
+        insta::assert_csv_snapshot!(actual.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 
     #[test]
     fn test_square() {
         let mut square = Square::new(8192.0, 10.0, 0.5);
         insta::assert_debug_snapshot!(&square);
-        let mut actual = [0.0; 8192];
-        square.process_block(&[[]; 8192], slice_to_mono_block_mut(&mut actual));
-        insta::assert_csv_snapshot!(&actual as &[_], { "[]" => insta::rounded_redaction(4) });
+        let input = AudioBuffer::zeroed(8192);
+        let mut actual = AudioBuffer::zeroed(8192);
+        square.process_block(input.as_ref(), actual.as_mut());
+        insta::assert_csv_snapshot!(actual.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 
     #[test]
     fn test_square_pw() {
         let mut square = Square::new(8192.0, 10.0, 0.1);
         insta::assert_debug_snapshot!(&square);
-        let mut actual = [0.0; 8192];
-        square.process_block(&[[]; 8192], slice_to_mono_block_mut(&mut actual));
-        insta::assert_csv_snapshot!(&actual as &[_], { "[]" => insta::rounded_redaction(4) });
+        let input = AudioBuffer::zeroed(8192);
+        let mut actual = AudioBuffer::zeroed(8192);
+        square.process_block(input.as_ref(), actual.as_mut());
+        insta::assert_csv_snapshot!(actual.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 }

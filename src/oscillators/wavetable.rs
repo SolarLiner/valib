@@ -1,11 +1,10 @@
-use std::{marker::PhantomData, ops::Range};
+use std::ops::Range;
 
-use num_traits::Num;
-
+use crate::dsp::DSPMeta;
+use crate::math::interpolation::{SimdIndex, SimdInterpolatable};
 use crate::{
-    dsp::DSP,
+    dsp::DSPProcess,
     math::interpolation::{Interpolate, Linear},
-    simd::SimdPartialOrd,
     Scalar, SimdCast,
 };
 
@@ -13,49 +12,58 @@ use crate::{
 /// its DSP implementation expects a phasor signal as its first input
 pub struct Wavetable<T, const N: usize, Interp = Linear, const I: usize = 2> {
     array: [T; N],
-    __interp: PhantomData<Interp>,
+    interpolation: Interp,
+}
+
+impl<T: Scalar, Interp, const I: usize, const N: usize> DSPMeta for Wavetable<T, N, Interp, I> {
+    type Sample = T;
 }
 
 impl<T: Scalar + SimdCast<isize>, const N: usize, const I: usize, Interp: Interpolate<T, I>>
-    DSP<1, 1> for Wavetable<T, N, Interp, I>
+    DSPProcess<1, 1> for Wavetable<T, N, Interp, I>
 where
-    <T as SimdCast<isize>>::Output: Copy + Num + SimdPartialOrd,
+    T: Scalar + SimdInterpolatable,
+    <T as SimdCast<usize>>::Output: SimdIndex,
 {
-    type Sample = T;
     fn process(&mut self, [phase]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let y = Interp::interpolate_on_slice(phase.simd_fract(), &self.array);
+        let y = self
+            .interpolation
+            .interpolate_on_slice(phase.simd_fract(), &self.array);
         [y]
     }
 }
 
 impl<T, const N: usize, Interp> Wavetable<T, N, Interp> {
-    pub const fn new(array: [T; N]) -> Self {
+    pub const fn new(interpolation: Interp, array: [T; N]) -> Self {
         Self {
             array,
-            __interp: PhantomData,
+            interpolation,
         }
     }
 }
 
 impl<T: Scalar, const N: usize, Interp> Wavetable<T, N, Interp> {
-    pub fn from_fn(range: Range<T>, f: impl Fn(T) -> T) -> Self {
+    pub fn from_fn(interpolation: Interp, range: Range<T>, f: impl Fn(T) -> T) -> Self {
         let r = range.end - range.start;
         let step = T::from_f64(N as f64) / r;
-        Self::new(std::array::from_fn(|i| {
-            let x = T::from_f64(i as f64) * step;
-            f(x)
-        }))
+        Self::new(
+            interpolation,
+            std::array::from_fn(|i| {
+                let x = T::from_f64(i as f64) * step;
+                f(x)
+            }),
+        )
     }
 
-    pub fn sin() -> Self {
-        Self::from_fn(T::zero()..T::simd_two_pi(), |x| x.simd_sin())
+    pub fn sin(interpolation: Interp) -> Self {
+        Self::from_fn(interpolation, T::zero()..T::simd_two_pi(), |x| x.simd_sin())
     }
 
-    pub fn cos() -> Self {
-        Self::from_fn(T::zero()..T::simd_two_pi(), |x| x.simd_cos())
+    pub fn cos(interpolation: Interp) -> Self {
+        Self::from_fn(interpolation, T::zero()..T::simd_two_pi(), |x| x.simd_cos())
     }
 
-    pub fn tan() -> Self {
-        Self::from_fn(T::zero()..T::simd_two_pi(), |x| x.simd_tan())
+    pub fn tan(interpolation: Interp) -> Self {
+        Self::from_fn(interpolation, T::zero()..T::simd_two_pi(), |x| x.simd_tan())
     }
 }

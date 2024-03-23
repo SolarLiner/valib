@@ -1,16 +1,31 @@
-//! Transposed Direct Form II Biquad implementation - nonlinearities based on https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-5-nonlinear-feedback-filters-115e65fc0402
+//! Transposed Direct Form II Biquad implementation
+//!
+//! Nonlinearities based on <https://jatinchowdhury18.medium.com/complex-nonlinearities-episode-5-nonlinear-feedback-filters-115e65fc0402>
+//!
+//! # Usage
+//!
+//! ```rust
+//! use valib::dsp::DSPProcess;
+//! use valib::filters::biquad::Biquad;
+//! use valib::saturators::Tanh;
+//! let mut lowpass = Biquad::<f32, Tanh>::lowpass(0.25 /* normalized frequency */, 0.707 /* Q */);
+//! let output = lowpass.process([0.0]);
+//! ```
 
 use nalgebra::Complex;
 use numeric_literals::replace_float_literals;
 
 use crate::dsp::analysis::DspAnalysis;
-use crate::dsp::DSP;
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::{
     saturators::{Dynamic, Saturator},
     Scalar,
 };
 
-/// Biquad struct in Transposed Direct Form II. Optionally, a [`Saturator`](crate::saturators::Saturator) instance can be used
+#[cfg(never)]
+pub mod design;
+
+/// Biquad struct in Transposed Direct Form II. Optionally, a [`Saturator`] instance can be used
 /// to apply waveshaping to the internal states.
 #[derive(Debug, Copy, Clone)]
 pub struct Biquad<T, S> {
@@ -20,6 +35,7 @@ pub struct Biquad<T, S> {
     sats: [S; 2],
 }
 
+// TODO: No need to restrict this on dynamic saturators only
 impl<T> Biquad<T, Dynamic<T>> {
     /// Apply these new saturators to this Biquad instance, returning a new instance of it.
     pub fn with_saturators(mut self, a: Dynamic<T>, b: Dynamic<T>) -> Biquad<T, Dynamic<T>> {
@@ -40,6 +56,7 @@ impl<T: Copy, S> Biquad<T, S> {
     }
 }
 
+// TODO: Make those return linear biquads, where the user can then pass their saturators directly through `with_saturators`
 impl<T: Scalar, S: Default> Biquad<T, S> {
     /// Create a new instance of a Biquad with the provided poles and zeros coefficients.
     pub fn new(b: [T; 3], a: [T; 2]) -> Self {
@@ -205,9 +222,11 @@ impl<T: Scalar, S: Default> Biquad<T, S> {
     }
 }
 
-impl<T: Scalar, S: Saturator<T>> DSP<1, 1> for Biquad<T, S> {
+impl<T: Scalar, S: Saturator<T>> DSPMeta for Biquad<T, S> {
     type Sample = T;
+}
 
+impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 1> for Biquad<T, S> {
     #[inline]
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
@@ -227,7 +246,7 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 1> for Biquad<T, S> {
 
 impl<T: Scalar, S> DspAnalysis<1, 1> for Biquad<T, S>
 where
-    Self: DSP<1, 1, Sample = T>,
+    Self: DSPProcess<1, 1, Sample = T>,
 {
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
         let num = z.powi(-1).scale(self.b[1]) + z.powi(-2).scale(self.b[2]) + self.b[0];
@@ -240,8 +259,8 @@ where
 mod tests {
     use crate::{
         dsp::{
-            utils::{slice_to_mono_block, slice_to_mono_block_mut},
-            DSPBlock,
+            buffer::{AudioBufferBox, AudioBufferRef},
+            DSPProcessBlock,
         },
         saturators::clippers::DiodeClipperModel,
     };
@@ -257,12 +276,9 @@ mod tests {
 
         let input: [_; 512] =
             std::array::from_fn(|i| i as f64 / samplerate).map(|t| (10.0 * t).fract() * 2.0 - 1.0);
-        let mut output = [0.0; 512];
-        biquad.process_block(
-            slice_to_mono_block(&input),
-            slice_to_mono_block_mut(&mut output),
-        );
+        let mut output = AudioBufferBox::zeroed(512);
+        biquad.process_block(AudioBufferRef::from(&input as &[_]), output.as_mut());
 
-        insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(4) });
+        insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(4) });
     }
 }

@@ -1,45 +1,68 @@
+use std::f64::consts::FRAC_1_SQRT_2;
 use std::ops::{Deref, DerefMut};
 
+use nalgebra::Complex;
+use simba::simd::SimdComplexField;
+
+use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use crate::dsp::parameter::{HasParameters, Parameter};
-use crate::dsp::{
-    utils::{mono_block_to_slice, mono_block_to_slice_mut, slice_to_mono_block_mut},
-    DSP,
-};
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::Linear;
 use crate::Scalar;
 use crate::{
-    dsp::{blocks::Series, DSPBlock},
+    dsp::{blocks::Series, DSPProcessBlock},
     filters::biquad::Biquad,
 };
 
+const CASCADE: usize = 16;
+
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
+    max_factor: usize,
     os_factor: usize,
     os_buffer: Box<[T]>,
-    pre_filter: Series<[Biquad<T, Linear>; 8]>,
-    post_filter: Series<[Biquad<T, Linear>; 8]>,
+    pre_filter: Series<[Biquad<T, Linear>; CASCADE]>,
+    post_filter: Series<[Biquad<T, Linear>; CASCADE]>,
 }
 
 impl<T: Scalar> Oversample<T> {
-    pub fn new(os_factor: usize, max_block_size: usize) -> Self {
+    pub fn new(os_factor: usize, max_block_size: usize) -> Self
+    where
+        Complex<T>: SimdComplexField,
+    {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
-        let filters = std::array::from_fn(|_| {
-            Biquad::lowpass(
-                T::from_f64(2.0 * os_factor as f64).simd_recip(),
-                T::from_f64(0.707),
-            )
-        });
+        let fc = 1.5 * f64::recip(2.0 * os_factor as f64);
+        let filter = Biquad::lowpass(T::from_f64(fc), T::from_f64(FRAC_1_SQRT_2));
+        let filters = Series([filter; CASCADE]);
         Self {
+            max_factor: os_factor,
             os_factor,
             os_buffer,
-            pre_filter: Series(filters),
-            post_filter: Series(filters),
+            pre_filter: filters,
+            post_filter: filters,
+        }
+    }
+
+    pub(crate) fn set_oversampling_amount(&mut self, amt: usize) {
+        assert!(amt <= self.max_factor);
+        self.os_factor = amt;
+        let new_biquad = Biquad::lowpass(
+            T::from_f64(2.0 * amt as f64).simd_recip() * T::from_f64(1.5),
+            T::from_f64(FRAC_1_SQRT_2),
+        );
+        for filt in self
+            .pre_filter
+            .0
+            .iter_mut()
+            .chain(self.post_filter.0.iter_mut())
+        {
+            filt.update_coefficients(&new_biquad);
         }
     }
 
     pub fn latency(&self) -> usize {
-        2 * self.os_factor + DSP::latency(&self.pre_filter) + DSP::latency(&self.post_filter)
+        2 * self.os_factor + self.pre_filter.latency() + self.post_filter.latency()
     }
 
     pub fn max_block_size(&self) -> usize {
@@ -59,19 +82,25 @@ impl<T: Scalar> Oversample<T> {
 
     pub fn reset(&mut self) {
         self.os_buffer.fill(T::zero());
-        DSP::reset(&mut self.pre_filter);
-        DSP::reset(&mut self.post_filter);
+        self.pre_filter.reset();
+        self.post_filter.reset();
     }
 
-    pub fn with_dsp<P: DSPBlock<1, 1>>(self, dsp: P) -> Oversampled<T, P> {
+    pub fn with_dsp<P: DSPProcessBlock<1, 1>>(
+        self,
+        samplerate: f32,
+        mut dsp: P,
+    ) -> Oversampled<T, P> {
         let max_block_size = dsp.max_block_size().unwrap_or(self.os_buffer.len());
         // Verify that we satisfy the inner DSPBlock instance's requirement on maximum block size
         assert!(self.os_buffer.len() <= max_block_size);
-        let staging_buffer = vec![[T::zero(); 1]; max_block_size].into_boxed_slice();
+        let staging_buffer = vec![T::zero(); max_block_size].into_boxed_slice();
+        dsp.set_samplerate(samplerate * self.os_factor as f32);
         Oversampled {
             oversampling: self,
             staging_buffer,
             inner: dsp,
+            samplerate,
         }
     }
 
@@ -134,64 +163,72 @@ impl<'a, T: Scalar> OversampleBlock<'a, T> {
 
 pub struct Oversampled<T, P> {
     oversampling: Oversample<T>,
-    staging_buffer: Box<[[T; 1]]>,
+    staging_buffer: Box<[T]>,
     pub inner: P,
+    samplerate: f32,
 }
 
 impl<T, P> Oversampled<T, P> {
     pub fn os_factor(&self) -> usize {
         self.oversampling.os_factor
     }
-}
 
-impl<T, P> Oversampled<T, P>
-where
-    T: Scalar,
-{
-    #[deprecated = "Use Oversample::with_dsp"]
-    pub fn new(oversampling: Oversample<T>, inner: P) -> Self
-    where
-        P: DSP<1, 1, Sample = T>,
-    {
-        oversampling.with_dsp(inner)
-    }
     pub fn into_inner(self) -> P {
         self.inner
     }
 }
 
-impl<T, P> DSPBlock<1, 1> for Oversampled<T, P>
+impl<T, P> Oversampled<T, P>
 where
     T: Scalar,
-    P: DSPBlock<1, 1, Sample = T>,
+    P: DSPProcessBlock<1, 1, Sample = T>,
 {
+    pub fn set_oversampling_amount(&mut self, amt: usize) {
+        assert!(amt > 1);
+        self.oversampling.set_oversampling_amount(amt);
+        self.set_samplerate(self.samplerate);
+    }
+}
+
+impl<T: Scalar, P: DSPMeta<Sample = T>> DSPMeta for Oversampled<T, P> {
     type Sample = T;
 
-    fn latency(&self) -> usize {
-        self.oversampling.latency() + self.inner.latency()
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.inner
+            .set_samplerate(self.os_factor() as f32 * samplerate);
     }
 
-    fn max_block_size(&self) -> Option<usize> {
-        Some(self.oversampling.max_block_size())
+    fn latency(&self) -> usize {
+        self.inner.latency()
     }
 
     fn reset(&mut self) {
         self.oversampling.reset();
         self.inner.reset();
     }
+}
 
-    fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
-        let inputs = mono_block_to_slice(inputs);
-        let mut os_block = self.oversampling.oversample(inputs);
-        let inner_outputs = slice_to_mono_block_mut(&mut os_block);
-        self.staging_buffer[..inner_outputs.len()].copy_from_slice(inner_outputs);
-        self.inner
-            .process_block(&self.staging_buffer, inner_outputs);
-        os_block.finish(mono_block_to_slice_mut(outputs));
+impl<T, P> DSPProcessBlock<1, 1> for Oversampled<T, P>
+where
+    Self: DSPMeta<Sample = T>,
+    T: Scalar,
+    P: DSPProcessBlock<1, 1, Sample = T>,
+{
+    fn process_block(&mut self, inputs: AudioBufferRef<T, 1>, mut outputs: AudioBufferMut<T, 1>) {
+        let mut os_block = self.oversampling.oversample(inputs.get_channel(0));
+        let mut inner_input =
+            AudioBufferMut::new([&mut self.staging_buffer[..os_block.len()]]).unwrap();
+        inner_input.copy_from_slice(0, &os_block);
+        {
+            let mut inner_output = AudioBufferMut::new([&mut os_block]).unwrap();
+            self.inner
+                .process_block(inner_input.as_ref(), inner_output.as_mut());
+        }
+        os_block.finish(outputs.get_channel_mut(0));
     }
 
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.inner.set_samplerate(self.oversampling.os_factor as f32 * samplerate);
+    fn max_block_size(&self) -> Option<usize> {
+        Some(self.oversampling.max_block_size())
     }
 }
 
@@ -209,7 +246,11 @@ mod tests {
 
     use numeric_literals::replace_float_literals;
 
-    use crate::{dsp::DSPBlock as _, Scalar};
+    use crate::dsp::DSPMeta;
+    use crate::{
+        dsp::{buffer::AudioBufferBox, DSPProcessBlock as _},
+        Scalar,
+    };
 
     use super::Oversample;
 
@@ -233,10 +274,11 @@ mod tests {
             frequency: T,
             phase: T,
         }
-
-        impl<T: Scalar> crate::dsp::DSP<1, 1> for NaiveSquare<T> {
+        impl<T: Scalar> DSPMeta for NaiveSquare<T> {
             type Sample = T;
+        }
 
+        impl<T: Scalar> crate::dsp::DSPProcess<1, 1> for NaiveSquare<T> {
             #[replace_float_literals(T::from_f64(literal))]
             fn process(&mut self, _: [Self::Sample; 1]) -> [Self::Sample; 1] {
                 let step = self.frequency / self.samplerate;
@@ -254,11 +296,11 @@ mod tests {
             frequency: freq,
             phase: 0.0,
         };
-        let mut os = Oversample::<f32>::new(4, 64).with_dsp(dsp);
+        let mut os = Oversample::<f32>::new(4, 64).with_dsp(samplerate, dsp);
 
-        let input = [[0.0]; 64];
-        let mut output = [[0.0]; 64];
-        os.process_block(&input, &mut output);
-        insta::assert_csv_snapshot!(&output as &[_], { "[][]" => insta::rounded_redaction(3) });
+        let input = AudioBufferBox::zeroed(64);
+        let mut output = AudioBufferBox::zeroed(64);
+        os.process_block(input.as_ref(), output.as_mut());
+        insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(3) });
     }
 }
