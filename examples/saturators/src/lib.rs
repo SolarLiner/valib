@@ -36,7 +36,8 @@ impl Default for SaturatorsPlugin {
             )
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .into(),
             DspParams::InnerParam(DspInnerParams::Saturator) => FloatParam::new(
                 "Saturator",
                 0.0,
@@ -46,7 +47,8 @@ impl Default for SaturatorsPlugin {
                 },
             )
             .with_step_size(1.0)
-            .with_value_to_string(Arc::new(|x| SaturatorType::from_usize(x as _).name())),
+            .with_value_to_string(Arc::new(|x| SaturatorType::from_usize(x as _).name()))
+            .into(),
             DspParams::InnerParam(DspInnerParams::Feedback) => FloatParam::new(
                 "Feedback",
                 0.0,
@@ -59,11 +61,13 @@ impl Default for SaturatorsPlugin {
             )
             .with_unit(" %")
             .with_value_to_string(formatters::v2s_f32_percentage(2))
-            .with_string_to_value(formatters::s2v_f32_percentage()),
+            .with_string_to_value(formatters::s2v_f32_percentage())
+            .into(),
             DspParams::InnerParam(DspInnerParams::AdaaLevel) => {
                 FloatParam::new("ADAA Level", 2.0, FloatRange::Linear { min: 0.0, max: 2.0 })
                     .with_step_size(1.0)
                     .with_value_to_string(formatters::v2s_f32_rounded(0))
+                    .into()
             }
             DspParams::InnerParam(DspInnerParams::AdaaEpsilon) => FloatParam::new(
                 "ADAA Epsilon",
@@ -74,7 +78,8 @@ impl Default for SaturatorsPlugin {
                     factor: 2.0,
                 },
             )
-            .with_value_to_string(Arc::new(|f| format!("{f:.1e}"))),
+            .with_value_to_string(Arc::new(|f| format!("{f:.1e}")))
+            .into(),
             DspParams::Oversampling => FloatParam::new(
                 "Oversampling",
                 OVERSAMPLE as _,
@@ -84,11 +89,13 @@ impl Default for SaturatorsPlugin {
                 },
             )
             .with_unit("x")
-            .with_step_size(1.0),
+            .with_step_size(1.0)
+            .into(),
             DspParams::DcBlocker => {
                 FloatParam::new("Block DC", 1.0, FloatRange::Linear { min: 0.0, max: 1.0 })
                     .with_step_size(1.0)
                     .with_value_to_string(Arc::new(|f| format!("{}", f > 0.5)))
+                    .into()
             }
         });
         Self {

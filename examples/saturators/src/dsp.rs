@@ -376,7 +376,8 @@ impl HasParameters for Dsp {
 }
 
 pub fn create_dsp(samplerate: f32, oversample: usize, max_block_size: usize) -> Dsp {
-    let inner = Oversample::new(oversample, max_block_size).with_dsp(DspInner::new(samplerate));
+    let inner =
+        Oversample::new(oversample, max_block_size).with_dsp(samplerate, DspInner::new(samplerate));
     Dsp {
         inner,
         oversample_amount: Parameter::new(2.0),

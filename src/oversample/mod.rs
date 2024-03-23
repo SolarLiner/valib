@@ -172,15 +172,6 @@ impl<T, P> Oversampled<T, P> {
     pub fn os_factor(&self) -> usize {
         self.oversampling.os_factor
     }
-}
-
-impl<T, P> Oversampled<T, P>
-where
-    T: Scalar,
-{
-    pub fn set_oversampling_amount(&mut self, amt: usize) {
-        self.oversampling.set_oversampling_amount(amt);
-    }
 
     pub fn into_inner(self) -> P {
         self.inner

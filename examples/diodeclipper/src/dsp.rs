@@ -1,10 +1,11 @@
-use enum_map::Enum;
-use num_traits::Zero;
 use std::fmt;
 use std::fmt::Formatter;
 
+use enum_map::Enum;
+use num_traits::Zero;
+
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::{DSPBlock, PerSampleBlockAdapter, DSP};
+use valib::dsp::{DSPBlock, DSP};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::{DiodeClipper, DiodeClipperModel};
@@ -40,11 +41,11 @@ impl<T: Scalar> DSP<1, 1> for DcBlocker<T> {
     }
 
     fn latency(&self) -> usize {
-        self.0.latency()
+        DSP::latency(&self.0)
     }
 
     fn set_samplerate(&mut self, samplerate: f32) {
-        self.0.set_samplerate(samplerate);
+        DSP::set_samplerate(&mut self.0, samplerate);
         self.0.update_coefficients(&Biquad::highpass(
             T::from_f64((Self::CUTOFF_HZ / samplerate) as f64),
             T::from_f64(Self::Q as f64),
