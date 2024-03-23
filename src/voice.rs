@@ -35,7 +35,7 @@ pub trait VoiceManager<const N: usize>: DSPProcess<0, N> {
 /// - Pan (bipolar)
 pub trait Voice: DSPProcess<5, 1> {
     /// Called when this voice is about to be used. Useful to reset some state, or prepare a new voice.
-    fn reuse(&mut self, freq: f32, pressure: f32, velocity: f32, pan: f32) -> Self;
+    fn reuse(&mut self, freq: f32, pressure: f32, velocity: f32, pan: f32);
 
     /// Returns true when this voice is done playing.
     fn done(&self) -> bool;
