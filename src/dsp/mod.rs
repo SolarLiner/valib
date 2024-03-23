@@ -12,7 +12,6 @@ pub mod analysis;
 pub mod blocks;
 pub mod buffer;
 pub mod parameter;
-pub mod utils;
 
 /// Trait for interacting with a DSP algorithm, outside of processing. Shared by processors of both
 /// per-sample algorithms and block-based algorithms.

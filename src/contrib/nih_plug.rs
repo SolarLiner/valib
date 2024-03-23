@@ -12,7 +12,6 @@ use nih_plug::prelude::*;
 use nih_plug::{buffer::Buffer, params::Param};
 
 use crate::dsp::parameter::{HasParameters, Parameter};
-use crate::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
 use crate::dsp::DSPProcessBlock;
 use crate::Scalar;
 

@@ -6,7 +6,7 @@ use nih_plug::util::db_to_gain;
 
 use dsp::Dsp;
 use valib::contrib::nih_plug::{process_buffer_simd, NihParamsController};
-use valib::dsp::DSPBlock;
+use valib::dsp::DSPMeta;
 
 use crate::dsp::{create_dsp, DspInnerParams, DspParams, SaturatorType};
 

@@ -1,9 +1,9 @@
 use enum_map::{Enum, EnumArray};
 use num_traits::Zero;
 
+use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::utils::slice_to_mono_block_mut;
-use valib::dsp::{DSPBlock, DSP};
+use valib::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::adaa::{Adaa, Antiderivative, Antiderivative2};
@@ -28,27 +28,29 @@ impl<T> DcBlocker<T> {
     }
 }
 
-impl<T: Scalar> DSP<1, 1> for DcBlocker<T> {
+impl<T: Scalar> DSPMeta for DcBlocker<T> {
     type Sample = T;
 
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.0.process(x)
-    }
-
-    fn reset(&mut self) {
-        DSP::reset(&mut self.0);
-    }
-
-    fn latency(&self) -> usize {
-        DSP::latency(&self.0)
-    }
-
     fn set_samplerate(&mut self, samplerate: f32) {
-        DSP::set_samplerate(&mut self.0, samplerate);
+        self.0.set_samplerate(samplerate);
         self.0.update_coefficients(&Biquad::highpass(
             T::from_f64((Self::CUTOFF_HZ / samplerate) as f64),
             T::from_f64(Self::Q as f64),
         ));
+    }
+
+    fn latency(&self) -> usize {
+        self.0.latency()
+    }
+
+    fn reset(&mut self) {
+        self.0.reset();
+    }
+}
+
+impl<T: Scalar> DSPProcess<1, 1> for DcBlocker<T> {
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        self.0.process(x)
     }
 }
 
@@ -71,9 +73,11 @@ enum DspSaturatorDirect {
     Diode(DiodeClipperModel<Sample64>),
 }
 
-impl DSP<1, 1> for DspSaturatorDirect {
+impl DSPMeta for DspSaturatorDirect {
     type Sample = Sample64;
+}
 
+impl DSPProcess<1, 1> for DspSaturatorDirect {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let y = match self {
             Self::HardClip => Clipper.saturate(x),
@@ -145,9 +149,11 @@ enum DspSaturator {
     Adaa2(Adaa<Sample64, DspSaturatorAdaa2, 2>),
 }
 
-impl DSP<1, 1> for DspSaturator {
+impl DSPMeta for DspSaturator {
     type Sample = Sample64;
+}
 
+impl DSPProcess<1, 1> for DspSaturator {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         match self {
             DspSaturator::Direct(sat) => sat.process(x),
@@ -255,9 +261,24 @@ impl HasParameters for DspInner {
     }
 }
 
-impl DSP<1, 1> for DspInner {
+impl DSPMeta for DspInner {
     type Sample = Sample;
 
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.drive.set_samplerate(samplerate);
+        self.feedback.set_samplerate(samplerate);
+    }
+
+    fn latency(&self) -> usize {
+        self.cur_saturator.latency()
+    }
+
+    fn reset(&mut self) {
+        self.cur_saturator.reset();
+    }
+}
+
+impl DSPProcess<1, 1> for DspInner {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         self.update_from_params();
 
@@ -268,19 +289,6 @@ impl DSP<1, 1> for DspInner {
         self.last_out = y;
         let yout = y / drive.simd_asinh();
         [yout.cast()]
-    }
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        DSP::set_samplerate(&mut self.drive, samplerate);
-        DSP::set_samplerate(&mut self.feedback, samplerate);
-    }
-
-    fn latency(&self) -> usize {
-        DSP::latency(&self.cur_saturator)
-    }
-
-    fn reset(&mut self) {
-        DSP::reset(&mut self.cur_saturator);
     }
 }
 
@@ -327,39 +335,46 @@ pub struct Dsp {
     dc_blocker_staging: Box<[Sample]>,
 }
 
-impl DSPBlock<1, 1> for Dsp {
+impl DSPMeta for Dsp {
     type Sample = Sample;
 
-    fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
-        let staging = slice_to_mono_block_mut(&mut self.dc_blocker_staging[..inputs.len()]);
-
-        self.inner
-            .set_oversampling_amount(self.oversample_amount.get_value() as _);
-        self.inner.process_block(inputs, staging);
-        if self.use_dc_blocker.get_bool() {
-            self.dc_blocker.process_block(staging, outputs);
-        } else {
-            outputs.copy_from_slice(staging);
-        }
-    }
-
     fn set_samplerate(&mut self, samplerate: f32) {
-        DSPBlock::set_samplerate(&mut self.inner, samplerate);
-        DSPBlock::set_samplerate(&mut self.dc_blocker, samplerate);
+        self.inner.set_samplerate(samplerate);
+        self.dc_blocker.set_samplerate(samplerate);
     }
 
     fn latency(&self) -> usize {
-        let inner_latency = DSPBlock::latency(&self.inner);
+        let inner_latency = self.inner.latency();
         if self.use_dc_blocker.get_bool() {
-            inner_latency + DSPBlock::latency(&self.dc_blocker)
+            inner_latency + self.dc_blocker.latency()
         } else {
             inner_latency
         }
     }
 
     fn reset(&mut self) {
-        DSPBlock::reset(&mut self.inner);
-        DSPBlock::reset(&mut self.dc_blocker);
+        self.inner.reset();
+        self.dc_blocker.reset();
+    }
+}
+
+impl DSPProcessBlock<1, 1> for Dsp {
+    fn process_block(
+        &mut self,
+        inputs: AudioBufferRef<Sample, 1>,
+        mut outputs: AudioBufferMut<Sample, 1>,
+    ) {
+        let mut staging = AudioBufferMut::from(&mut self.dc_blocker_staging[..inputs.samples()]);
+
+        self.inner
+            .set_oversampling_amount(self.oversample_amount.get_value() as _);
+        self.inner.process_block(inputs, staging.as_mut());
+        if self.use_dc_blocker.get_bool() {
+            self.dc_blocker
+                .process_block(staging.as_ref(), outputs.as_mut());
+        } else {
+            outputs.copy_from(staging.as_ref());
+        }
     }
 }
 
