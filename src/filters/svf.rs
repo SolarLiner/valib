@@ -1,5 +1,5 @@
 //! Implementation of various blocks of DSP code from the VA Filter Design book.
-//! 
+//!
 //! Downloaded from <https://www.discodsp.net/VAFilterDesign_2.1.2.pdf>
 //! All references in this module, unless specified otherwise, are taken from this book.
 
@@ -7,7 +7,7 @@ use nalgebra::Complex;
 use num_traits::One;
 use numeric_literals::replace_float_literals;
 
-use crate::dsp::DSP;
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::{
     dsp::analysis::DspAnalysis,
     saturators::{Linear, Saturator},
@@ -28,9 +28,16 @@ pub struct Svf<T, Mode = Linear> {
     sats: [Mode; 2],
 }
 
-impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
+impl<T: Scalar, Mode: Saturator<T>> DSPMeta for Svf<T, Mode> {
     type Sample = T;
 
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.w_step = T::simd_pi() / T::from_f64(samplerate as _);
+        self.update_coefficients();
+    }
+}
+
+impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 3> for Svf<T, S> {
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
@@ -53,11 +60,6 @@ impl<T: Scalar, S: Saturator<T>> DSP<1, 3> for Svf<T, S> {
         self.sats[0].update_state(s1 / 10., self.s[0]);
         self.sats[1].update_state(s2 / 10., self.s[1]);
         [lp, bp, hp]
-    }
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.w_step = T::simd_pi() / T::from_f64(samplerate as _);
-        self.update_coefficients();
     }
 }
 

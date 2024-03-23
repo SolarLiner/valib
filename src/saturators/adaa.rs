@@ -2,7 +2,7 @@ use num_traits::Zero;
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdBool;
 
-use crate::dsp::DSP;
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::{Asinh, Blend, Clipper, Saturator, Tanh};
 use crate::Scalar;
 
@@ -193,9 +193,14 @@ impl<T: Scalar, S: Antiderivative<T> + Saturator<T>> Saturator<T> for Adaa<T, S,
     }
 }
 
-impl<T: Scalar, S: Antiderivative<T>> DSP<1, 1> for Adaa<T, S, 1> {
+impl<T: Scalar, S> DSPMeta for Adaa<T, S, 1> {
     type Sample = T;
+}
 
+impl<T: Scalar, S: Antiderivative<T>> DSPProcess<1, 1> for Adaa<T, S, 1>
+where
+    Self: DSPMeta<Sample = T>,
+{
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         [self.next_sample(x)]
     }
@@ -217,13 +222,8 @@ impl<T: Scalar, S: Antiderivative2<T> + Saturator<T>> Saturator<T> for Adaa<T, S
     }
 }
 
-impl<T: Scalar, S: Antiderivative2<T>> DSP<1, 1> for Adaa<T, S, 2> {
+impl<T: Scalar, S> DSPMeta for Adaa<T, S, 2> {
     type Sample = T;
-
-    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let y = self.next_sample(x);
-        [y]
-    }
 
     fn latency(&self) -> usize {
         1
@@ -234,6 +234,16 @@ impl<T: Scalar, S: Antiderivative2<T>> DSP<1, 1> for Adaa<T, S, 2> {
     }
 }
 
+impl<T: Scalar, S: Antiderivative2<T>> DSPProcess<1, 1> for Adaa<T, S, 2>
+where
+    Self: DSPMeta<Sample = T>,
+{
+    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        let y = self.next_sample(x);
+        [y]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,9 +251,9 @@ mod tests {
     use std::f64::consts::TAU;
 
     #[rstest]
-    #[case("tanh", Adaa::<_, Tanh, 1>::default())]
-    #[case("asinh", Adaa::<_, Asinh, 1>::default())]
-    #[case("clipper", Adaa::<_, Clipper, 1>::default())]
+    #[case("tanh", Adaa::< _, Tanh, 1 >::default())]
+    #[case("asinh", Adaa::< _, Asinh, 1 >::default())]
+    #[case("clipper", Adaa::< _, Clipper, 1 >::default())]
     fn test_adaa1<S: Antiderivative<f64> + Saturator<f64>>(
         #[case] name: &str,
         #[case] mut adaa: Adaa<f64, S, 1>,
@@ -263,8 +273,8 @@ mod tests {
     }
 
     #[rstest]
-    #[case("clipper", Adaa::<_, Clipper, 2>::default())]
-    #[case("asinh", Adaa::<_, Asinh, 2>::default())]
+    #[case("clipper", Adaa::< _, Clipper, 2 >::default())]
+    #[case("asinh", Adaa::< _, Asinh, 2 >::default())]
     fn test_adaa2<S: Antiderivative2<f64> + Saturator<f64>>(
         #[case] name: &str,
         #[case] mut adaa: Adaa<f64, S, 2>,

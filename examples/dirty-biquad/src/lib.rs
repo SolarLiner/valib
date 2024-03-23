@@ -4,7 +4,8 @@ use nih_plug::prelude::*;
 use nih_plug::util::db_to_gain;
 
 use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, NihParamsController};
-use valib::dsp::DSPBlock;
+use valib::dsp::DSPMeta;
+
 use valib::simd::AutoF32x2;
 
 use crate::dsp::{DspParameters, FilterType, SaturatorType};

@@ -5,7 +5,8 @@ use num_traits::Float;
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdBool;
 
-use crate::{dsp::DSP, math::newton_rhapson_tol_max_iter};
+use crate::dsp::DSPMeta;
+use crate::{dsp::DSPProcess, math::newton_rhapson_tol_max_iter};
 use crate::{math::RootEq, saturators::Saturator, Scalar};
 
 use super::adaa::Antiderivative;
@@ -122,12 +123,14 @@ impl<T: Scalar> DiodeClipper<T> {
     }
 }
 
-impl<T: Scalar + fmt::Display> DSP<1, 1> for DiodeClipper<T>
+impl<T: Scalar> DSPMeta for DiodeClipper<T> {
+    type Sample = T;
+}
+
+impl<T: Scalar + fmt::Display> DSPProcess<1, 1> for DiodeClipper<T>
 where
     T::Element: Float,
 {
-    type Sample = T;
-
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         self.vin = x[0];
         let mut vout = SVector::<_, 1>::new(self.last_vout);
@@ -143,6 +146,10 @@ pub struct DiodeClipperModel<T> {
     pub b: T,
     pub si: T,
     pub so: T,
+}
+
+impl<T: Scalar> DSPMeta for DiodeClipperModel<T> {
+    type Sample = T;
 }
 
 impl<T: Scalar> DiodeClipperModel<T> {
@@ -196,9 +203,7 @@ impl<T: Scalar> Default for DiodeClipperModel<T> {
     }
 }
 
-impl<T: Scalar> DSP<1, 1> for DiodeClipperModel<T> {
-    type Sample = T;
-
+impl<T: Scalar> DSPProcess<1, 1> for DiodeClipperModel<T> {
     #[inline(always)]
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         [self.eval(x)]
@@ -218,11 +223,11 @@ mod tests {
 
     use simba::simd::SimdValue;
 
-    use crate::{dsp::DSP, saturators::adaa::Adaa};
+    use crate::{dsp::DSPProcess, saturators::adaa::Adaa};
 
     use super::{DiodeClipper, DiodeClipperModel};
 
-    fn dc_sweep(name: &str, mut dsp: impl DSP<1, 1, Sample = f32>) {
+    fn dc_sweep(name: &str, mut dsp: impl DSPProcess<1, 1, Sample = f32>) {
         let results = Vec::from_iter(
             (-4800..=4800)
                 .map(|i| i as f64 / 100.)
@@ -232,7 +237,7 @@ mod tests {
         insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
     }
 
-    fn drive_test(name: &str, mut dsp: impl DSP<1, 1, Sample = f32>) {
+    fn drive_test(name: &str, mut dsp: impl DSPProcess<1, 1, Sample = f32>) {
         let sine_it = (0..).map(|i| i as f64 / 10.).map(f64::sin);
         let amp = (0..5000).map(|v| v as f64 / 5000. * 500.);
         let output = sine_it

@@ -1,12 +1,14 @@
+use num_traits::{One, Zero};
+
+use crate::dsp::DSPMeta;
 use crate::{
-    dsp::DSP,
+    dsp::DSPProcess,
     util::{midi_to_freq, semitone_to_ratio},
     Scalar,
 };
-use num_traits::{One, Zero};
 
 #[allow(unused_variables)]
-pub trait VoiceManager<const N: usize>: DSP<0, N> {
+pub trait VoiceManager<const N: usize>: DSPProcess<0, N> {
     // Note trigger
     fn note_on(&mut self, midi_note: u8, velocity: f32);
     fn note_off(&mut self, midi_note: u8, velocity: f32);
@@ -31,7 +33,7 @@ pub trait VoiceManager<const N: usize>: DSP<0, N> {
 /// - Pressure (unipolar)
 /// - Velocity (unipolar)
 /// - Pan (bipolar)
-pub trait Voice: DSP<5, 1> {
+pub trait Voice: DSPProcess<5, 1> {
     fn create(freq: f32, pressure: f32, velocity: f32, pan: f32) -> Self;
     fn done(&self) -> bool;
 }
@@ -49,11 +51,12 @@ pub struct VoiceController<V: Voice> {
     pan: f32,
 }
 
-impl<V: Voice> DSP<2, 1> for VoiceController<V>
-where
-    V::Sample: Scalar,
-{
+impl<V: Voice> DSPMeta for VoiceController<V> {
     type Sample = V::Sample;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.voice.set_samplerate(samplerate);
+    }
 
     fn latency(&self) -> usize {
         self.voice.latency()
@@ -62,7 +65,12 @@ where
     fn reset(&mut self) {
         self.voice.reset();
     }
+}
 
+impl<V: Voice> DSPProcess<2, 1> for VoiceController<V>
+where
+    V::Sample: Scalar,
+{
     fn process(&mut self, [bend_st, aftertouch]: [Self::Sample; 2]) -> [Self::Sample; 1] {
         let freq = self.center_freq * semitone_to_ratio(self.glide_semi);
         let freq = Self::Sample::from_f64(freq as _) * semitone_to_ratio(bend_st);
@@ -79,10 +87,6 @@ where
         ]);
         [osc * Self::Sample::from_f64(self.gain as f64)]
     }
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.voice.set_samplerate(samplerate);
-    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -91,13 +95,15 @@ pub struct Monophonic<V: Voice> {
     aftertouch: f32,
 }
 
-impl<V: Voice> DSP<0, 1> for Monophonic<V> {
+impl<V: Voice> DSPMeta for Monophonic<V> {
     type Sample = V::Sample;
 
     fn reset(&mut self) {
         self.voice.take();
     }
+}
 
+impl<V: Voice> DSPProcess<0, 1> for Monophonic<V> {
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
         if self.voice.as_ref().is_some_and(|v| !v.voice.done()) {
             self.voice.as_mut().unwrap().process([

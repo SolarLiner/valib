@@ -3,7 +3,8 @@ use std::sync::Arc;
 use nih_plug::prelude::*;
 
 use valib::contrib::nih_plug::{process_buffer_simd, NihParamsController};
-use valib::dsp::DSPBlock;
+use valib::dsp::DSPMeta;
+
 use valib::oversample::Oversample;
 
 use crate::dsp::{Dsp, DspInner, DspParam};

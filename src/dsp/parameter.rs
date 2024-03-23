@@ -1,5 +1,5 @@
 //! Shared values for passing parameters into DSP code.
-//! 
+//!
 //! By design, those parameters are not used by the implementations in this
 //! library. This is because it would be too limiting and cumbersome to go from
 //! single-valued parameter values to potentially multi-valied values (eg. a
@@ -21,7 +21,7 @@ use nalgebra::SMatrix;
 use portable_atomic::{AtomicBool, AtomicF32};
 
 use crate::dsp::blocks::{ModMatrix, Series2, P1};
-use crate::dsp::DSP;
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::Slew;
 
 struct ParamImpl {
@@ -118,16 +118,18 @@ pub struct FilteredParam<P> {
     pub dsp: P,
 }
 
-impl<P: DSP<1, 1, Sample = f32>> FilteredParam<P> {
+impl<P: DSPProcess<1, 1, Sample = f32>> DSPMeta for FilteredParam<P> {
+    type Sample = f32;
+}
+
+impl<P: DSPProcess<1, 1, Sample = f32>> FilteredParam<P> {
     /// Process the next sample generated from the parameter value.
     pub fn next_sample(&mut self) -> f32 {
         self.process([])[0]
     }
 }
 
-impl<P: DSP<1, 1, Sample = f32>> DSP<0, 1> for FilteredParam<P> {
-    type Sample = f32;
-
+impl<P: DSPProcess<1, 1, Sample = f32>> DSPProcess<0, 1> for FilteredParam<P> {
     fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
         self.dsp.process([self.param.get_value()])
     }
@@ -150,9 +152,11 @@ impl Smoothing {
     }
 }
 
-impl DSP<1, 1> for Smoothing {
+impl DSPMeta for Smoothing {
     type Sample = f32;
+}
 
+impl DSPProcess<1, 1> for Smoothing {
     #[inline]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         match self {
@@ -169,16 +173,18 @@ pub struct SmoothedParam {
     smoothing: Smoothing,
 }
 
-impl DSP<0, 1> for SmoothedParam {
+impl DSPMeta for SmoothedParam {
     type Sample = f32;
-
-    #[inline]
-    fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
-        self.smoothing.process([self.param.get_value()])
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.smoothing.set_samplerate(samplerate);
+    }
+}
+
+impl DSPProcess<0, 1> for SmoothedParam {
+    #[inline]
+    fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
+        self.smoothing.process([self.param.get_value()])
     }
 }
 
@@ -218,7 +224,6 @@ impl SmoothedParam {
                 P1::new(samplerate, tau.recip()).with_state(initial_value),
                 ModMatrix {
                     weights: SMatrix::<_, 1, 3>::new(1.0, 0.0, 0.0),
-                    ..ModMatrix::default()
                 },
             )),
         }
@@ -252,7 +257,7 @@ pub trait HasParameters {
     }
 }
 
-/// Separate controller for controlling parameters of a [`DSP`] instance from another place.
+/// Separate controller for controlling parameters of a [`DSPProcess`] instance from another place.
 pub struct ParamController<P: HasParameters>(EnumMap<P::Enum, Parameter>)
 where
     P::Enum: EnumArray<Parameter>;
