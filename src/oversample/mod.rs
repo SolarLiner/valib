@@ -1,4 +1,5 @@
 use az::UnwrappedAs;
+use std::f64::consts::FRAC_1_SQRT_2;
 use std::ops::{Deref, DerefMut};
 
 use nalgebra::Complex;
@@ -32,17 +33,14 @@ impl<T: Scalar> Oversample<T> {
     {
         assert!(os_factor > 1);
         let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
-        let fc = f64::recip(2.0 * os_factor as f64);
-        let filter = Biquad::lowpass(
-            T::from_f64(fc),
-            T::from_f64(std::f64::consts::FRAC_1_SQRT_2),
-        );
+        let fc = 1.5 * f64::recip(2.0 * os_factor as f64);
+        let filter = Biquad::lowpass(T::from_f64(fc), T::from_f64(FRAC_1_SQRT_2));
         let filters = Series([filter; CASCADE]);
         Self {
             max_factor: os_factor,
             os_factor,
             os_buffer,
-            pre_filter: filters.clone(),
+            pre_filter: filters,
             post_filter: filters,
         }
     }
@@ -51,8 +49,8 @@ impl<T: Scalar> Oversample<T> {
         assert!(amt <= self.max_factor);
         self.os_factor = amt;
         let new_biquad = Biquad::lowpass(
-            T::from_f64(2.0 * amt as f64).simd_recip(),
-            T::from_f64(0.707),
+            T::from_f64(2.0 * amt as f64).simd_recip() * T::from_f64(1.5),
+            T::from_f64(FRAC_1_SQRT_2),
         );
         for filt in self
             .pre_filter
@@ -188,7 +186,7 @@ where
 {
     pub fn set_oversampling_amount(&mut self, amt: usize) {
         assert!(amt > 1);
-        self.oversampling.os_factor = amt;
+        self.oversampling.set_oversampling_amount(amt);
         self.set_samplerate(self.samplerate);
     }
 }
