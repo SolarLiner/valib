@@ -4,7 +4,7 @@ use std::fmt;
 use std::fmt::Formatter;
 use std::sync::Arc;
 
-use crate::dsp::buffer::{AudioBuffer, AudioBufferMut};
+use crate::dsp::buffer::AudioBuffer;
 use enum_map::{Enum, EnumArray, EnumMap};
 use nih_plug::nih_debug_assert;
 use nih_plug::params::FloatParam;

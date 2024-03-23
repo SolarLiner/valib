@@ -1,7 +1,7 @@
 use std::{iter, ops};
 
 use num_traits::real::Real;
-use num_traits::{Num, One, Zero};
+use num_traits::{One, Zero};
 
 #[derive(Debug, Clone)]
 pub struct Polynom<T>(pub Vec<T>);

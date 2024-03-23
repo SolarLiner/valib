@@ -77,7 +77,7 @@ where
         input: &Frame<Self::Sample, Self::Inputs>,
     ) -> Frame<Self::Sample, Self::Outputs> {
         let input = std::array::from_fn(|i| input[i]);
-        let output = self.2.process(input.into());
+        let output = self.2.process(input);
         Frame::from_iter(output)
     }
 }

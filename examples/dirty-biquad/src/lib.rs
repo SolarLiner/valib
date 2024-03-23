@@ -6,16 +6,12 @@ use nih_plug::util::db_to_gain;
 use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, NihParamsController};
 use valib::dsp::DSPMeta;
 
-use valib::simd::AutoF32x2;
-
 use crate::dsp::{DspParameters, FilterType, SaturatorType};
 
 mod dsp;
 
 const OVERSAMPLE: usize = 2;
 const MAX_BLOCK_SIZE: usize = 512;
-
-type Sample = AutoF32x2;
 
 struct Plugin {
     params: Arc<NihParamsController<dsp::Dsp>>,
@@ -25,7 +21,7 @@ struct Plugin {
 impl Default for Plugin {
     fn default() -> Self {
         let dsp = dsp::create(44100.0);
-        let params = NihParamsController::new(&dsp, |param, name| match param {
+        let params = NihParamsController::new(&dsp, |param, _name| match param {
             DspParameters::Drive => FloatParam::new(
                 "Drive",
                 1.0,

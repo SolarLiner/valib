@@ -78,8 +78,7 @@ fn bounds_into_range(
     }
     .min(max_bounds.end);
 
-    let range = start..end;
-    range
+    start..end
 }
 
 impl<T, const LENGTH: usize, const CHANNELS: usize> AudioBuffer<[T; LENGTH], CHANNELS> {

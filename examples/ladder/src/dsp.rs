@@ -19,7 +19,7 @@ pub type Sample = AutoF32x2;
 enum DspLadder {
     Ideal(Ladder<Sample, Ideal>),
     Transistor(Ladder<Sample, Transistor<DiodeClipperModel<Sample>>>),
-    OTA(Ladder<Sample, OTA<Tanh>>),
+    Ota(Ladder<Sample, OTA<Tanh>>),
 }
 
 impl DSPMeta for DspLadder {
@@ -29,7 +29,7 @@ impl DSPMeta for DspLadder {
         match self {
             Self::Ideal(ladder) => ladder.set_samplerate(samplerate),
             Self::Transistor(ladder) => ladder.set_samplerate(samplerate),
-            Self::OTA(ladder) => ladder.set_samplerate(samplerate),
+            Self::Ota(ladder) => ladder.set_samplerate(samplerate),
         }
     }
 
@@ -41,7 +41,7 @@ impl DSPMeta for DspLadder {
         match self {
             Self::Ideal(ladder) => ladder.reset(),
             Self::Transistor(ladder) => ladder.reset(),
-            Self::OTA(ladder) => ladder.reset(),
+            Self::Ota(ladder) => ladder.reset(),
         }
     }
 }
@@ -51,7 +51,7 @@ impl DSPProcess<1, 1> for DspLadder {
         match self {
             Self::Ideal(ladder) => ladder.process(x),
             Self::Transistor(ladder) => ladder.process(x),
-            Self::OTA(ladder) => ladder.process(x),
+            Self::Ota(ladder) => ladder.process(x),
         }
     }
 }
@@ -61,7 +61,7 @@ impl DspLadder {
         match self {
             Self::Ideal(ladder) => ladder.set_cutoff(fc),
             Self::Transistor(ladder) => ladder.set_cutoff(fc),
-            Self::OTA(ladder) => ladder.set_cutoff(fc),
+            Self::Ota(ladder) => ladder.set_cutoff(fc),
         }
     }
 
@@ -69,7 +69,7 @@ impl DspLadder {
         match self {
             Self::Ideal(ladder) => ladder.set_resonance(res),
             Self::Transistor(ladder) => ladder.set_resonance(res),
-            Self::OTA(ladder) => ladder.set_resonance(res),
+            Self::Ota(ladder) => ladder.set_resonance(res),
         }
     }
 
@@ -77,7 +77,7 @@ impl DspLadder {
         match self {
             Self::Ideal(ladder) => ladder.compensated = compensated,
             Self::Transistor(ladder) => ladder.compensated = compensated,
-            Self::OTA(ladder) => ladder.compensated = compensated,
+            Self::Ota(ladder) => ladder.compensated = compensated,
         }
     }
 }
@@ -87,7 +87,7 @@ pub enum LadderType {
     #[default]
     Ideal,
     Transistor,
-    OTA,
+    Ota,
 }
 
 impl fmt::Display for LadderType {
@@ -95,7 +95,7 @@ impl fmt::Display for LadderType {
         match self {
             Self::Ideal => write!(f, "Ideal"),
             Self::Transistor => write!(f, "Transistor"),
-            Self::OTA => write!(f, "OTA"),
+            Self::Ota => write!(f, "OTA"),
         }
     }
 }
@@ -105,7 +105,7 @@ impl LadderType {
         match self {
             Self::Ideal => DspLadder::Ideal(Ladder::new(samplerate, fc, res)),
             Self::Transistor => DspLadder::Transistor(Ladder::new(samplerate, fc, res)),
-            Self::OTA => DspLadder::OTA(Ladder::new(samplerate, fc, res)),
+            Self::Ota => DspLadder::Ota(Ladder::new(samplerate, fc, res)),
         }
     }
 }

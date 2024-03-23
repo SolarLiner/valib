@@ -223,7 +223,7 @@ mod tests {
 
     use simba::simd::SimdValue;
 
-    use crate::{dsp::DSPProcess, saturators::adaa::Adaa};
+    use crate::dsp::DSPProcess;
 
     use super::{DiodeClipper, DiodeClipperModel};
 

@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
-use enum_map::Enum;
 use nih_plug::prelude::*;
 use nih_plug::util::db_to_gain;
 
 use dsp::Dsp;
 use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, NihParamsController};
-use valib::dsp::{DSPMeta, DSPProcessBlock};
+use valib::dsp::DSPMeta;
 
 use crate::dsp::{create_dsp, DiodeType, DspParams};
 

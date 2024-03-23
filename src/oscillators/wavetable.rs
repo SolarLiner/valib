@@ -1,13 +1,10 @@
-use std::{marker::PhantomData, ops::Range};
-
-use num_traits::Num;
+use std::ops::Range;
 
 use crate::dsp::DSPMeta;
 use crate::math::interpolation::{SimdIndex, SimdInterpolatable};
 use crate::{
     dsp::DSPProcess,
     math::interpolation::{Interpolate, Linear},
-    simd::SimdPartialOrd,
     Scalar, SimdCast,
 };
 

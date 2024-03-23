@@ -1,7 +1,7 @@
 use nalgebra::SimdPartialOrd;
-use num_traits::{AsPrimitive, FromPrimitive, NumAssignOps, NumOps};
+use num_traits::{FromPrimitive, NumAssignOps, NumOps};
 use numeric_literals::replace_float_literals;
-use simba::simd::{SimdSigned, SimdValue};
+use simba::simd::SimdValue;
 
 use crate::Scalar;
 use crate::{util::simd_index_simd, SimdCast};

@@ -1,4 +1,3 @@
-use num_traits::Zero;
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdBool;
 

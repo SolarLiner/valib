@@ -197,7 +197,6 @@ impl DSPProcess<1, 1> for DspInner {
 
 pub struct Dsp {
     inner: Oversampled<Sample, DspInner>,
-    max_oversampling: usize,
     dc_blocker: DcBlocker<Sample>,
 }
 
@@ -245,11 +244,10 @@ impl HasParameters for Dsp {
 }
 
 pub fn create_dsp(samplerate: f32, oversample: usize, max_block_size: usize) -> Dsp {
-    let mut inner =
+    let inner =
         Oversample::new(oversample, max_block_size).with_dsp(samplerate, DspInner::new(samplerate));
     Dsp {
         inner,
-        max_oversampling: oversample,
         dc_blocker: DcBlocker::new(samplerate),
     }
 }

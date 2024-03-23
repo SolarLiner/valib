@@ -1,9 +1,8 @@
 use std::ops::Range;
 
-use num_traits::Num;
 use numeric_literals::replace_float_literals;
 
-use crate::{simd::SimdPartialOrd, Scalar, SimdCast};
+use crate::{Scalar, SimdCast};
 
 use super::interpolation::{Interpolate, SimdIndex, SimdInterpolatable};
 
