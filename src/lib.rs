@@ -1,3 +1,4 @@
+#![feature(array_methods)]
 #![cfg_attr(feature = "biquad-design", feature(iter_array_chunks))]
 #![cfg_attr(feature = "fundsp", feature(generic_const_exprs))]
 #![doc = include_str!("./README.md")]

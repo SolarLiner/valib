@@ -1,13 +1,11 @@
+use az::UnwrappedAs;
 use std::ops::{Deref, DerefMut};
 
 use nalgebra::Complex;
 use simba::simd::SimdComplexField;
 
+use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use crate::dsp::parameter::{HasParameters, Parameter};
-use crate::dsp::{
-    buffer::{AudioBufferMut, AudioBufferRef},
-    parameter::{HasParameters, Parameter},
-};
 use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::Linear;
 use crate::Scalar;
@@ -72,7 +70,11 @@ impl<T: Scalar> Oversample<T> {
         self.post_filter.reset();
     }
 
-    pub fn with_dsp<P: DSPProcessBlock<1, 1>>(self, samplerate: f32, mut dsp: P) -> Oversampled<T, P> {
+    pub fn with_dsp<P: DSPProcessBlock<1, 1>>(
+        self,
+        samplerate: f32,
+        mut dsp: P,
+    ) -> Oversampled<T, P> {
         let max_block_size = dsp.max_block_size().unwrap_or(self.os_buffer.len());
         // Verify that we satisfy the inner DSPBlock instance's requirement on maximum block size
         assert!(self.os_buffer.len() <= max_block_size);
@@ -168,7 +170,7 @@ where
 impl<T, P> Oversampled<T, P>
 where
     T: Scalar,
-    P: DSPBlock<1, 1, Sample = T>,
+    P: DSPProcessBlock<1, 1, Sample = T>,
 {
     pub fn set_oversampling_amount(&mut self, amt: usize) {
         assert!(amt > 1);
@@ -177,17 +179,41 @@ where
     }
 }
 
-impl<T: Scalar, P: DSPMeta> DSPMeta for Oversampled<T, P> {
+impl<T: Scalar, P: DSPMeta<Sample = T>> DSPMeta for Oversampled<T, P> {
     type Sample = T;
 
-    fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
-        let inputs = mono_block_to_slice(inputs);
-        let mut os_block = self.oversampling.oversample(inputs);
-        let inner_outputs = slice_to_mono_block_mut(&mut os_block);
-        self.staging_buffer[..inner_outputs.len()].copy_from_slice(inner_outputs);
+    fn set_samplerate(&mut self, samplerate: f32) {
         self.inner
-            .process_block(&self.staging_buffer[..inner_outputs.len()], inner_outputs);
-        os_block.finish(mono_block_to_slice_mut(outputs));
+            .set_samplerate(self.os_factor() as f32 * samplerate);
+    }
+
+    fn latency(&self) -> usize {
+        self.inner.latency()
+    }
+
+    fn reset(&mut self) {
+        self.oversampling.reset();
+        self.inner.reset();
+    }
+}
+
+impl<T, P> DSPProcessBlock<1, 1> for Oversampled<T, P>
+where
+    Self: DSPMeta<Sample = T>,
+    T: Scalar,
+    P: DSPProcessBlock<1, 1, Sample = T>,
+{
+    fn process_block(&mut self, inputs: AudioBufferRef<T, 1>, mut outputs: AudioBufferMut<T, 1>) {
+        let mut os_block = self.oversampling.oversample(inputs.get_channel(0));
+        let mut inner_input =
+            AudioBufferMut::new([&mut self.staging_buffer[..os_block.len()]]).unwrap();
+        inner_input.copy_from_slice(0, &os_block);
+        {
+            let mut inner_output = AudioBufferMut::new([&mut os_block]).unwrap();
+            self.inner
+                .process_block(inner_input.as_ref(), inner_output.as_mut());
+        }
+        os_block.finish(outputs.get_channel_mut(0));
     }
 
     fn max_block_size(&self) -> Option<usize> {

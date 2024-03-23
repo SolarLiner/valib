@@ -1,14 +1,17 @@
-use crate::{MAX_BUFFER_SIZE, OVERSAMPLE};
-use enum_map::Enum;
 use std::fmt;
 use std::fmt::Formatter;
+
+use enum_map::Enum;
+
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::DSP;
+use valib::dsp::{DSPMeta, DSPProcess};
 use valib::filters::ladder::{Ideal, Ladder, Transistor, OTA};
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::DiodeClipperModel;
 use valib::saturators::Tanh;
-use valib::simd::{AutoF32x2, SimdComplexField, SimdValue};
+use valib::simd::{AutoF32x2, SimdValue};
+
+use crate::{MAX_BUFFER_SIZE, OVERSAMPLE};
 
 pub type Sample = AutoF32x2;
 
@@ -19,16 +22,8 @@ enum DspLadder {
     OTA(Ladder<Sample, OTA<Tanh>>),
 }
 
-impl DSP<1, 1> for DspLadder {
+impl DSPMeta for DspLadder {
     type Sample = Sample;
-
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        match self {
-            Self::Ideal(ladder) => ladder.process(x),
-            Self::Transistor(ladder) => ladder.process(x),
-            Self::OTA(ladder) => ladder.process(x),
-        }
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         match self {
@@ -47,6 +42,16 @@ impl DSP<1, 1> for DspLadder {
             Self::Ideal(ladder) => ladder.reset(),
             Self::Transistor(ladder) => ladder.reset(),
             Self::OTA(ladder) => ladder.reset(),
+        }
+    }
+}
+
+impl DSPProcess<1, 1> for DspLadder {
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        match self {
+            Self::Ideal(ladder) => ladder.process(x),
+            Self::Transistor(ladder) => ladder.process(x),
+            Self::OTA(ladder) => ladder.process(x),
         }
     }
 }
@@ -148,14 +153,8 @@ impl DspInner {
     }
 }
 
-impl DSP<1, 1> for DspInner {
+impl DSPMeta for DspInner {
     type Sample = Sample;
-
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.update_from_parameters();
-        let drive = Sample::splat(self.drive.next_sample() / 4.0);
-        self.ladder.process(x.map(|x| x * drive)).map(|x| x / drive)
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.samplerate = samplerate;
@@ -174,6 +173,14 @@ impl DSP<1, 1> for DspInner {
         self.cutoff.reset();
         self.resonance.reset();
         self.ladder.reset();
+    }
+}
+
+impl DSPProcess<1, 1> for DspInner {
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        self.update_from_parameters();
+        let drive = Sample::splat(self.drive.next_sample() / 4.0);
+        self.ladder.process(x.map(|x| x * drive)).map(|x| x / drive)
     }
 }
 

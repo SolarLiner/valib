@@ -1,11 +1,12 @@
-use enum_map::Enum;
-use nih_plug::util::gain_to_db_fast;
-use num_traits::Zero;
 use std::fmt;
 use std::fmt::Formatter;
 
+use enum_map::Enum;
+use num_traits::Zero;
+
+use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::{DSPBlock, DSP};
+use valib::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::{DiodeClipper, DiodeClipperModel};
@@ -29,15 +30,11 @@ impl<T> DcBlocker<T> {
     }
 }
 
-impl<T: Scalar> DSP<1, 1> for DcBlocker<T> {
+impl<T: Scalar> DSPMeta for DcBlocker<T> {
     type Sample = T;
 
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.0.process(x)
-    }
-
     fn set_samplerate(&mut self, samplerate: f32) {
-        DSP::set_samplerate(&mut self.0, samplerate);
+        self.0.set_samplerate(samplerate);
         self.0.update_coefficients(&Biquad::highpass(
             T::from_f64((Self::CUTOFF_HZ / samplerate) as f64),
             T::from_f64(Self::Q as f64),
@@ -45,11 +42,17 @@ impl<T: Scalar> DSP<1, 1> for DcBlocker<T> {
     }
 
     fn latency(&self) -> usize {
-        DSP::latency(&self.0)
+        self.0.latency()
     }
 
     fn reset(&mut self) {
         self.0.reset()
+    }
+}
+
+impl<T: Scalar> DSPProcess<1, 1> for DcBlocker<T> {
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        self.0.process(x)
     }
 }
 
@@ -151,12 +154,32 @@ impl HasParameters for DspInner {
     }
 }
 
-impl DSP<1, 1> for DspInner {
+impl DSPMeta for DspInner {
     type Sample = Sample;
 
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.nr_model.set_samplerate(samplerate);
+        self.nr_nr.set_samplerate(samplerate);
+    }
+
+    fn latency(&self) -> usize {
+        if self.model_switch.get_bool() {
+            self.nr_model.latency()
+        } else {
+            self.nr_nr.latency()
+        }
+    }
+
+    fn reset(&mut self) {
+        self.nr_model.reset();
+        self.nr_nr.reset();
+    }
+}
+
+impl DSPProcess<1, 1> for DspInner {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         if self.force_reset.has_changed() {
-            DSP::reset(self)
+            self.reset()
         }
         self.update_from_params();
 
@@ -170,24 +193,6 @@ impl DSP<1, 1> for DspInner {
         .map(|x| x / drive.simd_asinh())
         .map(|x| x.cast())
     }
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        DSP::set_samplerate(&mut self.nr_model, samplerate);
-        DSP::set_samplerate(&mut self.nr_nr, samplerate);
-    }
-
-    fn latency(&self) -> usize {
-        if self.model_switch.get_bool() {
-            DSP::latency(&self.nr_model)
-        } else {
-            DSP::latency(&self.nr_nr)
-        }
-    }
-
-    fn reset(&mut self) {
-        DSP::reset(&mut self.nr_model);
-        DSP::reset(&mut self.nr_nr);
-    }
 }
 
 pub struct Dsp {
@@ -196,33 +201,38 @@ pub struct Dsp {
     dc_blocker: DcBlocker<Sample>,
 }
 
-impl DSPBlock<1, 1> for Dsp {
+impl DSPMeta for Dsp {
     type Sample = Sample;
 
-    fn process_block(&mut self, inputs: &[[Self::Sample; 1]], outputs: &mut [[Self::Sample; 1]]) {
-        self.inner.process_block(inputs, outputs);
-
-        for o in outputs {
-            *o = self.dc_blocker.process(*o);
-        }
-    }
-
     fn set_samplerate(&mut self, samplerate: f32) {
-        DSPBlock::set_samplerate(&mut self.inner, samplerate);
-        DSPBlock::set_samplerate(&mut self.dc_blocker, samplerate);
-    }
-
-    fn max_block_size(&self) -> Option<usize> {
-        DSPBlock::max_block_size(&self.inner)
+        self.inner.set_samplerate(samplerate);
+        self.dc_blocker.set_samplerate(samplerate);
     }
 
     fn latency(&self) -> usize {
-        DSPBlock::latency(&self.inner) + DSPBlock::latency(&self.dc_blocker)
+        self.inner.latency() + self.dc_blocker.latency()
     }
 
     fn reset(&mut self) {
-        DSPBlock::reset(&mut self.inner);
-        DSPBlock::reset(&mut self.dc_blocker);
+        self.inner.reset();
+        self.dc_blocker.reset();
+    }
+}
+
+impl DSPProcessBlock<1, 1> for Dsp {
+    fn process_block(
+        &mut self,
+        inputs: AudioBufferRef<Self::Sample, 1>,
+        mut outputs: AudioBufferMut<Self::Sample, 1>,
+    ) {
+        self.inner.process_block(inputs, outputs.as_mut());
+        for i in 0..outputs.samples() {
+            outputs.set_frame(i, self.dc_blocker.process(outputs.get_frame(i)));
+        }
+    }
+
+    fn max_block_size(&self) -> Option<usize> {
+        self.inner.max_block_size()
     }
 }
 

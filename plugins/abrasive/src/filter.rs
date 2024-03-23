@@ -4,7 +4,7 @@ use nih_plug::prelude::*;
 use numeric_literals::replace_float_literals;
 use realfft::num_complex::Complex;
 
-use valib::dsp::DSPProcess;
+use valib::dsp::{DSPMeta, DSPProcess};
 use valib::filters::svf::Svf;
 use valib::saturators::{Dynamic, Saturator};
 use valib::simd::SimdValue;
@@ -200,7 +200,7 @@ impl DspAnalysis<1, 1> for Filter {
     }
 }
 
-impl DSPProcess<1, 1> for Filter {
+impl DSPMeta for Filter {
     type Sample = Sample;
 
     fn latency(&self) -> usize {
@@ -210,7 +210,9 @@ impl DSPProcess<1, 1> for Filter {
     fn reset(&mut self) {
         self.svf.reset();
     }
+}
 
+impl DSPProcess<1, 1> for Filter {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let mut x = x[0];
         self.update_coefficients_sample();

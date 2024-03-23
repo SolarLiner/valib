@@ -4,7 +4,7 @@ use std::fmt::Formatter;
 
 use crate::{MAX_BLOCK_SIZE, OVERSAMPLE};
 use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::DSP;
+use valib::dsp::{DSPMeta, DSPProcess};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::DiodeClipperModel;
@@ -108,16 +108,8 @@ impl DspInner {
     }
 }
 
-impl DSP<1, 1> for DspInner {
+impl DSPMeta for DspInner {
     type Sample = Sample;
-
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.update_params();
-        let drive = Sample::splat(self.drive.next_sample());
-        println!("Drive {}", drive.extract(0));
-        let x = x.map(|x| x * drive);
-        self.biquad.process(x).map(|x| x / drive.simd_asinh())
-    }
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.samplerate = samplerate;
@@ -136,6 +128,16 @@ impl DSP<1, 1> for DspInner {
         self.fc.reset();
         self.resonance.reset();
         self.biquad.reset();
+    }
+}
+
+impl DSPProcess<1, 1> for DspInner {
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        self.update_params();
+        let drive = Sample::splat(self.drive.next_sample());
+        println!("Drive {}", drive.extract(0));
+        let x = x.map(|x| x * drive);
+        self.biquad.process(x).map(|x| x / drive.simd_asinh())
     }
 }
 

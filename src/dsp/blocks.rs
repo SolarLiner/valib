@@ -17,7 +17,10 @@ impl<T: Scalar> DSPMeta for Bypass<T> {
     type Sample = T;
 }
 
-impl<T: Scalar, const N: usize> DSPProcess<N, N> for Bypass<T> {
+impl<T: Scalar, const N: usize> DSPProcess<N, N> for Bypass<T>
+where
+    Self: DSPMeta<Sample = T>,
+{
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
         x
     }
@@ -45,7 +48,10 @@ impl<T: Scalar> DSPMeta for Integrator<T> {
     }
 }
 
-impl<T: Scalar> DSPProcess<1, 1> for Integrator<T> {
+impl<T: Scalar> DSPProcess<1, 1> for Integrator<T>
+where
+    Self: DSPMeta<Sample = T>,
+{
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let x2 = x[0] / 2.0;
@@ -55,7 +61,10 @@ impl<T: Scalar> DSPProcess<1, 1> for Integrator<T> {
     }
 }
 
-impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T> {
+impl<T: Scalar> DspAnalysis<1, 1> for Integrator<T>
+where
+    Self: DSPProcess<1, 1, Sample = T>,
+{
     #[replace_float_literals(Complex::from(T::from_f64(literal)))]
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
         [[1. / 2. * (z + 1.) / (z - 1.)]]
@@ -72,6 +81,7 @@ impl<T: Scalar, const N: usize> DSPMeta for Sum<T, N> {
 
 impl<T, const N: usize> DSPProcess<N, 1> for Sum<T, N>
 where
+    Self: DSPMeta<Sample = T>,
     T: Scalar,
 {
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; 1] {
@@ -115,6 +125,7 @@ impl<T: Scalar> DSPMeta for P1<T> {
 
 impl<T: Scalar> DspAnalysis<1, 3> for P1<T>
 where
+    Self: DSPProcess<1, 3, Sample = T>,
     Self::Sample: nalgebra::RealField,
 {
     #[replace_float_literals(Complex::from_real(< T as Scalar >::from_f64(literal)))]
@@ -145,7 +156,10 @@ impl<T: Scalar> P1<T> {
     }
 }
 
-impl<T: Scalar> DSPProcess<1, 3> for P1<T> {
+impl<T: Scalar> DSPProcess<1, 3> for P1<T>
+where
+    Self: DSPMeta<Sample = T>,
+{
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
@@ -238,7 +252,10 @@ impl<P: DSPMeta, const C: usize> DSPMeta for Series<[P; C]> {
     }
 }
 
-impl<P: DSPProcess<N, N>, const N: usize, const C: usize> DSPProcess<N, N> for Series<[P; C]> {
+impl<P: DSPProcess<N, N>, const N: usize, const C: usize> DSPProcess<N, N> for Series<[P; C]>
+where
+    Self: DSPMeta<Sample = P::Sample>,
+{
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
         self.0.iter_mut().fold(x, |x, dsp| dsp.process(x))
     }
@@ -246,6 +263,7 @@ impl<P: DSPProcess<N, N>, const N: usize, const C: usize> DSPProcess<N, N> for S
 
 impl<P, const N: usize, const C: usize> DspAnalysis<N, N> for Series<[P; C]>
 where
+    Self: DSPProcess<N, N, Sample = P::Sample>,
     P: DspAnalysis<N, N>,
 {
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; N]; N] {
@@ -317,6 +335,7 @@ where
 
 impl<A, B, const I: usize, const J: usize, const O: usize> DSPProcess<I, O> for Series2<A, B, J>
 where
+    Self: DSPMeta<Sample = A::Sample>,
     A: DSPProcess<I, J>,
     B: DSPProcess<J, O, Sample = A::Sample>,
 {
@@ -327,15 +346,17 @@ where
     }
 }
 
-impl<P, const N: usize> DspAnalysis<N, N> for Series<Vec<P>>
+impl<A, B, const I: usize, const J: usize, const O: usize> DspAnalysis<I, O> for Series2<A, B, J>
 where
-    P: DspAnalysis<N, N>,
+    Self: DSPProcess<I, O>,
+    A: DspAnalysis<I, J, Sample = Self::Sample>,
+    B: DspAnalysis<J, O, Sample = Self::Sample>,
 {
-    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; N]; N] {
-        self.0.iter().fold([[Complex::one(); N]; N], |acc, f| {
-            let ret = f.h_z(z);
-            std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] * ret[i][j]))
-        })
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
+        let ha = SMatrix::<_, J, I>::from(self.0.h_z(z));
+        let hb = SMatrix::<_, O, J>::from(self.2.h_z(z));
+        let res = hb * ha;
+        res.into()
     }
 }
 
@@ -421,6 +442,8 @@ impl<P: DSPMeta, const C: usize> DSPMeta for Parallel<[P; C]> {
 
 impl<P: DSPProcess<I, O>, const I: usize, const O: usize, const N: usize> DSPProcess<I, O>
     for Parallel<[P; N]>
+where
+    Self: DSPMeta<Sample = P::Sample>,
 {
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
         self.0
@@ -434,6 +457,7 @@ impl<P: DSPProcess<I, O>, const I: usize, const O: usize, const N: usize> DSPPro
 
 impl<P, const I: usize, const O: usize, const N: usize> DspAnalysis<I, O> for Parallel<[P; N]>
 where
+    Self: DSPProcess<I, O, Sample = P::Sample>,
     P: DspAnalysis<I, O>,
 {
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
@@ -472,6 +496,7 @@ where
 
 impl<T, const I: usize, const O: usize> DSPProcess<I, O> for ModMatrix<T, I, O>
 where
+    Self: DSPMeta<Sample = T>,
     T: Scalar,
 {
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
@@ -515,6 +540,7 @@ where
         self.feedback.reset();
     }
 }
+
 impl<FF, const N: usize> DSPMeta for Feedback<FF, (), N>
 where
     FF: DSPProcess<N, N>,
@@ -535,7 +561,10 @@ where
     }
 }
 
-impl<FF: DSPProcess<N, N>, const N: usize> DSPProcess<N, N> for Feedback<FF, (), N> {
+impl<FF: DSPProcess<N, N>, const N: usize> DSPProcess<N, N> for Feedback<FF, (), N>
+where
+    Self: DSPMeta<Sample = FF::Sample>,
+{
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
         let x = std::array::from_fn(|i| self.memory[i] * self.mix[i] + x[i]);
         let y = self.feedforward.process(x);
@@ -546,8 +575,9 @@ impl<FF: DSPProcess<N, N>, const N: usize> DSPProcess<N, N> for Feedback<FF, (),
 
 impl<FF, FB, const N: usize> DSPProcess<N, N> for Feedback<FF, FB, N>
 where
+    Self: DSPMeta<Sample = FF::Sample>,
     FF: DSPProcess<N, N>,
-    FB: DSPProcess<N, N, Sample = <FF as DSPMeta>::Sample>,
+    FB: DSPProcess<N, N, Sample = FF::Sample>,
 {
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
         let fb = self.feedback.process(self.memory);

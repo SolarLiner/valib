@@ -1,11 +1,12 @@
 use num_traits::Zero;
-use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::collections::Bound;
+use std::ops::{Deref, DerefMut, Index, IndexMut, Range, RangeBounds};
 
 use crate::Scalar;
 
 /// AudioBuffer abstraction over containers of contiguous slices. This supports owned and non-owned,
 /// immutable and mutable slices.
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct AudioBuffer<C, const CHANNELS: usize> {
     containers: [C; CHANNELS],
     inner_size: usize,
@@ -60,8 +61,59 @@ impl<C, const CHANNELS: usize> AudioBuffer<C, CHANNELS> {
     }
 }
 
+fn bounds_into_range(
+    bounds: impl RangeBounds<usize> + Sized,
+    max_bounds: Range<usize>,
+) -> Range<usize> {
+    let start = match bounds.start_bound().cloned() {
+        Bound::Included(i) => i,
+        Bound::Excluded(i) => i - 1,
+        Bound::Unbounded => max_bounds.start,
+    }
+    .max(max_bounds.start);
+    let end = match bounds.end_bound().cloned() {
+        Bound::Included(i) => i + 1,
+        Bound::Excluded(i) => i,
+        Bound::Unbounded => max_bounds.end,
+    }
+    .min(max_bounds.end);
+
+    let range = start..end;
+    range
+}
+
+impl<T, const LENGTH: usize, const CHANNELS: usize> AudioBuffer<[T; LENGTH], CHANNELS> {
+    pub const fn const_new(containers: [[T; LENGTH]; CHANNELS]) -> Self {
+        Self {
+            containers,
+            inner_size: LENGTH,
+        }
+    }
+
+    pub fn array_slice(&self, bounds: impl RangeBounds<usize>) -> AudioBufferRef<T, CHANNELS> {
+        let range = bounds_into_range(bounds, 0..self.inner_size);
+        AudioBuffer {
+            containers: std::array::from_fn(|i| &self.containers[i][range.clone()]),
+            inner_size: range.len(),
+        }
+    }
+
+    pub fn array_slice_mut(
+        &mut self,
+        bounds: impl RangeBounds<usize>,
+    ) -> AudioBufferMut<T, CHANNELS> {
+        let range = bounds_into_range(bounds, 0..self.inner_size);
+        AudioBuffer {
+            containers: self.containers.each_mut().map(|i| &mut i[range.clone()]),
+            inner_size: range.len(),
+        }
+    }
+}
+
 impl<T, C: Deref<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNELS> {
-    /// Create an audio buffer supported by the given containers of audio slices
+    /// Create an audio buffer supported by the given containers of audio slices.
+    ///
+    /// This method returns `None` when the channels have mismatching lengths.
     pub fn new(containers: [C; CHANNELS]) -> Option<Self> {
         if CHANNELS == 0 {
             return Some(Self {
@@ -91,7 +143,7 @@ impl<T, C: Deref<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNELS> 
         std::array::from_fn(|ch| &self.containers[ch][index])
     }
 
-    /// Get a multi-channel sample at the given index
+    /// Get a multi-channel sample at the given index.
     pub fn get_frame(&self, index: usize) -> [T; CHANNELS]
     where
         T: Clone,
@@ -108,6 +160,14 @@ impl<T, C: Deref<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNELS> 
         AudioBuffer {
             containers: std::array::from_fn(|i| self.containers[i].deref()),
             inner_size: self.inner_size,
+        }
+    }
+
+    pub fn slice(&self, bounds: impl RangeBounds<usize>) -> AudioBufferRef<T, CHANNELS> {
+        let range = bounds_into_range(bounds, 0..self.inner_size);
+        AudioBuffer {
+            inner_size: range.len(),
+            containers: std::array::from_fn(|i| &self.containers[i][range.clone()]),
         }
     }
 }
@@ -162,15 +222,34 @@ impl<T, C: DerefMut<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNEL
             container.fill_with(&mut fill);
         }
     }
+
+    pub fn slice_mut(&mut self, bounds: impl RangeBounds<usize>) -> AudioBufferMut<T, CHANNELS> {
+        let range = bounds_into_range(bounds, 0..self.inner_size);
+        AudioBuffer {
+            inner_size: range.len(),
+            containers: self.containers.each_mut().map(|i| &mut i[range.clone()]),
+        }
+    }
 }
 
 impl<T: Copy, C: DerefMut<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNELS> {
     /// Copy a slice into a specific channel of this audio buffer.
+    ///
+    /// The buffers must match length, as reported by [`Self::samples()`].
     pub fn copy_from_slice(&mut self, ch: usize, slice: &[T]) {
         self.containers[ch].copy_from_slice(slice);
     }
 
-    /// Set a multi-channel sample at the given index
+    /// Copy a buffer into this buffer.
+    ///
+    /// The buffers must match length, as reported by [`Self::samples()`].
+    pub fn copy_from(&mut self, buffer: AudioBufferRef<T, CHANNELS>) {
+        for i in 0..CHANNELS {
+            self.containers[i].copy_from_slice(buffer.containers[i]);
+        }
+    }
+
+    /// Set a multi-channel sample at the given index.
     pub fn set_frame(&mut self, index: usize, frame: [T; CHANNELS]) {
         for (channel, sample) in self.containers.iter_mut().zip(frame.iter().copied()) {
             channel[index] = sample;

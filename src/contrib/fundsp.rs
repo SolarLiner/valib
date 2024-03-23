@@ -5,7 +5,7 @@
 //!
 //! Conversly, a [`DspNode`] struct is defined for wrapping [`DSPProcess`] implementations into usable `fundsp` nodes.
 
-use crate::dsp::DSPProcess;
+use crate::dsp::{DSPMeta, DSPProcess};
 use fundsp::audionode::{AudioNode, Frame};
 use fundsp::combinator::An;
 use fundsp::Float;
@@ -13,12 +13,25 @@ use numeric_array::ArrayLength;
 use std::marker::PhantomData;
 use typenum::Unsigned;
 
-impl<Node: AudioNode> DSPProcess<{ Node::Inputs::USIZE }, { Node::Outputs::USIZE }> for An<Node>
+impl<Node: AudioNode> DSPMeta for An<Node>
 where
     Node::Sample: crate::Scalar,
 {
     type Sample = Node::Sample;
 
+    fn set_samplerate(&mut self, samplerate: f32) {
+        An::set_sample_rate(self, samplerate as _);
+    }
+
+    fn reset(&mut self) {
+        An::reset(self);
+    }
+}
+
+impl<Node: AudioNode> DSPProcess<{ Node::Inputs::USIZE }, { Node::Outputs::USIZE }> for An<Node>
+where
+    Node::Sample: crate::Scalar,
+{
     fn process(
         &mut self,
         x: [Self::Sample; Node::Inputs::USIZE],

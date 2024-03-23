@@ -1,8 +1,11 @@
-use crate::dsp::{DspParameters, LadderType};
+use std::sync::Arc;
+
 use nih_plug::prelude::*;
-use std::sync::{atomic::AtomicBool, Arc};
+
 use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, NihParamsController};
-use valib::dsp::DSPBlock;
+use valib::dsp::DSPMeta;
+
+use crate::dsp::{DspParameters, LadderType};
 
 mod dsp;
 
