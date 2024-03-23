@@ -135,6 +135,11 @@ impl<T: Scalar> P1<T> {
         }
     }
 
+    pub fn with_state(mut self, state: T) -> Self {
+        self.s = state;
+        self
+    }
+
     pub fn set_fc(&mut self, fc: T) {
         self.fc = fc;
     }
@@ -319,6 +324,18 @@ where
         let Self(a, _, b) = self;
         let j = a.process(x);
         b.process(j)
+    }
+}
+
+impl<P, const N: usize> DspAnalysis<N, N> for Series<Vec<P>>
+where
+    P: DspAnalysis<N, N>,
+{
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; N]; N] {
+        self.0.iter().fold([[Complex::one(); N]; N], |acc, f| {
+            let ret = f.h_z(z);
+            std::array::from_fn(|i| std::array::from_fn(|j| acc[i][j] * ret[i][j]))
+        })
     }
 }
 

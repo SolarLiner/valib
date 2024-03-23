@@ -1211,7 +1211,9 @@ dependencies = [
 name = "diodeclipper"
 version = "0.1.0"
 dependencies = [
+ "enum-map",
  "nih_plug",
+ "num-traits",
  "valib",
 ]
 
@@ -1219,6 +1221,7 @@ dependencies = [
 name = "dirty-biquad"
 version = "0.1.0"
 dependencies = [
+ "enum-map",
  "nih_plug",
  "valib",
 ]
@@ -2109,6 +2112,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 name = "ladder"
 version = "0.1.0"
 dependencies = [
+ "enum-map",
  "nih_plug",
  "valib",
 ]
@@ -4276,6 +4280,7 @@ dependencies = [
  "fundsp",
  "insta",
  "nalgebra",
+ "nih_plug",
  "num-traits",
  "numeric-array",
  "numeric_literals",

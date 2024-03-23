@@ -1,3 +1,4 @@
+#![cfg_attr(feature = "biquad-design", feature(iter_array_chunks))]
 #![cfg_attr(feature = "fundsp", feature(generic_const_exprs))]
 #![doc = include_str!("./README.md")]
 use az::CastFrom;
@@ -14,6 +15,7 @@ pub mod filters;
 pub mod fir;
 pub mod math;
 pub mod oscillators;
+#[cfg(feature = "oversample")]
 pub mod oversample;
 pub mod saturators;
 pub mod util;

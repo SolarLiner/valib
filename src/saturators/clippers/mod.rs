@@ -25,6 +25,12 @@ pub struct DiodeClipper<T> {
 }
 
 impl<T: Copy> DiodeClipper<T> {
+    pub fn last_output(&self) -> T {
+        self.last_vout
+    }
+}
+
+impl<T: Copy> DiodeClipper<T> {
     pub fn reset(&mut self) {
         self.last_vout = self.vin;
     }

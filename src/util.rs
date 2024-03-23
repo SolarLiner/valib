@@ -56,7 +56,7 @@ where
 
 pub fn lerp<T: Scalar>(t: T, a: T, b: T) -> T {
     use crate::math::interpolation::{Interpolate, Linear};
-    Linear::interpolate(t, [a, b])
+    Linear.interpolate(t, [a, b])
 }
 
 #[replace_float_literals(T::from_f64(literal))]
@@ -78,7 +78,7 @@ mod tests {
         let a = [0., 1., 1.];
         let mut actual = [0.; 12];
         let expected = [0., 0.25, 0.5, 0.75, 1., 1., 1., 1., 1., 1., 1., 1.];
-        Linear::interpolate_slice(&mut actual, &a);
+        Linear.interpolate_slice(&mut actual, &a);
         assert_eq!(actual, expected);
     }
 }

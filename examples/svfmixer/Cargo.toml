@@ -16,4 +16,4 @@ crate-type = ["cdylib"]
 enum-map.workspace = true
 nalgebra.workspace = true
 nih_plug.workspace = true
-valib = { path = "../.." }
+valib = { path = "../..", features = ["nih-plug"] }
