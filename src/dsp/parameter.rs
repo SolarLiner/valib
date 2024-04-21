@@ -11,18 +11,21 @@
 //! [`Series`]: crate::dsp::blocks::Series
 //! [`Parallel`]: crate::dsp::blocks::Parallel
 use core::fmt;
+use std::borrow::Cow;
 use std::fmt::Formatter;
-use std::ops::Deref;
+use std::marker::PhantomData;
+use std::ops::{self, Deref};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use enum_map::{Enum, EnumArray, EnumMap};
 use nalgebra::SMatrix;
 use portable_atomic::{AtomicBool, AtomicF32};
 
 use crate::dsp::blocks::{ModMatrix, Series2, P1};
 use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::Slew;
+
+pub use valib_derive::ParamName;
 
 struct ParamImpl {
     value: AtomicF32,
@@ -86,6 +89,16 @@ impl Parameter {
         self.set_value(if value { 1.0 } else { 0.0 })
     }
 
+    pub fn get_discrete(&self, num_values: usize) -> usize {
+        (self.get_value() * num_values as f32).round() as _
+    }
+
+    pub fn set_discrete(&self, num_values: usize, value: usize) {
+        self.set_value(value as f32 / num_values as f32);
+    }
+
+    /* TODO: Figure out how to make this work
+
     pub fn get_enum<E: Enum>(&self) -> E {
         let index = self.get_value().min(E::LENGTH as f32 - 1.0);
         E::from_usize(index.floor() as _)
@@ -95,6 +108,7 @@ impl Parameter {
         let step = f32::recip(E::LENGTH as f32);
         self.set_value(value.into_usize() as f32 * step);
     }
+    */
 
     pub fn filtered<P>(&self, dsp: P) -> FilteredParam<P> {
         FilteredParam {
@@ -234,48 +248,197 @@ impl SmoothedParam {
     }
 }
 
-pub trait HasParameters {
-    type Enum: Copy + Enum;
+/// Parameter ID alias. Useful for type-erasing parameter names and make communication easier, but
+/// this risks unwanted transmutations if not handled properly.
+///
+/// Note that transmuting between param ids is safe because both sides allow converting to and from
+/// a [`ParamId`].
+pub type ParamId = u64;
 
+/// Trait for types that are parameter names.
+///
+/// This trait is most easily implemented as an enum of all possible parameters, but it allows
+/// constructs such as `[P; N]` where `P: ParamName` and `const N: usize` to be defined for
+/// automatic duplication of parameters, or 1->N communication of parameter values.
+pub trait ParamName: Sized {
+    /// Total number of elements in this type
+    fn count() -> usize;
+
+    /// Construct a [`Self`] from a [`ParamId`] value. The caller is expected to verify `value <
+    /// Self::count()`, and so this method is declared as infallible.
+    fn from_id(value: ParamId) -> Self;
+
+    /// Construct a [`ParamId`] from this [`Self`].
+    ///
+    /// It is expected that round-trip conversion returns the same enum as the one we started with,
+    /// that is:
+    ///
+    /// ```rust,compile_fail
+    /// assert_eq!(self, Self::from_id(self.into_id()));
+    /// ```
+    ///
+    /// where `Self: PartialEq`.
+    fn into_id(self) -> ParamId;
+
+    /// Return a user-friendly name for this parameter name.
+    fn name(&self) -> Cow<'static, str>;
+
+    /// Create an iterator returning all values for this type, that is, all values converted from
+    /// IDs in sequence in the range `0..Self::count()`.
+    fn iter() -> impl Iterator<Item = Self> {
+        (0..Self::count()).map(|i| Self::from_id(i as _))
+    }
+}
+
+/// Trait of types which have modulatable parameters.
+pub trait HasParameters {
+    /// Parameter name type
+    type Enum: Copy + ParamName;
+
+    /// Gets the matching [`Parameter`] for the parameter name
     fn get_parameter(&self, param: Self::Enum) -> &Parameter;
 
-    fn param_name(&self, param: Self::Enum) -> Option<&str> {
-        self.get_parameter(param).name()
+    /// Overridable shortcut for `self.get_parameter(param).set_value(value)`, which can be used to
+    /// react to changes in an event-driven way.
+    ///
+    /// Consumers of this trait should use this method directly to allow behavior customization,
+    /// instead of getting the parameter and setting its value directly.
+    fn set_parameter(&self, param: Self::Enum, value: f32) {
+        self.get_parameter(param).set_value(value);
     }
 
-    fn iter_parameters(&self) -> impl Iterator<Item = (Self::Enum, &Parameter)> {
-        (0..Self::Enum::LENGTH)
-            .map(Self::Enum::from_usize)
-            .map(|p| (p, self.get_parameter(p)))
-    }
-
-    fn full_name(&self, param: Self::Enum) -> String {
+    /// Get the name of this parameter, that is either the name set on the [`Parameter`], or the
+    /// default name of the [`Self::Enum`] type.
+    fn param_name(&self, param: Self::Enum) -> Cow<'static, str> {
         self.get_parameter(param)
             .name()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("Param {}", param.into_usize() + 1))
+            .map(|s| Cow::Owned(s.to_string()))
+            .unwrap_or_else(|| param.name())
+    }
+
+    /// Iterate through all parameters in this type.
+    fn iter_parameters(&self) -> impl Iterator<Item = (Self::Enum, &Parameter)> {
+        Self::Enum::iter().map(|p| (p, self.get_parameter(p)))
+    }
+}
+
+/// Specialized map type for storing values associated to parameters.
+#[derive(Debug, Clone)]
+pub struct ParamMap<P, T> {
+    data: Vec<T>,
+    __param: PhantomData<P>,
+}
+
+impl<P: ParamName, T: Default> Default for ParamMap<P, T> {
+    fn default() -> Self {
+        Self::new(|_| T::default())
+    }
+}
+
+pub struct ParamMapIntoIter<P, T> {
+    data: std::vec::IntoIter<T>,
+    item: u64,
+    __param: PhantomData<P>,
+}
+
+impl<P: ParamName, T> Iterator for ParamMapIntoIter<P, T> {
+    type Item = (P, T);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let value = self.data.next()?;
+        let i = self.item;
+        self.item += 1;
+        Some((P::from_id(i as _), value))
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = P::count() as usize;
+        (len, Some(len))
+    }
+}
+
+impl<P: ParamName, T> ExactSizeIterator for ParamMapIntoIter<P, T> {
+    fn len(&self) -> usize {
+        P::count() as _
+    }
+}
+
+impl<P: ParamName, T> IntoIterator for ParamMap<P, T> {
+    type IntoIter = ParamMapIntoIter<P, T>;
+    type Item = (P, T);
+
+    fn into_iter(self) -> Self::IntoIter {
+        ParamMapIntoIter {
+            data: self.data.into_iter(),
+            item: 0,
+            __param: PhantomData,
+        }
+    }
+}
+
+impl<P: ParamName, T> ops::Index<P> for ParamMap<P, T> {
+    type Output = T;
+
+    fn index(&self, index: P) -> &Self::Output {
+        &self.data[index.into_id() as usize]
+    }
+}
+
+impl<P: ParamName + Clone, T> ops::Index<&P> for ParamMap<P, T> {
+    type Output = T;
+
+    fn index(&self, index: &P) -> &Self::Output {
+        &self.data[index.clone().into_id() as usize]
+    }
+}
+
+impl<P: ParamName, T> ops::IndexMut<P> for ParamMap<P, T> {
+    fn index_mut(&mut self, index: P) -> &mut Self::Output {
+        &mut self.data[index.into_id() as usize]
+    }
+}
+
+impl<P: ParamName + Clone, T> ops::IndexMut<&P> for ParamMap<P, T> {
+    fn index_mut(&mut self, index: &P) -> &mut Self::Output {
+        &mut self.data[index.clone().into_id() as usize]
+    }
+}
+
+impl<P: ParamName, T> ParamMap<P, T> {
+    pub fn new(fill_fn: impl FnMut(P) -> T) -> Self {
+        Self {
+            data: Vec::from_iter(P::iter().map(fill_fn)),
+            __param: PhantomData,
+        }
+    }
+
+    pub fn iter(&self) -> impl '_ + Iterator<Item = (P, &T)> {
+        self.data
+            .iter()
+            .enumerate()
+            .map(|(i, x)| (P::from_id(i as _), x))
+    }
+
+    pub fn iter_mut(&mut self) -> impl '_ + Iterator<Item = (P, &mut T)> {
+        self.data
+            .iter_mut()
+            .enumerate()
+            .map(|(i, x)| (P::from_id(i as _), x))
     }
 }
 
 /// Separate controller for controlling parameters of a [`DSPProcess`] instance from another place.
-pub struct ParamController<P: HasParameters>(EnumMap<P::Enum, Parameter>)
-where
-    P::Enum: EnumArray<Parameter>;
+#[derive(Debug, Clone)]
+pub struct ParamController<P: HasParameters>(ParamMap<P::Enum, Parameter>);
 
-impl<P: HasParameters> From<&P> for ParamController<P>
-where
-    P::Enum: EnumArray<Parameter>,
-{
+impl<P: HasParameters> From<&P> for ParamController<P> {
     fn from(value: &P) -> Self {
-        Self(EnumMap::from_fn(|p| value.get_parameter(p).clone()))
+        Self(ParamMap::new(|p| value.get_parameter(p).clone()))
     }
 }
 
-impl<P: HasParameters> Deref for ParamController<P>
-where
-    P::Enum: EnumArray<Parameter>,
-{
-    type Target = EnumMap<P::Enum, Parameter>;
+impl<P: HasParameters> Deref for ParamController<P> {
+    type Target = ParamMap<P::Enum, Parameter>;
 
     fn deref(&self) -> &Self::Target {
         &self.0

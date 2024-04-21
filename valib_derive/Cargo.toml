@@ -1,5 +1,5 @@
 [package]
-name = "dirty-biquad"
+name = "valib_derive"
 version.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -10,8 +10,14 @@ repository.workspace = true
 keywords.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+proc-macro = true
 
 [dependencies]
-nih_plug = { workspace = true }
-valib = { path = "../..", features = ["nih-plug"] }
+darling = "0.20.8"
+proc-macro2 = "1.0.81"
+quote = "1.0.36"
+syn = "2.0.60"
+
+[dev-dependencies]
+insta = "1.38.0"
+prettyplease = "0.2.19"
