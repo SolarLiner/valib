@@ -6,7 +6,7 @@ use crate::{dsp::DSPProcess, Scalar};
 /// Raw Band-Limited Impulse Train output. To be fed to leaky integrators to reconstruct the oscillator shape.
 #[derive(Debug, Clone, Copy)]
 pub struct Blit<T> {
-    p: T,
+    pub p: T,
     dp: T,
     pmax: T,
     x: T,
@@ -44,6 +44,13 @@ impl<T: Scalar> DSPProcess<0, 1> for Blit<T> {
     }
 }
 
+impl<T: Copy> Blit<T> {
+    #[inline(always)]
+    pub fn pmax(&self) -> T {
+        self.pmax
+    }
+}
+
 impl<T: Scalar> Blit<T> {
     /// Construct a new BLIT with the given samplerate and oscillation frequency (in Hz).
     #[replace_float_literals(T::from_f64(literal))]
@@ -64,6 +71,16 @@ impl<T: Scalar> Blit<T> {
     pub fn set_frequency(&mut self, freq: T) {
         self.fc = freq;
         self.update_coefficients();
+    }
+    
+    pub fn set_position(&mut self, pos: T) {
+        let delta = pos - self.p;
+        self.p += delta * self.pmax;
+    }
+    
+    pub fn with_position(mut self, pos: T) -> Self {
+        self.set_position(pos);
+        self
     }
 
     fn update_coefficients(&mut self) {
@@ -113,6 +130,7 @@ impl<T: Scalar> Sawtooth<T> {
         self.blit.set_frequency(freq);
     }
 
+    #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn get_dc(pmax: T) -> T {
         -0.498 / pmax

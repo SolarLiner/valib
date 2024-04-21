@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[allow(unused_variables)]
-pub trait VoiceManager<const N: usize>: DSPProcess<0, N> {
+pub trait VoiceManager<const N: usize> {
     // Note trigger
     fn note_on(&mut self, midi_note: u8, velocity: f32);
     fn note_off(&mut self, midi_note: u8, velocity: f32);
@@ -43,16 +43,35 @@ pub trait Voice: DSPProcess<5, 1> {
 
 #[derive(Debug, Clone, Copy)]
 pub struct VoiceController<V: Voice> {
-    voice: V,
-    used: bool,
-    midi_note: u8,
-    center_freq: f32,
-    glide_semi: f32,
-    pressure: f32,
-    gate: bool,
-    velocity: f32,
-    gain: f32,
-    pan: f32,
+    pub id: u64,
+    pub voice: V,
+    pub used: bool,
+    pub midi_note: u8,
+    pub center_freq: f32,
+    pub glide_semi: f32,
+    pub pressure: f32,
+    pub gate: bool,
+    pub velocity: f32,
+    pub gain: f32,
+    pub pan: f32,
+}
+
+impl<V: Voice> VoiceController<V> {
+    pub fn new_inactive(id: u64, voice: V) -> Self {
+        Self {
+            id,
+            voice,
+            used: false,
+            midi_note: 0,
+            center_freq: 0.0,
+            glide_semi: 0.0,
+            pressure: 0.0,
+            gate: false,
+            velocity: 0.0,
+            gain: 1.0,
+            pan: 0.0,
+        }
+    }
 }
 
 impl<V: Voice> DSPMeta for VoiceController<V> {
@@ -89,6 +108,9 @@ where
             Self::Sample::from_f64((self.velocity * self.gain) as _),
             Self::Sample::from_f64(self.pan as _),
         ]);
+        if self.voice.done() {
+            self.used = false;
+        }
         [osc * Self::Sample::from_f64(self.gain as f64)]
     }
 }

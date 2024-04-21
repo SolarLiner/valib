@@ -13,6 +13,7 @@ use crate::{
     dsp::{blocks::Series, DSPProcessBlock},
     filters::biquad::Biquad,
 };
+use crate::voice::VoiceManager;
 
 const CASCADE: usize = 16;
 
@@ -237,6 +238,48 @@ impl<S, P: HasParameters> HasParameters for Oversampled<S, P> {
 
     fn get_parameter(&self, param: Self::Enum) -> &Parameter {
         self.inner.get_parameter(param)
+    }
+}
+
+impl<S, P, const N: usize> VoiceManager<N> for Oversampled<S, P> where P: VoiceManager<N> {
+    fn note_on(&mut self, midi_note: u8, velocity: f32) {
+        self.inner.note_on(midi_note, velocity);
+    }
+
+    fn note_off(&mut self, midi_note: u8, velocity: f32) {
+        self.inner.note_off(midi_note, velocity);
+    }
+
+    fn choke(&mut self, midi_note: u8) {
+        self.inner.choke(midi_note);
+    }
+
+    fn panic(&mut self) {
+        self.inner.panic();
+    }
+
+    fn pitch_bend(&mut self, amount: f32) {
+        self.inner.pitch_bend(amount)
+    }
+
+    fn aftertouch(&mut self, amount: f32) {
+        self.inner.aftertouch(amount)
+    }
+
+    fn pressure(&mut self, midi_note: u8, pressure: f32) {
+        self.inner.pressure(midi_note, pressure)
+    }
+
+    fn glide(&mut self, midi_note: u8, semitones: f32) {
+        self.inner.glide(midi_note, semitones)
+    }
+
+    fn pan(&mut self, midi_note: u8, pan: f32) {
+        self.pan(midi_note, pan)
+    }
+
+    fn gain(&mut self, midi_note: u8, gain: f32) {
+        self.gain(midi_note, gain)
     }
 }
 

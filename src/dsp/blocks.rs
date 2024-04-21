@@ -102,9 +102,9 @@ where
 /// Outputs modes as follows: [LP, HP, AP].
 #[derive(Debug, Copy, Clone)]
 pub struct P1<T> {
+    pub fc: T,
+    pub s: T,
     w_step: T,
-    fc: T,
-    s: T,
 }
 
 impl<T: Scalar> DSPMeta for P1<T> {
