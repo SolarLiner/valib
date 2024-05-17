@@ -28,17 +28,24 @@ use nalgebra::{Complex, SMatrix, SVector, SimdComplexField};
 use num_traits::Zero;
 
 use crate::dsp::{analysis::DspAnalysis, DSPMeta, DSPProcess};
+use crate::saturators::{Linear, MultiSaturator, Saturator};
 use crate::Scalar;
 
-// TODO: Add saturators
 /// Linear discrete state-space method implementation with direct access to the state space matrices.
 #[derive(Debug, Copy, Clone)]
-pub struct StateSpace<T: nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize> {
+pub struct StateSpace<
+    T: Scalar,
+    const IN: usize,
+    const STATE: usize,
+    const OUT: usize,
+    S: MultiSaturator<T, STATE> = Linear,
+> {
     pub a: SMatrix<T, STATE, STATE>,
     pub b: SMatrix<T, STATE, IN>,
     pub c: SMatrix<T, OUT, STATE>,
     pub d: SMatrix<T, OUT, IN>,
     state: SVector<T, STATE>,
+    saturators: S,
 }
 
 impl<
@@ -65,7 +72,7 @@ impl<
     }
 }
 
-impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT: usize>
+impl<T: Scalar + Zero, const IN: usize, const STATE: usize, const OUT: usize>
     StateSpace<T, IN, STATE, OUT>
 {
     /// Create a zero state-space system, which blocks all inputs.
@@ -76,6 +83,7 @@ impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT:
             c: SMatrix::zeros(),
             d: SMatrix::zeros(),
             state: SVector::zeros(),
+            saturators: Linear,
         }
     }
 
@@ -92,11 +100,12 @@ impl<T: nalgebra::Scalar + Zero, const IN: usize, const STATE: usize, const OUT:
             c,
             d,
             state: SVector::zeros(),
+            saturators: Linear,
         }
     }
 }
 
-impl<T: Copy + nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT: usize>
+impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize>
     StateSpace<T, IN, STATE, OUT>
 {
     /// Update the matrices of this state space instance by copying them from another instance.
@@ -107,21 +116,51 @@ impl<T: Copy + nalgebra::Scalar, const IN: usize, const STATE: usize, const OUT:
         self.c = other.c;
         self.d = other.d;
     }
+
+    pub fn with_saturators<S: MultiSaturator<T, STATE>>(
+        self,
+        saturators: S,
+    ) -> StateSpace<T, IN, STATE, OUT, S> {
+        let Self {
+            a, b, c, d, state, ..
+        } = self;
+        StateSpace {
+            a,
+            b,
+            c,
+            d,
+            state,
+            saturators,
+        }
+    }
 }
 
-impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSPMeta
-    for StateSpace<T, IN, STATE, OUT>
+impl<
+        T: Scalar,
+        S: MultiSaturator<T, STATE>,
+        const IN: usize,
+        const STATE: usize,
+        const OUT: usize,
+    > DSPMeta for StateSpace<T, IN, STATE, OUT, S>
 {
     type Sample = T;
 }
 
-impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize> DSPProcess<IN, OUT>
-    for StateSpace<T, IN, STATE, OUT>
+impl<
+        T: Scalar,
+        S: MultiSaturator<T, STATE>,
+        const IN: usize,
+        const STATE: usize,
+        const OUT: usize,
+    > DSPProcess<IN, OUT> for StateSpace<T, IN, STATE, OUT, S>
 {
     fn process(&mut self, x: [Self::Sample; IN]) -> [Self::Sample; OUT] {
         let x = SVector::from(x);
         let y = self.c * self.state + self.d * x;
         self.state = self.a * self.state + self.b * x;
+        let ys = self.saturators.multi_saturate(self.state.into());
+        self.saturators.update_state_multi(self.state.into(), ys);
+        self.state = SVector::from(ys);
         y.into()
     }
 }
@@ -136,7 +175,7 @@ mod tests {
 
     use super::*;
 
-    struct RC<T: nalgebra::Scalar>(StateSpace<T, 1, 1, 1>);
+    struct RC<T: Scalar>(StateSpace<T, 1, 1, 1>);
 
     impl<T: Scalar> DSPMeta for RC<T> {
         type Sample = T;

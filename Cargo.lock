@@ -4502,6 +4502,7 @@ dependencies = [
  "num-traits",
  "numeric-array",
  "numeric_literals",
+ "paste",
  "portable-atomic",
  "rstest",
  "serde",

@@ -32,6 +32,7 @@ nih_plug = { workspace = true, optional = true }
 num-traits.workspace = true
 numeric-array = { version = "0.5.2", optional = true }
 numeric_literals = "0.2.0"
+paste = "1.0.15"
 portable-atomic = { version = "1.6.0", features = ["float"] }
 simba = { version = "0.8.1", features = ["wide"] }
 typenum = { version = "1.17.0", optional = true }

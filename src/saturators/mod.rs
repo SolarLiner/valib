@@ -1,19 +1,22 @@
+use nalgebra::{SMatrix, SVector};
 use numeric_literals::replace_float_literals;
+use std::marker::PhantomData;
 
 use clippers::DiodeClipperModel;
 
 use crate::dsp::{DSPMeta, DSPProcess};
+use crate::math::{newton_rhapson_steps, RootEq};
 use crate::Scalar;
 
 pub mod adaa;
 pub mod clippers;
 
 #[allow(unused_variables)]
-pub trait Saturator<T: Scalar>: Default {
+pub trait Saturator<T: Scalar> {
     /// Saturate an input with a frozen state.
     fn saturate(&self, x: T) -> T;
 
-    /// Update the state given an input and the output of `saturate`.
+    /// Update the state given an input and the output of [`Self::saturate`].
     #[inline(always)]
     fn update_state(&mut self, x: T, y: T) {}
 
@@ -23,6 +26,64 @@ pub trait Saturator<T: Scalar>: Default {
         (self.saturate(x + 1e-4) - self.saturate(x)) / 1e-4
     }
 }
+
+pub trait MultiSaturator<T: Scalar, const N: usize> {
+    fn multi_saturate(&self, x: [T; N]) -> [T; N];
+
+    fn update_state_multi(&mut self, x: [T; N], y: [T; N]);
+
+    fn sat_jacobian(&self, x: [T; N]) -> [T; N];
+}
+
+impl<'a, T: Scalar, S: Saturator<T>> MultiSaturator<T, 1> for &'a mut S {
+    fn multi_saturate(&self, x: [T; 1]) -> [T; 1] {
+        [self.saturate(x[0])]
+    }
+
+    fn update_state_multi(&mut self, x: [T; 1], y: [T; 1]) {
+        self.update_state(x[0], y[0]);
+    }
+
+    fn sat_jacobian(&self, x: [T; 1]) -> [T; 1] {
+        [self.sat_diff(x[0])]
+    }
+}
+
+macro_rules! impl_multisat_tuples {
+    ($count:literal; $($t:ident),*) => { ::paste::paste! {
+        #[allow(non_snake_case)]
+        impl<T: $crate::Scalar, $($t: $crate::saturators::Saturator<T>),*> MultiSaturator<T, $count> for ($($t,)*) {
+            fn multi_saturate(&self, [$([<x $t>]),*]: [T; $count]) -> [T; $count] {
+                let ($($t),*) = self;
+                [$($t.saturate([<x $t>])),*]
+            }
+
+            fn update_state_multi(&mut self, [$([<x $t>]),*]: [T; $count], [$([<y $t>]),*]: [T; $count]) {
+                let ($($t),*) = self;
+                $(
+                $t.update_state([<x $t>], [<y $t>]);
+                )*
+            }
+
+            fn sat_jacobian(&self, [$([<x $t>]),*]: [T; $count]) -> [T; $count] {
+                let ($($t),*) = self;
+                [$($t.sat_diff([<x $t>])),*]
+            }
+        }
+    } };
+}
+
+impl_multisat_tuples!(2; A, B);
+impl_multisat_tuples!(3; A, B, C);
+impl_multisat_tuples!(4; A, B, C, D);
+impl_multisat_tuples!(5; A, B, C, D, E);
+impl_multisat_tuples!(6; A, B, C, D, E, F);
+impl_multisat_tuples!(7; A, B, C, D, E, F, G);
+impl_multisat_tuples!(8; A, B, C, D, E, F, G, H);
+impl_multisat_tuples!(9; A, B, C, D, E, F, G, H, I);
+impl_multisat_tuples!(10; A, B, C, D, E, F, G, H, I, J);
+impl_multisat_tuples!(11; A, B, C, D, E, F, G, H, I, J, K);
+impl_multisat_tuples!(12; A, B, C, D, E, F, G, H, I, J, K, L);
 
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct Linear;
@@ -36,6 +97,18 @@ impl<S: Scalar> Saturator<S> for Linear {
     #[inline(always)]
     fn sat_diff(&self, _: S) -> S {
         S::one()
+    }
+}
+
+impl<S: Scalar, const N: usize> MultiSaturator<S, N> for Linear {
+    fn multi_saturate(&self, x: [S; N]) -> [S; N] {
+        x
+    }
+
+    fn update_state_multi(&mut self, x: [S; N], y: [S; N]) {}
+
+    fn sat_jacobian(&self, x: [S; N]) -> [S; N] {
+        [S::one(); N]
     }
 }
 
@@ -236,11 +309,34 @@ impl<T: Scalar> Saturator<T> for Slew<T> {
         self.slew(x)
     }
 
+    fn update_state(&mut self, _x: T, y: T) {
+        self.last_out = y;
+    }
+
     fn sat_diff(&self, x: T) -> T {
         self.slew_diff(x)
     }
+}
 
-    fn update_state(&mut self, _x: T, y: T) {
-        self.last_out = y;
+#[derive(Debug, Clone, Copy)]
+pub struct Driven<T, S> {
+    pub drive: T,
+    pub saturator: S,
+}
+
+impl<T: Scalar, S: Saturator<T>> Saturator<T> for Driven<T, S> {
+    fn saturate(&self, x: T) -> T {
+        self.saturator.saturate(x * self.drive) / self.drive
+    }
+
+    #[inline(always)]
+    fn update_state(&mut self, x: T, y: T) {
+        let x = x / self.drive;
+        let y = self.drive * y;
+        self.saturator.update_state(x, y);
+    }
+
+    fn sat_diff(&self, x: T) -> T {
+        self.saturator.sat_diff(x * self.drive)
     }
 }
