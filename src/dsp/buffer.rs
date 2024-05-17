@@ -150,7 +150,10 @@ impl<T, C: Deref<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNELS> 
         std::array::from_fn(|ch| self.containers[ch][index].clone())
     }
 
-    pub fn iter(&self) -> impl '_ + Iterator<Item = [&T; CHANNELS]> {
+    pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = [&'a T; CHANNELS]>
+    where
+        T: 'a,
+    {
         (0..self.inner_size).map(|i| self.frame_ref(i))
     }
 
