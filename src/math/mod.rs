@@ -1,4 +1,5 @@
 use std::hint;
+use std::marker::PhantomData;
 
 use nalgebra::{Complex, Dim, OVector, SMatrix, SVector};
 use num_traits::Float;
@@ -118,6 +119,40 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
         let changed = *value - step;
         *value = value.zip_map(&changed, |v, c| v.select(tgt, c));
     }
+}
+
+pub fn newton_rhapson_mono<T: Scalar>(
+    f: impl Fn(T) -> T,
+    diff: impl Fn(T) -> T,
+    tol: T,
+    max_iter: usize,
+    value: T,
+) -> T {
+    struct MonoRootEq<T: Scalar, F: Fn(T) -> T, J: Fn(T) -> T> {
+        f: F,
+        j: J,
+        __t: PhantomData<T>,
+    }
+    impl<T: Scalar, F: Fn(T) -> T, J: Fn(T) -> T> RootEq<T, 1> for MonoRootEq<T, F, J> {
+        fn eval(&self, input: &SVector<T, 1>) -> SVector<T, 1> {
+            let y = self.f(input[0]);
+            SVector::<_, 1>::new(y)
+        }
+
+        fn j_inv(&self, input: &SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
+            let y = self.j(input[0]);
+            Some(SVector::<_, 1>::new(y.simd_recip()))
+        }
+    }
+
+    let mut inp = SVector::<_, 1>::new(value);
+    let rooteq = MonoRootEq {
+        f,
+        j: diff,
+        __t: PhantomData,
+    };
+    newton_rhapson_tol_max_iter(&rooteq, &mut inp, tol, max_iter);
+    inp[0]
 }
 
 #[replace_float_literals(Complex::from(T::from_f64(literal)))]

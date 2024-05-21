@@ -1,7 +1,14 @@
+use nalgebra::{
+    Complex, DMatrix, DVectorView, DVectorViewMut, DefaultAllocator, Dim, Dyn, Matrix, OMatrix,
+    Storage, VecStorage,
+};
 use std::{iter, ops};
 
+use crate::math::newton_rhapson_mono;
+use crate::Scalar;
 use num_traits::real::Real;
-use num_traits::{One, Zero};
+use num_traits::{Float, One, Zero};
+use simba::scalar::ComplexField;
 
 #[derive(Debug, Clone)]
 pub struct Polynom<T>(pub Vec<T>);
@@ -56,13 +63,76 @@ impl<T: Zero> Polynom<T> {
     }
 }
 
-impl<T: Real> Polynom<T> {
+impl<T: Scalar> Polynom<T> {
     pub fn eval(&self, x: T) -> T {
+        // Implementation using Horner's rule
         self.0
+            .iter()
+            .rev()
+            .copied()
+            .reduce(|a, b| a + x * b)
+            .unwrap_or_else(T::zero)
+    }
+
+    pub fn diff(&self) -> Self {
+        let data = self
+            .0
             .iter()
             .copied()
             .enumerate()
-            .fold(T::zero(), |acc, (i, s)| acc + s * x.powi(i as _))
+            .skip(1)
+            .map(|(i, x)| T::from_f64(i as _) * x)
+            .collect();
+        Self(data)
+    }
+}
+
+impl<T: Scalar + nalgebra::RealField + nalgebra::ComplexField> Polynom<T>
+where
+    DefaultAllocator: nalgebra::allocator::Allocator<T, Dyn, Dyn>,
+{
+    pub fn companion_matrix(&self) -> DMatrix<T> {
+        let rank = self.0.len();
+        let dyn_rank = Dyn(rank);
+        let mut ret = DMatrix::from_data(VecStorage::new(
+            dyn_rank,
+            dyn_rank,
+            iter::repeat_with(T::zero).take(rank * rank).collect(),
+        ));
+        ret.view_mut((1, 0), (rank - 1, rank - 1))
+            .fill_with_identity();
+        //ret.column_mut(rank - 1) = DVectorViewMut::from(self.0.as_mut_slice());
+        for (i, x) in ret.column_mut(rank - 1).iter_mut().enumerate() {
+            *x = -self.0[i];
+        }
+        ret
+    }
+
+    pub fn roots(&self) -> Vec<T> {
+        if self.degree() == 0 {
+            return vec![];
+        }
+
+        let mut p = self.clone();
+        let mut zeros = vec![];
+        let cast = <T as Scalar>::from_f64;
+        while p.degree() > 1 {
+            let pdiff = p.diff();
+            let z = newton_rhapson_mono(
+                |x| p.eval(x),
+                |x| pdiff.eval(x),
+                cast(1e-6),
+                100,
+                cast(100.0),
+            );
+            zeros.push(z);
+            p /= Self::polyline(-z, T::one());
+        }
+
+        // Final zero found by solving the linear equation p[1] * x + p[0] = 0
+        let z = -p.0[0] / p.0[1];
+        zeros.push(z);
+        zeros
     }
 }
 
@@ -103,6 +173,14 @@ impl<T: Copy + ops::Add<T>> ops::Add<Self> for Polynom<T> {
     }
 }
 
+impl<T: Copy + ops::AddAssign<T>> ops::AddAssign<Self> for Polynom<T> {
+    fn add_assign(&mut self, rhs: Self) {
+        for (y, x) in self.0.iter_mut().zip(rhs.0.iter().copied()) {
+            *y += x;
+        }
+    }
+}
+
 impl<T: Copy + ops::Sub<T>> ops::Sub<Self> for Polynom<T> {
     type Output = Polynom<T::Output>;
 
@@ -115,6 +193,14 @@ impl<T: Copy + ops::Sub<T>> ops::Sub<Self> for Polynom<T> {
                 .map(|(a, b)| a - b)
                 .collect(),
         )
+    }
+}
+
+impl<T: Copy + ops::SubAssign<T>> ops::SubAssign<Self> for Polynom<T> {
+    fn sub_assign(&mut self, rhs: Self) {
+        for (y, x) in self.0.iter_mut().zip(rhs.0.iter().copied()) {
+            *y -= x;
+        }
     }
 }
 
@@ -201,6 +287,7 @@ fn convolve<T: Copy + Zero + ops::AddAssign<T> + ops::Mul<T, Output = T>>(
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::{Complex, DMatrix, Dyn, VecStorage};
     use num_traits::{One, Zero};
     use rstest::rstest;
 
@@ -240,6 +327,36 @@ mod tests {
     #[case(Polynom(vec ! [1.0, 2.0, 1.0]), vec ! [- 1.0, - 1.0])]
     fn test_polynom_from_roots(#[case] expected: Polynom<f32>, #[case] roots: Vec<f32>) {
         let actual = Polynom::from_roots(roots);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_diff() {
+        let p = Polynom::polyline(1f64, 3.0);
+        let actual = p.diff();
+        let expected = Polynom::from_iter([3f64]);
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_companion_matrix() {
+        let p = Polynom::<f64>::from_iter([1.0, 2.0, 3.0, 4.0]);
+        let actual = p.companion_matrix();
+        #[rustfmt::skip]
+        let expected = DMatrix::from_data(VecStorage::new(Dyn(4), Dyn(4), vec![
+            0.0, 0.0, 0.0, -1.0,
+            1.0, 0.0, 0.0, -2.0,
+            0.0, 1.0, 0.0, -3.0,
+            0.0, 0.0, 1.0, -4.0,
+        ])).transpose();
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_roots() {
+        let p = Polynom::<f64>::from_iter([-1.0, 0.0, 1.0]);
+        let actual = p.roots();
+        let expected = vec![-1.0, 1.0];
         assert_eq!(expected, actual);
     }
 }
