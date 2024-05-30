@@ -23,7 +23,7 @@ impl Variant {
         let Self { ident, name } = self;
         let name = name.clone().unwrap_or(ident.to_string());
         quote! {
-            Self::#ident => Cow::Borrowed(#name)
+            Self::#ident => std::borrow::Cow::Borrowed(#name)
         }
     }
 
@@ -61,16 +61,16 @@ impl quote::ToTokens for DeriveParamName {
         let impl_name = fields.iter().map(|f| f.impl_match_name());
         let impl_intoid = fields.iter().enumerate().map(|(i, f)| f.impl_into_id(i));
         let impl_fromid = fields.iter().enumerate().map(|(i, f)| f.impl_from_id(i));
-        let variants = fields.iter().map(|Variant { ident, .. }| quote! { Self::#ident });
+        let variants = fields
+            .iter()
+            .map(|Variant { ident, .. }| quote! { Self::#ident });
         stream.extend(quote! {
-            use valib::dsp::parameter::ParamId;
-
             impl ParamName for #ident {
                 fn count() -> u64 {
                     #count
                 }
 
-                fn name(&self) -> Cow<'static, str> {
+                fn name(&self) -> std::borrow::Cow<'static, str> {
                     match self {
                         #(#impl_name),*
                     }
@@ -83,7 +83,7 @@ impl quote::ToTokens for DeriveParamName {
                 }
 
                 fn into_id(self) -> Self {
-                    match id {
+                    match self {
                         #(#impl_intoid),*
                     }
                 }

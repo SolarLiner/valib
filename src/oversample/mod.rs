@@ -8,12 +8,12 @@ use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use crate::dsp::parameter::{HasParameters, Parameter};
 use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::Linear;
+use crate::voice::VoiceManager;
 use crate::Scalar;
 use crate::{
     dsp::{blocks::Series, DSPProcessBlock},
     filters::biquad::Biquad,
 };
-use crate::voice::VoiceManager;
 
 const CASCADE: usize = 16;
 
@@ -234,14 +234,17 @@ where
 }
 
 impl<S, P: HasParameters> HasParameters for Oversampled<S, P> {
-    type Enum = P::Enum;
+    type Name = P::Name;
 
-    fn get_parameter(&self, param: Self::Enum) -> &Parameter {
+    fn get_parameter(&self, param: Self::Name) -> &Parameter {
         self.inner.get_parameter(param)
     }
 }
 
-impl<S, P, const N: usize> VoiceManager<N> for Oversampled<S, P> where P: VoiceManager<N> {
+impl<S, P, const N: usize> VoiceManager<N> for Oversampled<S, P>
+where
+    P: VoiceManager<N>,
+{
     fn note_on(&mut self, midi_note: u8, velocity: f32) {
         self.inner.note_on(midi_note, velocity);
     }

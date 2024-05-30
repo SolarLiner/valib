@@ -7,12 +7,21 @@ use nalgebra::Complex;
 use num_traits::One;
 use numeric_literals::replace_float_literals;
 
-use crate::dsp::{DSPMeta, DSPProcess};
 use crate::{
-    dsp::analysis::DspAnalysis,
+    dsp::{
+        analysis::DspAnalysis,
+        parameter::{HasParameters, ParamId, ParamName},
+        DSPMeta, DSPProcess,
+    },
     saturators::{Linear, Saturator},
     Scalar,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ParamName)]
+pub enum SvfParams {
+    Cutoff,
+    Resonance,
+}
 
 /// SVF topology filter, with optional non-linearities.
 #[derive(Debug, Copy, Clone)]
@@ -26,6 +35,18 @@ pub struct Svf<T, Mode = Linear> {
     w_step: T,
     samplerate: T,
     sats: [Mode; 2],
+}
+
+impl<T: Scalar, Mode: Saturator<T>> HasParameters for Svf<T, Mode> {
+    type Name = SvfParams;
+
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        let value = T::from_f64(value as _);
+        match param {
+            SvfParams::Cutoff => self.set_cutoff(value),
+            SvfParams::Resonance => self.set_r(value),
+        }
+    }
 }
 
 impl<T: Scalar, Mode: Saturator<T>> DSPMeta for Svf<T, Mode> {

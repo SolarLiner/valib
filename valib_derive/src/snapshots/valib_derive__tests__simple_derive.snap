@@ -24,7 +24,7 @@ impl ParamName for DspParams {
         }
     }
     fn into_id(self) -> Self {
-        match id {
+        match self {
             Self::Cutoff => 0,
             Self::Resonance => 1,
             Self::Drive => 2,

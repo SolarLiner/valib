@@ -73,9 +73,9 @@ impl DspInner {
 }
 
 impl HasParameters for DspInner {
-    type Enum = DspParam;
+    type Name = DspParam;
 
-    fn get_parameter(&self, param: Self::Enum) -> &Parameter {
+    fn get_parameter(&self, param: Self::Name) -> &Parameter {
         &self.params[param].param
     }
 }

@@ -140,9 +140,9 @@ impl DspInner {
 }
 
 impl HasParameters for DspInner {
-    type Enum = DspParams;
+    type Name = DspParams;
 
-    fn get_parameter(&self, param: Self::Enum) -> &Parameter {
+    fn get_parameter(&self, param: Self::Name) -> &Parameter {
         match param {
             DspParams::Drive => &self.drive.param,
             DspParams::ModelSwitch => &self.model_switch,
@@ -236,9 +236,9 @@ impl DSPProcessBlock<1, 1> for Dsp {
 }
 
 impl HasParameters for Dsp {
-    type Enum = DspParams;
+    type Name = DspParams;
 
-    fn get_parameter(&self, param: Self::Enum) -> &Parameter {
+    fn get_parameter(&self, param: Self::Name) -> &Parameter {
         self.inner.get_parameter(param)
     }
 }

@@ -46,13 +46,13 @@ pub trait SimdCast<E>: SimdValue {
     fn cast(self) -> Self::Output;
 }
 
-impl<E1, E2, const N: usize> SimdCast<E2> for simba::simd::AutoSimd<[E1; N]>
+impl<E1, E2, const N: usize> SimdCast<E2> for AutoSimd<[E1; N]>
 where
     Self: SimdValue<Element = E1>,
-    simba::simd::AutoSimd<[E2; N]>: SimdValue<Element = E2>,
+    AutoSimd<[E2; N]>: SimdValue<Element = E2>,
     E2: CastFrom<E1>,
 {
-    type Output = simba::simd::AutoSimd<[E2; N]>;
+    type Output = AutoSimd<[E2; N]>;
 
     fn cast(self) -> Self::Output {
         assert_eq!(Self::Output::lanes(), N);
@@ -130,16 +130,16 @@ mod tests {
     fn test_type_compatibility() {
         is_compatible::<f32>();
         is_compatible::<f64>();
-        is_compatible::<simba::simd::AutoF32x2>();
-        is_compatible::<simba::simd::AutoF32x4>();
-        is_compatible::<simba::simd::AutoF64x2>();
-        is_compatible::<simba::simd::AutoF64x4>();
-        is_compatible::<simba::simd::WideF32x4>();
-        is_compatible::<simba::simd::WideF64x4>();
+        is_compatible::<simd::AutoF32x2>();
+        is_compatible::<simd::AutoF32x4>();
+        is_compatible::<simd::AutoF64x2>();
+        is_compatible::<simd::AutoF64x4>();
+        is_compatible::<simd::WideF32x4>();
+        is_compatible::<simd::WideF64x4>();
 
         is_cast_compatible::<f32, usize>();
         is_cast_compatible::<f64, usize>();
-        is_cast_compatible::<simba::simd::AutoF32x4, usize>();
-        is_cast_compatible::<simba::simd::AutoF64x4, usize>();
+        is_cast_compatible::<simd::AutoF32x4, usize>();
+        is_cast_compatible::<simd::AutoF64x4, usize>();
     }
 }

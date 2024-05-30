@@ -185,9 +185,9 @@ impl DSPProcess<1, 1> for DspInner {
 }
 
 impl HasParameters for DspInner {
-    type Enum = DspParameters;
+    type Name = DspParameters;
 
-    fn get_parameter(&self, param: Self::Enum) -> &Parameter {
+    fn get_parameter(&self, param: Self::Name) -> &Parameter {
         match param {
             DspParameters::LadderType => &self.ladder_type,
             DspParameters::Drive => &self.drive.param,

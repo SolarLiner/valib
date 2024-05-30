@@ -10,125 +10,23 @@
 //!
 //! [`Series`]: crate::dsp::blocks::Series
 //! [`Parallel`]: crate::dsp::blocks::Parallel
-use core::fmt;
 use std::borrow::Cow;
-use std::fmt::Formatter;
 use std::marker::PhantomData;
-use std::ops::{self, Deref};
+use std::ops;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
-use nalgebra::SMatrix;
 use portable_atomic::{AtomicBool, AtomicF32};
-
-use crate::dsp::blocks::{ModMatrix, Series2, P1};
-use crate::dsp::{DSPMeta, DSPProcess};
-use crate::saturators::Slew;
 
 pub use valib_derive::ParamName;
 
-struct ParamImpl {
-    value: AtomicF32,
-    name: Option<String>,
-    changed: AtomicBool,
-}
-
-/// Shared atomic float value for providing parameters to DSP algorithms without having direct reference
-/// to them.
-#[derive(Clone)]
-pub struct Parameter(Arc<ParamImpl>);
-
-impl fmt::Debug for Parameter {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Parameter")
-            .field(&self.0.name)
-            .field(&self.0.value.load(Ordering::Relaxed))
-            .finish()
-    }
-}
-
-impl Parameter {
-    pub fn new(value: f32) -> Self {
-        Self(Arc::new(ParamImpl {
-            value: AtomicF32::new(value),
-            name: None,
-            changed: AtomicBool::new(true),
-        }))
-    }
-
-    pub fn name(&self) -> Option<&str> {
-        self.0.name.as_deref()
-    }
-
-    pub fn named(self, name: impl ToString) -> Self {
-        Self(Arc::new(ParamImpl {
-            value: AtomicF32::new(self.0.value.load(Ordering::SeqCst)),
-            name: Some(name.to_string()),
-            changed: AtomicBool::new(self.0.changed.load(Ordering::SeqCst)),
-        }))
-    }
-
-    pub fn get_value(&self) -> f32 {
-        self.0.value.load(Ordering::Relaxed)
-    }
-
-    pub fn set_value(&self, value: f32) {
-        self.0.changed.store(true, Ordering::Release);
-        self.0.value.store(value, Ordering::Relaxed);
-    }
-
-    pub fn has_changed(&self) -> bool {
-        self.0.changed.swap(false, Ordering::AcqRel)
-    }
-
-    pub fn get_bool(&self) -> bool {
-        self.get_value() > 0.5
-    }
-
-    pub fn set_bool(&self, value: bool) {
-        self.set_value(if value { 1.0 } else { 0.0 })
-    }
-
-    pub fn get_discrete(&self, num_values: usize) -> usize {
-        (self.get_value() * num_values as f32).round() as _
-    }
-
-    pub fn set_discrete(&self, num_values: usize, value: usize) {
-        self.set_value(value as f32 / num_values as f32);
-    }
-
-    /* TODO: Figure out how to make this work
-
-    pub fn get_enum<E: Enum>(&self) -> E {
-        let index = self.get_value().min(E::LENGTH as f32 - 1.0);
-        E::from_usize(index.floor() as _)
-    }
-
-    pub fn set_enum<E: Enum>(&self, value: E) {
-        let step = f32::recip(E::LENGTH as f32);
-        self.set_value(value.into_usize() as f32 * step);
-    }
-    */
-
-    pub fn filtered<P>(&self, dsp: P) -> FilteredParam<P> {
-        FilteredParam {
-            param: self.clone(),
-            dsp,
-        }
-    }
-
-    pub fn smoothed_linear(&self, samplerate: f32, max_dur_ms: f32) -> SmoothedParam {
-        SmoothedParam::linear(self.clone(), samplerate, max_dur_ms)
-    }
-
-    pub fn smoothed_exponential(&self, samplerate: f32, t60_ms: f32) -> SmoothedParam {
-        SmoothedParam::exponential(self.clone(), samplerate, t60_ms)
-    }
-}
+use crate::dsp::{DSPMeta, DSPProcess};
+use crate::saturators::Slew;
 
 /// Filtered parameter value, useful with any DSP<1, 1, Sample=f32> algorithm.
 pub struct FilteredParam<P> {
-    pub param: Parameter,
+    pub param: f32,
     pub dsp: P,
 }
 
@@ -145,20 +43,22 @@ impl<P: DSPProcess<1, 1, Sample = f32>> FilteredParam<P> {
 
 impl<P: DSPProcess<1, 1, Sample = f32>> DSPProcess<0, 1> for FilteredParam<P> {
     fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
-        self.dsp.process([self.param.get_value()])
+        self.dsp.process([self.param])
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 enum Smoothing {
-    Exponential(Series2<P1<f32>, ModMatrix<f32, 3, 1>, 3>),
+    Exponential { state: f32, fc: f32, lambda: f32 },
     Linear { slew: Slew<f32>, max_diff: f32 },
 }
 
 impl Smoothing {
     fn set_samplerate(&mut self, new_sr: f32) {
         match self {
-            Self::Exponential(s) => s.left_mut().set_samplerate(new_sr),
+            Self::Exponential { fc, lambda, .. } => {
+                *lambda = *fc / new_sr;
+            }
             Self::Linear { slew, max_diff } => {
                 slew.set_max_diff(*max_diff, new_sr);
             }
@@ -174,7 +74,10 @@ impl DSPProcess<1, 1> for Smoothing {
     #[inline]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         match self {
-            Self::Exponential(s) => s.process(x),
+            Self::Exponential { state, lambda, .. } => {
+                *state += (x[0] - *state) * *lambda;
+                [*state]
+            }
             Self::Linear { slew: s, .. } => s.process(x),
         }
     }
@@ -183,7 +86,7 @@ impl DSPProcess<1, 1> for Smoothing {
 /// Smoothed parameter. Smoothing can be applied exponentially or linearly.
 #[derive(Debug, Clone)]
 pub struct SmoothedParam {
-    pub param: Parameter,
+    pub param: f32,
     smoothing: Smoothing,
 }
 
@@ -198,7 +101,7 @@ impl DSPMeta for SmoothedParam {
 impl DSPProcess<0, 1> for SmoothedParam {
     #[inline]
     fn process(&mut self, _x: [Self::Sample; 0]) -> [Self::Sample; 1] {
-        self.smoothing.process([self.param.get_value()])
+        self.smoothing.process([self.param])
     }
 }
 
@@ -210,13 +113,12 @@ impl SmoothedParam {
     /// * `param`: Inner parameter to tap values from.
     /// * `samplerate`: Samplerate at which the smoother will run.
     /// * `duration_ms`: Maximum duration of a sweep, that is the duration it would take to go from one extreme to the other.
-    pub fn linear(param: Parameter, samplerate: f32, duration_ms: f32) -> Self {
+    pub fn linear(initial_value: f32, samplerate: f32, duration_ms: f32) -> Self {
         let max_diff = 1000.0 / duration_ms;
-        let initial_state = param.get_value();
         Self {
-            param,
+            param: initial_value,
             smoothing: Smoothing::Linear {
-                slew: Slew::new(samplerate, max_diff).with_state(initial_state),
+                slew: Slew::new(samplerate, max_diff).with_state(initial_value),
                 max_diff,
             },
         }
@@ -229,17 +131,15 @@ impl SmoothedParam {
     /// * `param`: Inner parameter to tap values from
     /// * `samplerate`: Samplerate parameter
     /// * `t60_ms`: "Time to decay by 60 dB" -- the time it takes for the output to be within 0.1% of the target value.
-    pub fn exponential(param: Parameter, samplerate: f32, t60_ms: f32) -> Self {
+    pub fn exponential(initial_value: f32, samplerate: f32, t60_ms: f32) -> Self {
         let tau = 6.91 * t60_ms / 1e3;
-        let initial_value = param.get_value();
         Self {
-            param,
-            smoothing: Smoothing::Exponential(Series2::new(
-                P1::new(samplerate, tau.recip()).with_state(initial_value),
-                ModMatrix {
-                    weights: SMatrix::<_, 1, 3>::new(1.0, 0.0, 0.0),
-                },
-            )),
+            param: initial_value,
+            smoothing: Smoothing::Exponential {
+                state: initial_value,
+                fc: tau,
+                lambda: tau / samplerate,
+            },
         }
     }
 
@@ -260,7 +160,7 @@ pub type ParamId = u64;
 /// This trait is most easily implemented as an enum of all possible parameters, but it allows
 /// constructs such as `[P; N]` where `P: ParamName` and `const N: usize` to be defined for
 /// automatic duplication of parameters, or 1->N communication of parameter values.
-pub trait ParamName: Sized {
+pub trait ParamName: Copy {
     /// Total number of elements in this type
     fn count() -> usize;
 
@@ -293,32 +193,79 @@ pub trait ParamName: Sized {
 /// Trait of types which have modulatable parameters.
 pub trait HasParameters {
     /// Parameter name type
-    type Enum: Copy + ParamName;
+    type Name: Copy + ParamName;
 
-    /// Gets the matching [`Parameter`] for the parameter name
-    fn get_parameter(&self, param: Self::Enum) -> &Parameter;
+    /// Set a new value for the parameter at the given parameter name.
+    fn set_parameter(&mut self, param: Self::Name, value: f32);
+}
 
-    /// Overridable shortcut for `self.get_parameter(param).set_value(value)`, which can be used to
-    /// react to changes in an event-driven way.
-    ///
-    /// Consumers of this trait should use this method directly to allow behavior customization,
-    /// instead of getting the parameter and setting its value directly.
-    fn set_parameter(&self, param: Self::Enum, value: f32) {
-        self.get_parameter(param).set_value(value);
+pub trait HasParametersExt: HasParameters {
+    fn set_parameter_bool(&mut self, param: Self::Name, value: bool) {
+        self.set_parameter(param, if value { 1.0 } else { 0.0 });
     }
 
-    /// Get the name of this parameter, that is either the name set on the [`Parameter`], or the
-    /// default name of the [`Self::Enum`] type.
-    fn param_name(&self, param: Self::Enum) -> Cow<'static, str> {
-        self.get_parameter(param)
-            .name()
-            .map(|s| Cow::Owned(s.to_string()))
-            .unwrap_or_else(|| param.name())
+    fn set_parameter_discrete(&mut self, param: Self::Name, num_values: usize, value: usize) {
+        let value = value as f32 / num_values as f32;
+        self.set_parameter(param, value);
+    }
+}
+
+impl<'a, P: HasParameters> HasParameters for &'a mut P {
+    type Name = P::Name;
+
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        HasParameters::set_parameter(*self, param, value);
+    }
+}
+
+impl<P: HasParameters> HasParameters for Box<P> {
+    type Name = P::Name;
+
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        HasParameters::set_parameter(&mut *self, param, value);
+    }
+}
+
+impl<P: HasParameters> HasParameters for std::rc::Rc<P> {
+    type Name = P::Name;
+
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        HasParameters::set_parameter(&mut *self, param, value);
+    }
+}
+
+impl<P: HasParameters> HasParameters for Arc<P> {
+    type Name = P::Name;
+
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        HasParameters::set_parameter(&mut *self, param, value);
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Dynamic<const N: ParamId>(ParamId);
+
+impl<const N: ParamId> Dynamic<N> {
+    pub fn new(value: ParamId) -> Option<Self> {
+        (value < N).then_some(Self(value))
+    }
+}
+
+impl<const N: ParamId> ParamName for Dynamic<N> {
+    fn count() -> usize {
+        N as usize
     }
 
-    /// Iterate through all parameters in this type.
-    fn iter_parameters(&self) -> impl Iterator<Item = (Self::Enum, &Parameter)> {
-        Self::Enum::iter().map(|p| (p, self.get_parameter(p)))
+    fn from_id(value: ParamId) -> Self {
+        Self::new(value).unwrap()
+    }
+
+    fn into_id(self) -> ParamId {
+        self.0
+    }
+
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Owned(self.0.to_string())
     }
 }
 
@@ -352,7 +299,7 @@ impl<P: ParamName, T> Iterator for ParamMapIntoIter<P, T> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = P::count() as usize;
+        let len = P::count();
         (len, Some(len))
     }
 }
@@ -364,8 +311,8 @@ impl<P: ParamName, T> ExactSizeIterator for ParamMapIntoIter<P, T> {
 }
 
 impl<P: ParamName, T> IntoIterator for ParamMap<P, T> {
-    type IntoIter = ParamMapIntoIter<P, T>;
     type Item = (P, T);
+    type IntoIter = ParamMapIntoIter<P, T>;
 
     fn into_iter(self) -> Self::IntoIter {
         ParamMapIntoIter {
@@ -427,20 +374,87 @@ impl<P: ParamName, T> ParamMap<P, T> {
     }
 }
 
-/// Separate controller for controlling parameters of a [`DSPProcess`] instance from another place.
-#[derive(Debug, Clone)]
-pub struct ParamController<P: HasParameters>(ParamMap<P::Enum, Parameter>);
+pub trait HasParametersErased {
+    fn set_parameter_raw(&mut self, param_id: ParamId, value: f32);
+}
 
-impl<P: HasParameters> From<&P> for ParamController<P> {
-    fn from(value: &P) -> Self {
-        Self(ParamMap::new(|p| value.get_parameter(p).clone()))
+struct ParamsProxy<P: ParamName> {
+    params: ParamMap<P, Arc<AtomicF32>>,
+    param_changed: ParamMap<P, Arc<AtomicBool>>,
+}
+
+pub type RemoteControl<P> = Arc<ParamsProxy<P>>;
+
+impl<P: ParamName> ParamsProxy<P> {
+    fn new() -> Arc<Self> {
+        let params = ParamMap::new(|_| Arc::new(AtomicF32::new(0.0)));
+        let param_changed = ParamMap::new(|_| Arc::new(AtomicBool::new(false)));
+        Arc::new(Self {
+            params,
+            param_changed,
+        })
+    }
+
+    fn set_parameter(&self, param: P, value: f32) {
+        self.param_changed[param].store(true, Ordering::SeqCst);
+        self.params[param].store(value, Ordering::SeqCst);
+    }
+
+    fn get_update(&self, param: P) -> Option<f32> {
+        if self.param_changed[param].compare_exchange(
+            true,
+            false,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
+        ) {
+            return Some(self.params[param].load(Ordering::SeqCst));
+        }
+        return None;
     }
 }
 
-impl<P: HasParameters> Deref for ParamController<P> {
-    type Target = ParamMap<P::Enum, Parameter>;
+pub struct RemoteControlled<P: HasParameters> {
+    pub inner: P,
+    proxy: RemoteControl<P::Name>,
+    update_params_phase: f32,
+    update_params_step: f32,
+}
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl<P: HasParameters + DSPMeta> DSPMeta for RemoteControlled<P> {
+    type Sample = P::Sample;
+}
+
+impl<P: HasParameters + DSPProcess<I, O>, const I: usize, const O: usize> DSPProcess<I, O>
+    for RemoteControlled<P>
+{
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+        self.update_params_phase += self.update_params_step;
+        if self.update_params_phase > 1.0 {
+            self.update_params_phase -= 1.0;
+            self.update_parameters();
+        }
+
+        self.inner.process(x)
+    }
+}
+
+impl<P: HasParameters> RemoteControlled<P> {
+    pub fn new(samplerate: f32, update_frequency: f32, inner: P) -> Self {
+        Self {
+            inner,
+            proxy: ParamsProxy::new(),
+            update_params_phase: 0.0,
+            update_params_step: update_frequency * samplerate.recip(),
+        }
+    }
+}
+
+impl<P: HasParameters> RemoteControlled<P> {
+    pub fn update_parameters(&mut self) {
+        for param in P::Name::iter() {
+            if let Some(value) = self.proxy.get_update(param) {
+                self.inner.set_parameter(param, value);
+            }
+        }
     }
 }

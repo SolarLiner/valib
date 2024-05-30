@@ -133,16 +133,16 @@ impl AnyParam {
 #[derive(Debug)]
 pub struct NihParamsController<P: HasParameters>
 where
-    P::Enum: EnumArray<AnyParam>,
+    P::Name: EnumArray<AnyParam>,
 {
-    nih_map: EnumMap<P::Enum, AnyParam>,
+    nih_map: EnumMap<P::Name, AnyParam>,
 }
 
 impl<P: HasParameters> NihParamsController<P>
 where
-    P::Enum: EnumArray<AnyParam>,
+    P::Name: EnumArray<AnyParam>,
 {
-    pub fn new(inner: &P, param_map: impl Fn(P::Enum, String) -> AnyParam) -> Self {
+    pub fn new(inner: &P, param_map: impl Fn(P::Name, String) -> AnyParam) -> Self {
         let nih_map = EnumMap::from_fn(|k| {
             param_map(k, inner.full_name(k)).bind_to_parameter(inner.get_parameter(k))
         });
@@ -152,8 +152,8 @@ where
 
 unsafe impl<P: 'static + HasParameters> Params for NihParamsController<P>
 where
-    P::Enum: 'static + Send + Sync + EnumArray<AnyParam>,
-    <P::Enum as EnumArray<AnyParam>>::Array: Send + Sync,
+    P::Name: 'static + Send + Sync + EnumArray<AnyParam>,
+    <P::Name as EnumArray<AnyParam>>::Array: Send + Sync,
 {
     fn param_map(&self) -> Vec<(String, ParamPtr, String)> {
         self.nih_map

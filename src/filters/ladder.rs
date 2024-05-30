@@ -17,9 +17,10 @@ use std::fmt;
 use nalgebra::{Complex, SVector};
 use numeric_literals::replace_float_literals;
 
+use crate::dsp::parameter::HasParameters;
 use crate::dsp::DSPMeta;
 use crate::{
-    dsp::{analysis::DspAnalysis, DSPProcess},
+    dsp::{analysis::DspAnalysis, parameter::ParamId, parameter::ParamName, DSPProcess},
     math::bilinear_prewarming_bounded,
     saturators::{Saturator, Tanh},
     Scalar,
@@ -95,6 +96,12 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ParamName)]
+pub enum LadderParams {
+    Cutoff,
+    Resonance,
+}
+
 /// Ladder filter. This [`DSPProcess`] instance implements a saturated 4-pole lowpass filter, with feedback negatively added
 /// back into the input.
 #[derive(Debug, Copy, Clone)]
@@ -107,6 +114,17 @@ pub struct Ladder<T, Topo = OTA<Tanh>> {
     k: T,
     /// Whether or not the DC gain loss due to higher resonance values is compensated.
     pub compensated: bool,
+}
+
+impl<T: Scalar, Topo: LadderTopology<T>> HasParameters for Ladder<T, Topo> {
+    type Name = LadderParams;
+
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        match param {
+            LadderParams::Cutoff => self.set_cutoff(value),
+            LadderParams::Resonance => self.set_resonance(value),
+        }
+    }
 }
 
 impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
@@ -174,7 +192,6 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
     ///
     /// * `samplerate`: Signal sampling rate (Hz)
     /// * `frequency`: Cutoff frequency (Hz)
-    #[replace_float_literals(T::from_f64(literal))]
     pub fn set_cutoff(&mut self, frequency: T) {
         self.wc = bilinear_prewarming_bounded(self.samplerate, T::simd_two_pi() * frequency);
     }
