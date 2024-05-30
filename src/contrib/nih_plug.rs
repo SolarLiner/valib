@@ -5,13 +5,12 @@ use std::fmt::Formatter;
 use std::sync::Arc;
 
 use crate::dsp::buffer::AudioBuffer;
-use enum_map::{Enum, EnumArray, EnumMap};
 use nih_plug::nih_debug_assert;
 use nih_plug::params::FloatParam;
 use nih_plug::prelude::*;
 use nih_plug::{buffer::Buffer, params::Param};
 
-use crate::dsp::parameter::{HasParameters, Parameter};
+use crate::dsp::parameter::{HasParameters, ParamName, RemoteControl};
 use crate::dsp::DSPProcessBlock;
 use crate::Scalar;
 
@@ -31,135 +30,40 @@ pub fn enum_int_param<E: Enum + ToString>(
 }
 
 /// Bind a [`valib`] [`Parameter`] to a [`nig_plug`] parameter..
-pub trait BindToParameter {
+pub trait BindToParameter<P: ParamName> {
     /// Bind a [`Parameter`] to a nih-plug [`FloatParam`].
-    fn bind_to_parameter(self, param: &Parameter) -> Self;
+    fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self;
 }
 
-impl BindToParameter for FloatParam {
-    fn bind_to_parameter(self, param: &Parameter) -> Self {
-        let param = param.clone();
-        self.with_callback(Arc::new(move |value| param.set_value(value)))
+impl<P: ParamName> BindToParameter<P> for FloatParam {
+    fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
+        let set = set.clone();
+        self.with_callback(Arc::new(move |value| set.set_parameter(param, value)))
     }
 }
 
-impl BindToParameter for IntParam {
-    fn bind_to_parameter(self, param: &Parameter) -> Self {
-        let param = param.clone();
-        self.with_callback(Arc::new(move |x| param.set_value(x as _)))
+impl<P: ParamName> BindToParameter<P> for IntParam {
+    fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
+        let set = set.clone();
+        self.with_callback(Arc::new(move |x| set.set_parameter(param, x as _)))
     }
 }
 
-impl BindToParameter for BoolParam {
-    fn bind_to_parameter(self, param: &Parameter) -> Self {
-        let param = param.clone();
-        self.with_callback(Arc::new(move |b| param.set_bool(b)))
+impl<P: ParamName> BindToParameter<P> for BoolParam {
+    fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
+        let set = set.clone();
+        self.with_callback(Arc::new(move |b| {
+            set.set_parameter(param, if b { 1.0 } else { 0.0 })
+        }))
     }
 }
 
-impl<E: 'static + PartialEq + Enum + nih_plug::params::enums::Enum> BindToParameter
-    for EnumParam<E>
-{
-    fn bind_to_parameter(self, param: &Parameter) -> Self {
-        let param = param.clone();
-        self.with_callback(Arc::new(move |e| param.set_enum(e)))
-    }
-}
-
-#[derive(Debug)]
-pub enum AnyParam {
-    FloatParam(FloatParam),
-    IntParam(IntParam),
-    BoolParam(BoolParam),
-}
-
-impl fmt::Display for AnyParam {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::FloatParam(fp) => write!(f, "{}", fp),
-            Self::IntParam(fp) => write!(f, "{}", fp),
-            Self::BoolParam(fp) => write!(f, "{}", fp),
-        }
-    }
-}
-
-impl From<FloatParam> for AnyParam {
-    fn from(value: FloatParam) -> Self {
-        Self::FloatParam(value)
-    }
-}
-
-impl From<IntParam> for AnyParam {
-    fn from(value: IntParam) -> Self {
-        Self::IntParam(value)
-    }
-}
-
-impl From<BoolParam> for AnyParam {
-    fn from(value: BoolParam) -> Self {
-        Self::BoolParam(value)
-    }
-}
-
-impl BindToParameter for AnyParam {
-    fn bind_to_parameter(self, param: &Parameter) -> Self {
-        match self {
-            Self::FloatParam(fp) => Self::FloatParam(fp.bind_to_parameter(param)),
-            Self::IntParam(ip) => Self::IntParam(ip.bind_to_parameter(param)),
-            Self::BoolParam(bp) => Self::BoolParam(bp.bind_to_parameter(param)),
-        }
-    }
-}
-
-impl AnyParam {
-    pub fn as_ptr(&self) -> ParamPtr {
-        match self {
-            Self::FloatParam(fp) => fp.as_ptr(),
-            Self::IntParam(fp) => fp.as_ptr(),
-            Self::BoolParam(fp) => fp.as_ptr(),
-        }
-    }
-
-    pub fn name(&self) -> &str {
-        match self {
-            Self::FloatParam(fp) => fp.name(),
-            Self::IntParam(ip) => ip.name(),
-            Self::BoolParam(bp) => bp.name(),
-        }
-    }
-}
-
-/// Adapter struct for processors with parameters
-#[derive(Debug)]
-pub struct NihParamsController<P: HasParameters>
-where
-    P::Name: EnumArray<AnyParam>,
-{
-    nih_map: EnumMap<P::Name, AnyParam>,
-}
-
-impl<P: HasParameters> NihParamsController<P>
-where
-    P::Name: EnumArray<AnyParam>,
-{
-    pub fn new(inner: &P, param_map: impl Fn(P::Name, String) -> AnyParam) -> Self {
-        let nih_map = EnumMap::from_fn(|k| {
-            param_map(k, inner.full_name(k)).bind_to_parameter(inner.get_parameter(k))
-        });
-        Self { nih_map }
-    }
-}
-
-unsafe impl<P: 'static + HasParameters> Params for NihParamsController<P>
-where
-    P::Name: 'static + Send + Sync + EnumArray<AnyParam>,
-    <P::Name as EnumArray<AnyParam>>::Array: Send + Sync,
-{
-    fn param_map(&self) -> Vec<(String, ParamPtr, String)> {
-        self.nih_map
-            .iter()
-            .map(|(k, p)| (k.into_usize().to_string(), p.as_ptr(), p.name().to_string()))
-            .collect()
+impl<E: 'static + PartialEq + Enum, P: ParamName> BindToParameter<P> for EnumParam<E> {
+    fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
+        let set = set.clone();
+        self.with_callback(Arc::new(move |e| {
+            set.set_parameter(param, e.into_index() as _)
+        }))
     }
 }
 

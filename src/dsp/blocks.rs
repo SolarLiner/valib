@@ -778,7 +778,7 @@ impl<FF: DSPProcess<N, N>, FB, const N: usize> Feedback<FF, FB, N> {
     }
 }
 
-impl<FF: HasParameters, const N: ParamId> HasParameters for Feedback<FF, (), { N as usize }> {
+impl<FF: HasParameters, const N: usize> HasParameters for Feedback<FF, (), N> {
     type Name = FeedbackParams<FF::Name, Dynamic<0>, N>;
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {

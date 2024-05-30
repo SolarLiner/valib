@@ -23,6 +23,7 @@ pub use valib_derive::ParamName;
 
 use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::Slew;
+use crate::Scalar;
 
 /// Filtered parameter value, useful with any DSP<1, 1, Sample=f32> algorithm.
 pub struct FilteredParam<P> {
@@ -146,6 +147,10 @@ impl SmoothedParam {
     pub fn next_sample(&mut self) -> f32 {
         self.process([])[0]
     }
+
+    pub fn next_sample_as<T: Scalar>(&mut self) -> T {
+        T::from_f64(self.next_sample() as _)
+    }
 }
 
 /// Parameter ID alias. Useful for type-erasing parameter names and make communication easier, but
@@ -153,7 +158,7 @@ impl SmoothedParam {
 ///
 /// Note that transmuting between param ids is safe because both sides allow converting to and from
 /// a [`ParamId`].
-pub type ParamId = u64;
+pub type ParamId = usize;
 
 /// Trait for types that are parameter names.
 ///
@@ -227,14 +232,6 @@ impl<P: HasParameters> HasParameters for Box<P> {
 }
 
 impl<P: HasParameters> HasParameters for std::rc::Rc<P> {
-    type Name = P::Name;
-
-    fn set_parameter(&mut self, param: Self::Name, value: f32) {
-        HasParameters::set_parameter(&mut *self, param, value);
-    }
-}
-
-impl<P: HasParameters> HasParameters for Arc<P> {
     type Name = P::Name;
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {
@@ -386,7 +383,7 @@ struct ParamsProxy<P: ParamName> {
 pub type RemoteControl<P> = Arc<ParamsProxy<P>>;
 
 impl<P: ParamName> ParamsProxy<P> {
-    fn new() -> Arc<Self> {
+    pub fn new() -> Arc<Self> {
         let params = ParamMap::new(|_| Arc::new(AtomicF32::new(0.0)));
         let param_changed = ParamMap::new(|_| Arc::new(AtomicBool::new(false)));
         Arc::new(Self {
@@ -395,7 +392,7 @@ impl<P: ParamName> ParamsProxy<P> {
         })
     }
 
-    fn set_parameter(&self, param: P, value: f32) {
+    pub fn set_parameter(&self, param: P, value: f32) {
         self.param_changed[param].store(true, Ordering::SeqCst);
         self.params[param].store(value, Ordering::SeqCst);
     }
@@ -415,7 +412,7 @@ impl<P: ParamName> ParamsProxy<P> {
 
 pub struct RemoteControlled<P: HasParameters> {
     pub inner: P,
-    proxy: RemoteControl<P::Name>,
+    pub proxy: RemoteControl<P::Name>,
     update_params_phase: f32,
     update_params_step: f32,
 }
