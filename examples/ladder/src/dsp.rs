@@ -1,10 +1,9 @@
+use nih_plug::prelude::Enum;
 use std::fmt;
 use std::fmt::Formatter;
 
-use enum_map::Enum;
-
-use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::{DSPMeta, DSPProcess};
+use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
+use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess};
 use valib::filters::ladder::{Ideal, Ladder, Transistor, OTA};
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::DiodeClipperModel;
@@ -110,7 +109,7 @@ impl LadderType {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Enum)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, ParamName)]
 pub enum DspParameters {
     LadderType,
     Drive,
@@ -120,11 +119,12 @@ pub enum DspParameters {
 }
 
 pub struct DspInner {
-    ladder_type: Parameter,
+    ladder_type: LadderType,
+    ladder_type_changed: bool,
     drive: SmoothedParam,
     cutoff: SmoothedParam,
     resonance: SmoothedParam,
-    compensated: Parameter,
+    compensated: bool,
     ladder: DspLadder,
     samplerate: f32,
 }
@@ -134,22 +134,20 @@ impl DspInner {
         let fc = Sample::splat(self.cutoff.next_sample());
         let res = Sample::splat({
             let k = 4.0 * self.resonance.next_sample();
-            if self.ladder_type.get_enum::<LadderType>() == LadderType::Ideal {
+            if matches!(self.ladder_type, LadderType::Ideal) {
                 k.min(3.95)
             } else {
                 k
             }
         });
-        if self.ladder_type.has_changed() {
-            self.ladder =
-                self.ladder_type
-                    .get_enum::<LadderType>()
-                    .as_ladder(self.samplerate, fc, res);
+        if self.ladder_type_changed {
+            self.ladder_type_changed = false;
+            self.ladder = self.ladder_type.as_ladder(self.samplerate, fc, res);
         }
 
         self.ladder.set_cutoff(fc);
         self.ladder.set_resonance(res);
-        self.ladder.set_compensated(self.compensated.get_bool());
+        self.ladder.set_compensated(self.compensated);
     }
 }
 
@@ -187,28 +185,43 @@ impl DSPProcess<1, 1> for DspInner {
 impl HasParameters for DspInner {
     type Name = DspParameters;
 
-    fn get_parameter(&self, param: Self::Name) -> &Parameter {
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
         match param {
-            DspParameters::LadderType => &self.ladder_type,
-            DspParameters::Drive => &self.drive.param,
-            DspParameters::Cutoff => &self.cutoff.param,
-            DspParameters::Resonance => &self.resonance.param,
-            DspParameters::Compensated => &self.compensated,
+            DspParameters::LadderType => {
+                self.ladder_type = LadderType::from_index(value as _);
+                self.ladder_type_changed = true;
+            }
+            DspParameters::Drive => {
+                self.drive.param = value;
+            }
+            DspParameters::Cutoff => {
+                self.cutoff.param = value;
+            }
+            DspParameters::Resonance => {
+                self.resonance.param = value;
+            }
+            DspParameters::Compensated => {
+                self.compensated = value > 0.5;
+            }
         }
     }
 }
 
-pub type Dsp = Oversampled<Sample, DspInner>;
+pub type Dsp = Oversampled<Sample, BlockAdapter<DspInner>>;
 
-pub fn create(samplerate: f32) -> Dsp {
+pub fn create(orig_samplerate: f32) -> RemoteControlled<Dsp> {
+    let samplerate = orig_samplerate * OVERSAMPLE as f32;
     let dsp = DspInner {
-        ladder_type: Parameter::new(0.0),
-        drive: Parameter::new(1.0).smoothed_exponential(samplerate, 50.0),
-        cutoff: Parameter::new(300.0).smoothed_exponential(samplerate, 10.0),
-        resonance: Parameter::new(0.5).smoothed_exponential(samplerate, 50.0),
+        ladder_type: LadderType::Ideal,
+        ladder_type_changed: false,
+        drive: SmoothedParam::exponential(1.0, samplerate, 50.0),
+        cutoff: SmoothedParam::exponential(300.0, samplerate, 10.0),
+        resonance: SmoothedParam::linear(0.5, samplerate, 10.0),
         ladder: LadderType::Ideal.as_ladder(samplerate, Sample::splat(300.0), Sample::splat(0.5)),
-        compensated: Parameter::new(0.0),
+        compensated: false,
         samplerate,
     };
-    Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE).with_dsp(samplerate, dsp)
+    let dsp =
+        Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE).with_dsp(orig_samplerate, BlockAdapter(dsp));
+    RemoteControlled::new(orig_samplerate, 1e3, dsp)
 }

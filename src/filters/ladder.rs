@@ -193,7 +193,10 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
     /// * `samplerate`: Signal sampling rate (Hz)
     /// * `frequency`: Cutoff frequency (Hz)
     pub fn set_cutoff(&mut self, frequency: T) {
-        self.wc = bilinear_prewarming_bounded(self.samplerate, T::simd_two_pi() * frequency);
+        self.wc = bilinear_prewarming_bounded(
+            self.samplerate,
+            T::from_f64(2.0) * T::simd_two_pi() * frequency,
+        );
     }
 
     /// Sets the resonance amount.

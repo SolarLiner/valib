@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, NihParamsController};
+use dsp::Dsp;
+use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, BindToParameter};
+use valib::dsp::parameter::{RemoteControl, RemoteControlled};
 use valib::dsp::DSPMeta;
 
 use crate::dsp::{DspParameters, LadderType};
@@ -12,19 +14,28 @@ mod dsp;
 const MAX_BUFFER_SIZE: usize = 512;
 const OVERSAMPLE: usize = 16;
 
-struct LadderFilterPlugin {
-    params: Arc<NihParamsController<dsp::Dsp>>,
-    dsp: dsp::Dsp,
+#[derive(Debug, Params)]
+struct LadderFilterParams {
+    #[id = "drive"]
+    drive: FloatParam,
+    #[id = "fc"]
+    fc: FloatParam,
+    #[id = "res"]
+    resonance: FloatParam,
+    #[id = "ltype"]
+    ladder_type: EnumParam<LadderType>,
+    #[id = "comp"]
+    compensated: BoolParam,
 }
 
-impl Default for LadderFilterPlugin {
-    fn default() -> Self {
-        let dsp = dsp::create(44100.0);
-        let params = NihParamsController::new(&dsp, |param, _name| match param {
-            DspParameters::LadderType => {
-                enum_int_param::<LadderType>("Topology", LadderType::default()).into()
-            }
-            DspParameters::Drive => FloatParam::new(
+impl LadderFilterParams {
+    fn new(remote: &RemoteControl<DspParameters>) -> Arc<Self> {
+        Arc::new(Self {
+            ladder_type: {
+                EnumParam::new("Ladder type", LadderType::Ideal)
+                    .bind_to_parameter(remote, DspParameters::LadderType)
+            },
+            drive: FloatParam::new(
                 "Drive",
                 1.0,
                 FloatRange::Skewed {
@@ -35,8 +46,8 @@ impl Default for LadderFilterPlugin {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .into(),
-            DspParameters::Cutoff => FloatParam::new(
+            .bind_to_parameter(remote, DspParameters::Drive),
+            fc: FloatParam::new(
                 "Frequency",
                 300.,
                 FloatRange::Skewed {
@@ -47,20 +58,30 @@ impl Default for LadderFilterPlugin {
             )
             .with_value_to_string(formatters::v2s_f32_hz_then_khz_with_note_name(2, false))
             .with_string_to_value(formatters::s2v_f32_hz_then_khz())
-            .into(),
-            DspParameters::Resonance => {
+            .bind_to_parameter(remote, DspParameters::Cutoff),
+            resonance: {
                 FloatParam::new("Q", 0.5, FloatRange::Linear { min: 0., max: 1.25 })
                     .with_unit(" %")
                     .with_value_to_string(formatters::v2s_f32_percentage(2))
                     .with_string_to_value(formatters::s2v_f32_percentage())
-                    .into()
-            }
-            DspParameters::Compensated => BoolParam::new("Compensated", false).into(),
-        });
-        Self {
-            params: Arc::new(params),
-            dsp,
-        }
+                    .bind_to_parameter(remote, DspParameters::Resonance)
+            },
+            compensated: BoolParam::new("Compensated", false)
+                .bind_to_parameter(remote, DspParameters::Compensated),
+        })
+    }
+}
+
+struct LadderFilterPlugin {
+    params: Arc<LadderFilterParams>,
+    dsp: RemoteControlled<Dsp>,
+}
+
+impl Default for LadderFilterPlugin {
+    fn default() -> Self {
+        let dsp = dsp::create(44100.0);
+        let params = LadderFilterParams::new(&dsp.proxy);
+        Self { params, dsp }
     }
 }
 
