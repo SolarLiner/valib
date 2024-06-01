@@ -1,10 +1,9 @@
-use enum_map::{enum_map, Enum, EnumMap};
 use nalgebra::SMatrix;
 use nih_plug::util::db_to_gain_fast;
 
 use valib::dsp::blocks::ModMatrix;
-use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::{DSPMeta, DSPProcess};
+use valib::dsp::parameter::{HasParameters, ParamId, ParamMap, ParamName, SmoothedParam};
+use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess};
 use valib::filters::svf::Svf;
 use valib::oversample::Oversampled;
 use valib::saturators::{Clipper, Saturator, Slew};
@@ -13,9 +12,9 @@ use valib::Scalar;
 
 pub(crate) type Sample = AutoSimd<[f32; 2]>;
 
-pub type Dsp = Oversampled<Sample, DspInner>;
+pub type Dsp = Oversampled<Sample, BlockAdapter<DspInner>>;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Enum)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ParamName)]
 pub enum DspParam {
     Drive,
     Cutoff,
@@ -28,7 +27,7 @@ pub enum DspParam {
 type Filter = Svf<Sample, OpAmp<Sample>>;
 
 pub struct DspInner {
-    params: EnumMap<DspParam, SmoothedParam>,
+    params: ParamMap<DspParam, SmoothedParam>,
     filter: Filter,
     mod_matrix: ModMatrix<Sample, 3, 1>,
 }
@@ -44,14 +43,14 @@ impl DspInner {
 
 impl DspInner {
     pub fn new(samplerate: f32) -> Self {
-        let params = enum_map! {
-            DspParam::Drive => Parameter::new(1.0).named("Drive").smoothed_linear(samplerate, 10.0),
-            DspParam::Cutoff => Parameter::new(3000.0).named("Cutoff").smoothed_linear(samplerate, 1e-6),
-            DspParam::Resonance => Parameter::new(0.5).named("Resonance").smoothed_linear(samplerate, 10.0),
-            DspParam::LpGain => Parameter::new(1.0).named("LP Gain").smoothed_linear(samplerate, 10.0),
-            DspParam::BpGain => Parameter::new(0.0).named("BP Gain").smoothed_linear(samplerate, 10.0),
-            DspParam::HpGain => Parameter::new(0.0).named("HP Gain").smoothed_linear(samplerate, 10.0),
-        };
+        let params = ParamMap::new(|p| match p {
+            DspParam::Drive => SmoothedParam::linear(1.0, samplerate, 10.0),
+            DspParam::Cutoff => SmoothedParam::linear(3000.0, samplerate, 1e-6),
+            DspParam::Resonance => SmoothedParam::linear(0.5, samplerate, 10.0),
+            DspParam::LpGain => SmoothedParam::linear(1.0, samplerate, 10.0),
+            DspParam::BpGain => SmoothedParam::linear(0.0, samplerate, 10.0),
+            DspParam::HpGain => SmoothedParam::linear(0.0, samplerate, 10.0),
+        });
         let filter = Filter::new(
             Sample::splat(samplerate),
             Sample::splat(3000.0),
@@ -75,8 +74,8 @@ impl DspInner {
 impl HasParameters for DspInner {
     type Name = DspParam;
 
-    fn get_parameter(&self, param: Self::Name) -> &Parameter {
-        &self.params[param].param
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        self.params[param].param = value;
     }
 }
 
@@ -84,7 +83,7 @@ impl DSPMeta for DspInner {
     type Sample = Sample;
 
     fn set_samplerate(&mut self, samplerate: f32) {
-        for s in self.params.values_mut() {
+        for (_, s) in self.params.iter_mut() {
             s.set_samplerate(samplerate);
         }
         self.filter.set_samplerate(samplerate);
