@@ -1,9 +1,10 @@
-use enum_map::{Enum, EnumArray};
+use nih_plug::prelude::Enum;
 use num_traits::Zero;
+use std::borrow::Cow;
 
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
-use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
+use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
+use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::adaa::{Adaa, Antiderivative, Antiderivative2};
@@ -59,10 +60,13 @@ type Sample64 = AutoF64x2;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Enum)]
 pub enum SaturatorType {
+    #[name = "Hard clip"]
     HardClip,
     Tanh,
     Asinh,
+    #[name = "Diode (sym.)"]
     DiodeSymmetric,
+    #[name = "Diode (asym.)"]
     DiodeAssymetric,
 }
 
@@ -176,7 +180,7 @@ impl SaturatorType {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Enum)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, ParamName)]
 pub enum DspInnerParams {
     Drive,
     Saturator,
@@ -187,9 +191,9 @@ pub enum DspInnerParams {
 
 pub struct DspInner {
     drive: SmoothedParam,
-    model_switch: Parameter,
+    model_switch: SaturatorType,
     feedback: SmoothedParam,
-    adaa_level: Parameter,
+    adaa_level: u8,
     adaa_epsilon: SmoothedParam,
     cur_saturator: DspSaturator,
     last_out: Sample64,
@@ -198,46 +202,37 @@ pub struct DspInner {
 impl DspInner {
     fn new(samplerate: f32) -> Self {
         Self {
-            drive: Parameter::new(1.0).smoothed_exponential(samplerate, 10.0),
-            model_switch: Parameter::new(0.0),
-            feedback: Parameter::new(0.0).smoothed_linear(samplerate, 100.0),
-            adaa_level: Parameter::new(2.0),
-            adaa_epsilon: Parameter::new(1e-4).smoothed_linear(samplerate, 100.0),
+            drive: SmoothedParam::exponential(1.0, samplerate, 10.0),
+            model_switch: SaturatorType::Tanh,
+            feedback: SmoothedParam::linear(0.0, samplerate, 10.0),
+            adaa_level: 0,
+            adaa_epsilon: SmoothedParam::linear(1e-4, samplerate, 100.0),
             cur_saturator: DspSaturator::Adaa2(Adaa::new(DspSaturatorAdaa2::HardClip)),
             last_out: Sample64::zero(),
         }
     }
 
     fn update_from_params(&mut self) {
-        if self.model_switch.has_changed() || self.adaa_level.has_changed() {
-            self.cur_saturator = match (
-                self.model_switch.get_enum(),
-                self.adaa_level.get_value() as u8,
-            ) {
-                (SaturatorType::HardClip, 0) => DspSaturator::Direct(DspSaturatorDirect::HardClip),
-                (SaturatorType::HardClip, 1) => {
-                    DspSaturator::Adaa1(Adaa::new(DspSaturatorAdaa1::HardClip))
-                }
-                (SaturatorType::HardClip, _) => {
-                    DspSaturator::Adaa2(Adaa::new(DspSaturatorAdaa2::HardClip))
-                }
-                (SaturatorType::Tanh, 0) => DspSaturator::Direct(DspSaturatorDirect::Tanh),
-                (SaturatorType::Tanh, _) => DspSaturator::Adaa1(Adaa::new(DspSaturatorAdaa1::Tanh)),
-                (SaturatorType::Asinh, 0) => DspSaturator::Direct(DspSaturatorDirect::Asinh),
-                (SaturatorType::Asinh, 1) => {
-                    DspSaturator::Adaa1(Adaa::new(DspSaturatorAdaa1::Asinh))
-                }
-                (SaturatorType::Asinh, _) => {
-                    DspSaturator::Adaa2(Adaa::new(DspSaturatorAdaa2::Asinh))
-                }
-                (SaturatorType::DiodeSymmetric, _) => DspSaturator::Direct(
-                    DspSaturatorDirect::Diode(DiodeClipperModel::new_silicon(1, 1)),
-                ),
-                (SaturatorType::DiodeAssymetric, _) => DspSaturator::Direct(
-                    DspSaturatorDirect::Diode(DiodeClipperModel::new_germanium(1, 2)),
-                ),
+        self.cur_saturator = match (self.model_switch, self.adaa_level) {
+            (SaturatorType::HardClip, 0) => DspSaturator::Direct(DspSaturatorDirect::HardClip),
+            (SaturatorType::HardClip, 1) => {
+                DspSaturator::Adaa1(Adaa::new(DspSaturatorAdaa1::HardClip))
             }
-        }
+            (SaturatorType::HardClip, _) => {
+                DspSaturator::Adaa2(Adaa::new(DspSaturatorAdaa2::HardClip))
+            }
+            (SaturatorType::Tanh, 0) => DspSaturator::Direct(DspSaturatorDirect::Tanh),
+            (SaturatorType::Tanh, _) => DspSaturator::Adaa1(Adaa::new(DspSaturatorAdaa1::Tanh)),
+            (SaturatorType::Asinh, 0) => DspSaturator::Direct(DspSaturatorDirect::Asinh),
+            (SaturatorType::Asinh, 1) => DspSaturator::Adaa1(Adaa::new(DspSaturatorAdaa1::Asinh)),
+            (SaturatorType::Asinh, _) => DspSaturator::Adaa2(Adaa::new(DspSaturatorAdaa2::Asinh)),
+            (SaturatorType::DiodeSymmetric, _) => DspSaturator::Direct(DspSaturatorDirect::Diode(
+                DiodeClipperModel::new_silicon(1, 1),
+            )),
+            (SaturatorType::DiodeAssymetric, _) => DspSaturator::Direct(DspSaturatorDirect::Diode(
+                DiodeClipperModel::new_germanium(1, 2),
+            )),
+        };
         let adaa_epsilon = Sample64::from_f64(self.adaa_epsilon.next_sample() as _);
         match &mut self.cur_saturator {
             DspSaturator::Adaa1(adaa) => adaa.epsilon = adaa_epsilon,
@@ -250,13 +245,25 @@ impl DspInner {
 impl HasParameters for DspInner {
     type Name = DspInnerParams;
 
-    fn get_parameter(&self, param: Self::Name) -> &Parameter {
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
         match param {
-            DspInnerParams::Drive => &self.drive.param,
-            DspInnerParams::Saturator => &self.model_switch,
-            DspInnerParams::Feedback => &self.feedback.param,
-            DspInnerParams::AdaaLevel => &self.adaa_level,
-            DspInnerParams::AdaaEpsilon => &self.adaa_epsilon.param,
+            DspInnerParams::Drive => {
+                self.drive.param = value;
+            }
+            DspInnerParams::Saturator => {
+                self.model_switch = SaturatorType::from_index(value as _);
+                self.update_from_params();
+            }
+            DspInnerParams::Feedback => {
+                self.feedback.param = value;
+            }
+            DspInnerParams::AdaaLevel => {
+                self.adaa_level = value.clamp(0.0, 2.0) as _;
+                self.update_from_params();
+            }
+            DspInnerParams::AdaaEpsilon => {
+                self.adaa_epsilon.param = value;
+            }
         }
     }
 }
@@ -265,6 +272,7 @@ impl DSPMeta for DspInner {
     type Sample = Sample;
 
     fn set_samplerate(&mut self, samplerate: f32) {
+        self.adaa_epsilon.set_samplerate(samplerate);
         self.drive.set_samplerate(samplerate);
         self.feedback.set_samplerate(samplerate);
     }
@@ -274,6 +282,9 @@ impl DSPMeta for DspInner {
     }
 
     fn reset(&mut self) {
+        self.adaa_epsilon.reset();
+        self.drive.reset();
+        self.feedback.reset();
         self.cur_saturator.reset();
     }
 }
@@ -299,14 +310,16 @@ pub enum DspParams {
     Oversampling,
 }
 
-impl Enum for DspParams {
-    const LENGTH: usize = DspInnerParams::LENGTH + 2;
+impl ParamName for DspParams {
+    fn count() -> usize {
+        DspInnerParams::count() + 2
+    }
 
-    fn from_usize(value: usize) -> Self {
-        if value < DspInnerParams::LENGTH {
-            DspParams::InnerParam(DspInnerParams::from_usize(value))
+    fn from_id(value: ParamId) -> Self {
+        if value < DspInnerParams::count() as ParamId {
+            DspParams::InnerParam(DspInnerParams::from_id(value))
         } else {
-            match value - DspInnerParams::LENGTH {
+            match value - DspInnerParams::count() {
                 0 => Self::DcBlocker,
                 1 => Self::Oversampling,
                 _ => unreachable!(),
@@ -314,24 +327,24 @@ impl Enum for DspParams {
         }
     }
 
-    fn into_usize(self) -> usize {
+    fn into_id(self) -> ParamId {
         match self {
-            Self::InnerParam(dsp_param) => dsp_param.into_usize(),
-            Self::DcBlocker => DspInnerParams::LENGTH,
-            Self::Oversampling => DspInnerParams::LENGTH + 1,
+            Self::InnerParam(dsp_param) => dsp_param.into_id(),
+            Self::DcBlocker => DspInnerParams::count(),
+            Self::Oversampling => DspInnerParams::count() + 1,
         }
+    }
+
+    fn name(&self) -> Cow<'static, str> {
+        Cow::Borrowed("") // unused
     }
 }
 
-impl<T> EnumArray<T> for DspParams {
-    type Array = [T; Self::LENGTH];
-}
-
 pub struct Dsp {
-    use_dc_blocker: Parameter,
-    oversample_amount: Parameter,
-    inner: Oversampled<Sample, DspInner>,
-    dc_blocker: DcBlocker<Sample>,
+    use_dc_blocker: bool,
+    oversample_amount: usize,
+    inner: Oversampled<Sample, BlockAdapter<DspInner>>,
+    dc_blocker: BlockAdapter<DcBlocker<Sample>>,
     dc_blocker_staging: Box<[Sample]>,
 }
 
@@ -345,7 +358,7 @@ impl DSPMeta for Dsp {
 
     fn latency(&self) -> usize {
         let inner_latency = self.inner.latency();
-        if self.use_dc_blocker.get_bool() {
+        if self.use_dc_blocker {
             inner_latency + self.dc_blocker.latency()
         } else {
             inner_latency
@@ -366,10 +379,9 @@ impl DSPProcessBlock<1, 1> for Dsp {
     ) {
         let mut staging = AudioBufferMut::from(&mut self.dc_blocker_staging[..inputs.samples()]);
 
-        self.inner
-            .set_oversampling_amount(self.oversample_amount.get_value() as _);
+        self.inner.set_oversampling_amount(self.oversample_amount);
         self.inner.process_block(inputs, staging.as_mut());
-        if self.use_dc_blocker.get_bool() {
+        if self.use_dc_blocker {
             self.dc_blocker
                 .process_block(staging.as_ref(), outputs.as_mut());
         } else {
@@ -381,23 +393,32 @@ impl DSPProcessBlock<1, 1> for Dsp {
 impl HasParameters for Dsp {
     type Name = DspParams;
 
-    fn get_parameter(&self, param: Self::Name) -> &Parameter {
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
         match param {
-            DspParams::InnerParam(inner) => self.inner.get_parameter(inner),
-            DspParams::DcBlocker => &self.use_dc_blocker,
-            DspParams::Oversampling => &self.oversample_amount,
+            DspParams::InnerParam(p) => self.inner.set_parameter(p, value),
+            DspParams::DcBlocker => {
+                self.use_dc_blocker = value > 0.5;
+            }
+            DspParams::Oversampling => self.oversample_amount = value.min(16.0) as _,
         }
     }
 }
 
-pub fn create_dsp(samplerate: f32, oversample: usize, max_block_size: usize) -> Dsp {
-    let inner =
-        Oversample::new(oversample, max_block_size).with_dsp(samplerate, DspInner::new(samplerate));
-    Dsp {
+pub fn create_dsp(
+    samplerate: f32,
+    oversample: usize,
+    max_block_size: usize,
+) -> RemoteControlled<Dsp> {
+    let inner = Oversample::new(oversample, max_block_size).with_dsp(
+        samplerate,
+        BlockAdapter(DspInner::new(samplerate * oversample as f32)),
+    );
+    let dsp = Dsp {
         inner,
-        oversample_amount: Parameter::new(2.0),
-        use_dc_blocker: Parameter::new(1.0),
-        dc_blocker: DcBlocker::new(samplerate),
+        oversample_amount: 2,
+        use_dc_blocker: true,
+        dc_blocker: BlockAdapter(DcBlocker::new(samplerate)),
         dc_blocker_staging: vec![Sample::zero(); max_block_size].into_boxed_slice(),
-    }
+    };
+    RemoteControlled::new(samplerate, 1e3, dsp)
 }
