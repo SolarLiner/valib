@@ -133,7 +133,7 @@ impl SmoothedParam {
     /// * `samplerate`: Samplerate parameter
     /// * `t60_ms`: "Time to decay by 60 dB" -- the time it takes for the output to be within 0.1% of the target value.
     pub fn exponential(initial_value: f32, samplerate: f32, t60_ms: f32) -> Self {
-        let tau = 6.91 * t60_ms / 1e3;
+        let tau = 6.91 / t60_ms * 1e3;
         Self {
             param: initial_value,
             smoothing: Smoothing::Exponential {

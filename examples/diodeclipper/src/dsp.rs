@@ -1,3 +1,4 @@
+use nih_plug::nih_log;
 use nih_plug::prelude::Enum;
 use num_traits::Zero;
 
@@ -247,11 +248,13 @@ pub fn create_dsp(
     oversample: usize,
     max_block_size: usize,
 ) -> RemoteControlled<Dsp> {
-    let inner = Oversample::new(oversample, max_block_size)
-        .with_dsp(samplerate, BlockAdapter(DspInner::new(samplerate)));
+    let inner = Oversample::new(oversample, max_block_size).with_dsp(
+        samplerate,
+        BlockAdapter(DspInner::new(samplerate * oversample as f32)),
+    );
     let dsp = Dsp {
         inner,
         dc_blocker: DcBlocker::new(samplerate),
     };
-    RemoteControlled::new(samplerate, 1e-3, dsp)
+    RemoteControlled::new(samplerate, 1e3, dsp)
 }
