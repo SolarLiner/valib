@@ -1,15 +1,17 @@
-use enum_map::Enum;
 use std::fmt;
 use std::fmt::Formatter;
 
-use crate::{MAX_BLOCK_SIZE, OVERSAMPLE};
-use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::{DSPMeta, DSPProcess};
+use nih_plug::prelude::Enum;
+
+use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
+use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::DiodeClipperModel;
 use valib::saturators::Dynamic;
 use valib::simd::{AutoF32x2, SimdComplexField, SimdValue};
+
+use crate::{MAX_BLOCK_SIZE, OVERSAMPLE};
 
 pub type Sample = AutoF32x2;
 
@@ -76,7 +78,7 @@ impl SaturatorType {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Enum)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, ParamName)]
 pub enum DspParameters {
     Drive,
     Cutoff,
@@ -90,22 +92,9 @@ pub struct DspInner {
     drive: SmoothedParam,
     fc: SmoothedParam,
     resonance: SmoothedParam,
-    ftype: Parameter,
-    saturator: Parameter,
+    ftype: FilterType,
+    saturator: SaturatorType,
     biquad: Biquad<Sample, Dynamic<Sample>>,
-}
-
-impl DspInner {
-    fn update_params(&mut self) {
-        let fc = Sample::splat(self.fc.next_sample() / self.samplerate);
-        let res = Sample::splat(self.resonance.next_sample());
-        let biquad = self.ftype.get_enum::<FilterType>().as_biquad(fc, res);
-        self.biquad.update_coefficients(&biquad);
-        if self.saturator.has_changed() {
-            let nl = self.saturator.get_enum::<SaturatorType>().saturator();
-            self.biquad.set_saturators(nl, nl);
-        }
-    }
 }
 
 impl DSPMeta for DspInner {
@@ -133,9 +122,8 @@ impl DSPMeta for DspInner {
 
 impl DSPProcess<1, 1> for DspInner {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.update_params();
+        self.update_biquad();
         let drive = Sample::splat(self.drive.next_sample());
-        println!("Drive {}", drive.extract(0));
         let x = x.map(|x| x * drive);
         self.biquad.process(x).map(|x| x / drive.simd_asinh())
     }
@@ -144,28 +132,49 @@ impl DSPProcess<1, 1> for DspInner {
 impl HasParameters for DspInner {
     type Name = DspParameters;
 
-    fn get_parameter(&self, param: Self::Name) -> &Parameter {
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
         match param {
-            DspParameters::Drive => &self.drive.param,
-            DspParameters::Cutoff => &self.fc.param,
-            DspParameters::Resonance => &self.resonance.param,
-            DspParameters::FilterType => &self.ftype,
-            DspParameters::SaturatorType => &self.saturator,
+            DspParameters::Drive => {
+                self.drive.param = value;
+            }
+            DspParameters::Cutoff => {
+                self.fc.param = value;
+            }
+            DspParameters::Resonance => {
+                self.resonance.param = value;
+            }
+            DspParameters::FilterType => {
+                self.ftype = FilterType::from_index(value as _);
+            }
+            DspParameters::SaturatorType => {
+                let nl = SaturatorType::from_index(value as usize).saturator();
+                self.biquad.set_saturators(nl, nl);
+            }
         }
     }
 }
 
-pub type Dsp = Oversampled<Sample, DspInner>;
+impl DspInner {
+    fn update_biquad(&mut self) {
+        let fc = Sample::splat(self.fc.next_sample() / self.samplerate);
+        let res = Sample::splat(self.resonance.next_sample());
+        let biquad = self.ftype.as_biquad(fc, res);
+        self.biquad.update_coefficients(&biquad);
+    }
+}
 
-pub fn create(samplerate: f32) -> Dsp {
+pub type Dsp = Oversampled<Sample, BlockAdapter<DspInner>>;
+
+pub fn create(samplerate: f32) -> RemoteControlled<Dsp> {
     let dsp = DspInner {
         samplerate,
-        drive: Parameter::new(1.0).smoothed_exponential(samplerate, 50.0),
-        fc: Parameter::new(3000.0).smoothed_exponential(samplerate, 50.0),
-        resonance: Parameter::new(0.5).smoothed_linear(samplerate, 50.0),
-        ftype: Parameter::new(0.0),
-        saturator: Parameter::new(0.0),
+        drive: SmoothedParam::exponential(1.0, samplerate, 10.0),
+        fc: SmoothedParam::exponential(3000.0, samplerate, 50.0),
+        resonance: SmoothedParam::linear(0.5, samplerate, 10.0),
+        ftype: FilterType::Lowpass,
+        saturator: SaturatorType::Linear,
         biquad: Biquad::lowpass(Sample::splat(3000.0 / samplerate), Sample::splat(0.5)),
     };
-    Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE).with_dsp(samplerate, dsp)
+    let dsp = Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE).with_dsp(samplerate, BlockAdapter(dsp));
+    RemoteControlled::new(samplerate, 1e3, dsp)
 }
