@@ -203,14 +203,55 @@ where
 pub struct Series<T>(pub T);
 
 macro_rules! series_tuple {
-    ($params_name:ident; $($p:ident),*) => {
-        pub enum $params_name<$($p: $crate::dsp::parameter::HasParameters),*> {
-            $($p(<$p as $crate::dsp::parameter::HasParameters>::Name)),*
+    ($params_name:ident: $count:literal; $($p:ident),*) => {
+        #[derive(Debug, Copy, Clone)]
+        pub enum $params_name<$($p),*> {
+            $($p($p)),*
+        }
+
+        impl<$($p: $crate::dsp::parameter::ParamName),*> ParamName for $params_name<$($p),*> {
+            fn count() -> usize {
+                $count
+            }
+
+            #[allow(unused_variables)]
+            fn from_id(value: ParamId) -> Self {
+                $(
+                    if value < $p::count() {
+                        return Self::$p($p::from_id(value));
+                    }
+                    let value = value - $p::count();
+                )*
+                unreachable!();
+            }
+
+            fn into_id(self) -> ParamId {
+                let mut acc = 0;
+                let count = 0;
+                $(
+                    let $p = (count + acc) as ParamId;
+                    let count = $p::count();
+                    acc += count;
+                )*
+                match self {
+                    $(
+                    Self::$p(p) => $p + p.into_id(),
+                    )*
+                }
+            }
+
+            fn name(&self) -> Cow<'static, str> {
+                match self {
+                     $(
+                     Self::$p(p) => Cow::Owned(format!("{} {}", stringify!($p), p.name())),
+                     )*
+                }
+            }
         }
 
         #[allow(non_snake_case)]
         impl<$($p: $crate::dsp::parameter::HasParameters),*> HasParameters for $crate::dsp::blocks::Series<($($p),*)> {
-            type Name = $params_name<$($p),*>;
+            type Name = $params_name<$($p::Name),*>;
 
             fn set_parameter(&mut self, param: Self::Name, value: f32) {
                 let Self(($($p),*)) = self;
@@ -261,13 +302,13 @@ macro_rules! series_tuple {
     };
 }
 
-series_tuple!(Tuple2Params; A, B);
-series_tuple!(Tuple3Params; A, B, C);
-series_tuple!(Tuple4Params; A, B, C, D);
-series_tuple!(Tuple5Params; A, B, C, D, E);
-series_tuple!(Tuple6Params; A, B, C, D, E, F);
-series_tuple!(Tuple7Params; A, B, C, D, E, F, G);
-series_tuple!(Tuple8Params; A, B, C, D, E, F, G, H);
+series_tuple!(Tuple2Params: 2; A, B);
+series_tuple!(Tuple3Params: 3; A, B, C);
+series_tuple!(Tuple4Params: 4; A, B, C, D);
+series_tuple!(Tuple5Params: 5; A, B, C, D, E);
+series_tuple!(Tuple6Params: 6; A, B, C, D, E, F);
+series_tuple!(Tuple7Params: 7; A, B, C, D, E, F, G);
+series_tuple!(Tuple8Params: 8; A, B, C, D, E, F, G, H);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleArrayParams<Name, const N: usize>(pub ParamId, pub Name);
@@ -352,7 +393,7 @@ where
 pub struct Tuple2<A, B, const INNER: usize>(A, PhantomData<[(); INNER]>, B);
 
 impl<A: HasParameters, B: HasParameters, const INNER: usize> HasParameters for Tuple2<A, B, INNER> {
-    type Name = Tuple2Params<A, B>;
+    type Name = Tuple2Params<A::Name, B::Name>;
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {
         match param {
@@ -679,7 +720,7 @@ impl<FF: ParamName, FB: ParamName, const N: ParamId> ParamName for FeedbackParam
 /// Feedback adapter with a one-sample delay and integrated mixing and summing point.
 pub struct Feedback<FF, FB, const N: usize>
 where
-    FF: DSPProcess<N, N>,
+    FF: DSPMeta,
 {
     memory: [FF::Sample; N],
     /// Inner DSP instance
@@ -737,7 +778,10 @@ where
     Self: DSPMeta<Sample = FF::Sample>,
 {
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        let mix = self.mix.each_mut().map(|p| p.next_sample());
+        let mix = self
+            .mix
+            .each_mut()
+            .map(|p| p.next_sample_as::<FF::Sample>());
         let x = std::array::from_fn(|i| self.memory[i] * mix[i] + x[i]);
         let y = self.feedforward.process(x);
         self.memory = y;
@@ -752,7 +796,10 @@ where
     FB: DSPProcess<N, N, Sample = FF::Sample>,
 {
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        let mix = self.mix.each_mut().map(|p| p.next_sample());
+        let mix = self
+            .mix
+            .each_mut()
+            .map(|p| p.next_sample_as::<FF::Sample>());
         let fb = self.feedback.process(self.memory);
         let x = std::array::from_fn(|i| fb[i] * mix[i] + x[i]);
         let y = self.feedforward.process(x);
@@ -778,7 +825,7 @@ impl<FF: DSPProcess<N, N>, FB, const N: usize> Feedback<FF, FB, N> {
     }
 }
 
-impl<FF: HasParameters, const N: usize> HasParameters for Feedback<FF, (), N> {
+impl<FF: DSPMeta + HasParameters, const N: usize> HasParameters for Feedback<FF, (), N> {
     type Name = FeedbackParams<FF::Name, Dynamic<0>, N>;
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {

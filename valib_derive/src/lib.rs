@@ -66,7 +66,7 @@ impl quote::ToTokens for DeriveParamName {
             .map(|Variant { ident, .. }| quote! { Self::#ident });
         stream.extend(quote! {
             impl ParamName for #ident {
-                fn count() -> u64 {
+                fn count() -> usize {
                     #count
                 }
 
@@ -78,11 +78,12 @@ impl quote::ToTokens for DeriveParamName {
 
                 fn from_id(id: ParamId) -> Self {
                     match id {
-                        #(#impl_fromid),*
+                        #(#impl_fromid,)*
+                        _ => unreachable!(),
                     }
                 }
 
-                fn into_id(self) -> Self {
+                fn into_id(self) -> ParamId {
                     match self {
                         #(#impl_intoid),*
                     }

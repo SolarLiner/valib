@@ -1,32 +1,22 @@
 #![cfg(feature = "nih-plug")]
 
-use std::fmt;
-use std::fmt::Formatter;
 use std::sync::Arc;
 
 use crate::dsp::buffer::AudioBuffer;
+use nih_plug::buffer::Buffer;
 use nih_plug::nih_debug_assert;
 use nih_plug::params::FloatParam;
 use nih_plug::prelude::*;
-use nih_plug::{buffer::Buffer, params::Param};
 
 use crate::dsp::parameter::{HasParameters, ParamName, RemoteControl};
 use crate::dsp::DSPProcessBlock;
 use crate::Scalar;
 
-pub fn enum_int_param<E: Enum + ToString>(
+pub fn enum_int_param<E: 'static + Enum + PartialEq>(
     param_name: impl Into<String>,
     default_value: E,
-) -> IntParam {
-    IntParam::new(
-        param_name,
-        default_value.into_usize() as _,
-        IntRange::Linear {
-            min: 0,
-            max: (E::LENGTH - 1) as _,
-        },
-    )
-    .with_value_to_string(Arc::new(|x| E::from_usize(x as _).to_string()))
+) -> EnumParam<E> {
+    EnumParam::new(param_name, default_value)
 }
 
 /// Bind a [`valib`] [`Parameter`] to a [`nig_plug`] parameter..
@@ -35,21 +25,21 @@ pub trait BindToParameter<P: ParamName> {
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self;
 }
 
-impl<P: ParamName> BindToParameter<P> for FloatParam {
+impl<P: 'static + Send + Sync + ParamName> BindToParameter<P> for FloatParam {
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
         let set = set.clone();
         self.with_callback(Arc::new(move |value| set.set_parameter(param, value)))
     }
 }
 
-impl<P: ParamName> BindToParameter<P> for IntParam {
+impl<P: 'static + Send + Sync + ParamName> BindToParameter<P> for IntParam {
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
         let set = set.clone();
         self.with_callback(Arc::new(move |x| set.set_parameter(param, x as _)))
     }
 }
 
-impl<P: ParamName> BindToParameter<P> for BoolParam {
+impl<P: 'static + Send + Sync + ParamName> BindToParameter<P> for BoolParam {
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
         let set = set.clone();
         self.with_callback(Arc::new(move |b| {
@@ -58,11 +48,13 @@ impl<P: ParamName> BindToParameter<P> for BoolParam {
     }
 }
 
-impl<E: 'static + PartialEq + Enum, P: ParamName> BindToParameter<P> for EnumParam<E> {
+impl<E: 'static + PartialEq + Enum, P: 'static + Send + Sync + ParamName> BindToParameter<P>
+    for EnumParam<E>
+{
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
         let set = set.clone();
         self.with_callback(Arc::new(move |e| {
-            set.set_parameter(param, e.into_index() as _)
+            set.set_parameter(param, e.to_index() as _)
         }))
     }
 }

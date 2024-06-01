@@ -2,6 +2,7 @@
 use nalgebra::Complex;
 use simba::simd::SimdComplexField;
 
+use crate::dsp::DSPMeta;
 use crate::{dsp::DSPProcess, math::freq_to_z};
 
 /// Trait for DSP structs that have a z-domain transfer function available.
@@ -10,7 +11,7 @@ use crate::{dsp::DSPProcess, math::freq_to_z};
 ///
 /// The goal of this trait is to provide an easy way to compute frequency responses of
 /// filters for end-user visual feedback and not to be scientifically accurate.
-pub trait DspAnalysis<const I: usize, const O: usize>: DSPProcess<I, O> {
+pub trait DspAnalysis<const I: usize, const O: usize>: DSPMeta {
     /// Discrete transfer function in the z-domain.
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I];
 

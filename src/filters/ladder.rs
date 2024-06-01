@@ -121,8 +121,8 @@ impl<T: Scalar, Topo: LadderTopology<T>> HasParameters for Ladder<T, Topo> {
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {
         match param {
-            LadderParams::Cutoff => self.set_cutoff(value),
-            LadderParams::Resonance => self.set_resonance(value),
+            LadderParams::Cutoff => self.set_cutoff(T::from_f64(value as _)),
+            LadderParams::Resonance => self.set_resonance(T::from_f64(value as _)),
         }
     }
 }

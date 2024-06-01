@@ -14,14 +14,14 @@ use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::ops;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use portable_atomic::{AtomicBool, AtomicF32};
 
 pub use valib_derive::ParamName;
 
-use crate::dsp::{DSPMeta, DSPProcess};
+use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
+use crate::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
 use crate::saturators::Slew;
 use crate::Scalar;
 
@@ -85,7 +85,7 @@ impl DSPProcess<1, 1> for Smoothing {
 }
 
 /// Smoothed parameter. Smoothing can be applied exponentially or linearly.
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct SmoothedParam {
     pub param: f32,
     smoothing: Smoothing,
@@ -375,7 +375,7 @@ pub trait HasParametersErased {
     fn set_parameter_raw(&mut self, param_id: ParamId, value: f32);
 }
 
-struct ParamsProxy<P: ParamName> {
+pub struct ParamsProxy<P: ParamName> {
     params: ParamMap<P, Arc<AtomicF32>>,
     param_changed: ParamMap<P, Arc<AtomicBool>>,
 }
@@ -398,12 +398,10 @@ impl<P: ParamName> ParamsProxy<P> {
     }
 
     fn get_update(&self, param: P) -> Option<f32> {
-        if self.param_changed[param].compare_exchange(
-            true,
-            false,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ) {
+        let has_changed = self.param_changed[param]
+            .compare_exchange(true, false, Ordering::SeqCst, Ordering::SeqCst)
+            .unwrap_or(false);
+        if has_changed {
             return Some(self.params[param].load(Ordering::SeqCst));
         }
         return None;
@@ -432,6 +430,27 @@ impl<P: HasParameters + DSPProcess<I, O>, const I: usize, const O: usize> DSPPro
         }
 
         self.inner.process(x)
+    }
+}
+
+impl<P: HasParameters + DSPProcessBlock<I, O>, const I: usize, const O: usize> DSPProcessBlock<I, O>
+    for RemoteControlled<P>
+{
+    fn process_block(
+        &mut self,
+        inputs: AudioBufferRef<Self::Sample, I>,
+        outputs: AudioBufferMut<Self::Sample, O>,
+    ) {
+        self.update_params_phase += self.update_params_step * inputs.samples() as f32;
+        if self.update_params_phase > 1.0 {
+            self.update_parameters();
+            self.update_params_phase = self.update_params_phase.fract();
+        }
+        self.inner.process_block(inputs, outputs);
+    }
+
+    fn max_block_size(&self) -> Option<usize> {
+        self.inner.max_block_size()
     }
 }
 

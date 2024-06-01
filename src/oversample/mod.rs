@@ -5,7 +5,7 @@ use nalgebra::Complex;
 use simba::simd::SimdComplexField;
 
 use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
-use crate::dsp::parameter::{HasParameters, Parameter};
+use crate::dsp::parameter::HasParameters;
 use crate::dsp::{DSPMeta, DSPProcess};
 use crate::saturators::Linear;
 use crate::voice::VoiceManager;
@@ -236,8 +236,8 @@ where
 impl<S, P: HasParameters> HasParameters for Oversampled<S, P> {
     type Name = P::Name;
 
-    fn get_parameter(&self, param: Self::Name) -> &Parameter {
-        self.inner.get_parameter(param)
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        self.inner.set_parameter(param, value)
     }
 }
 

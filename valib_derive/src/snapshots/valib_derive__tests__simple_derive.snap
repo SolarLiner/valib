@@ -2,17 +2,16 @@
 source: valib_derive/src/lib.rs
 expression: "prettyplease::unparse(&syn::parse_file(&output).unwrap())"
 ---
-use valib::dsp::parameter::ParamId;
 impl ParamName for DspParams {
-    fn count() -> u64 {
+    fn count() -> usize {
         4
     }
-    fn name(&self) -> Cow<'static, str> {
+    fn name(&self) -> std::borrow::Cow<'static, str> {
         match self {
-            Self::Cutoff => Cow::Borrowed("Cutoff"),
-            Self::Resonance => Cow::Borrowed("Resonance"),
-            Self::Drive => Cow::Borrowed("Drive"),
-            Self::InputFM => Cow::Borrowed("Input FM"),
+            Self::Cutoff => std::borrow::Cow::Borrowed("Cutoff"),
+            Self::Resonance => std::borrow::Cow::Borrowed("Resonance"),
+            Self::Drive => std::borrow::Cow::Borrowed("Drive"),
+            Self::InputFM => std::borrow::Cow::Borrowed("Input FM"),
         }
     }
     fn from_id(id: ParamId) -> Self {
@@ -21,9 +20,10 @@ impl ParamName for DspParams {
             1 => Self::Resonance,
             2 => Self::Drive,
             3 => Self::InputFM,
+            _ => unreachable!(),
         }
     }
-    fn into_id(self) -> Self {
+    fn into_id(self) -> ParamId {
         match self {
             Self::Cutoff => 0,
             Self::Resonance => 1,

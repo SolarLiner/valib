@@ -111,9 +111,9 @@ macro_rules! impl_simdcast_wide {
     };
 }
 
-impl_simdcast_wide!(simba::simd::WideF32x4 : [f32; 4]);
-impl_simdcast_wide!(simba::simd::WideF32x8 : [f32; 8]);
-impl_simdcast_wide!(simba::simd::WideF64x4 : [f64; 4]);
+impl_simdcast_wide!(simd::WideF32x4 : [f32; 4]);
+impl_simdcast_wide!(simd::WideF32x8 : [f32; 8]);
+impl_simdcast_wide!(simd::WideF64x4 : [f64; 4]);
 
 #[cfg(test)]
 mod tests {

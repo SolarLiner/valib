@@ -21,11 +21,17 @@ const MAX_BLOCK_SIZE: usize = 512;
 
 #[derive(Debug, Params)]
 struct ClipperParams {
+    #[id = "drive"]
     drive: FloatParam,
+    #[id = "model"]
     model_switch: BoolParam,
+    #[id = "type"]
     diode_type: EnumParam<DiodeType>,
+    #[id = "nfwd"]
     num_forward: IntParam,
+    #[id = "nbwd"]
     num_backward: IntParam,
+    #[id = "reset"]
     force_reset: BoolParam,
 }
 
