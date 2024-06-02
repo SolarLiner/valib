@@ -1,36 +1,23 @@
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
-use nih_plug::util::{db_to_gain_fast, gain_to_db, MINUS_INFINITY_DB, MINUS_INFINITY_GAIN};
-use num_traits::Zero;
-use valib::dsp::blocks::Series;
-use valib::dsp::utils::{slice_to_mono_block, slice_to_mono_block_mut};
-use valib::dsp::{DSPBlock, DSP};
-use valib::oversample::Oversample;
-use valib::simd::{AutoF64x2, SimdValue};
-use valib::util::lerp;
-use valib::Scalar;
+use nih_plug::util::{gain_to_db, MINUS_INFINITY_DB, MINUS_INFINITY_GAIN};
+use valib::contrib::nih_plug::{BindToParameter, process_buffer_simd64};
+use valib::dsp::DSPMeta;
+use valib::dsp::parameter::{RemoteControl, RemoteControlled};
+use valib::simd::{AutoF32x2, AutoF64x2};
 
-use crate::dsp::{Bypass, ClipperStage, InputStage, OutputStage, ToneStage};
+use dsp::MAX_BLOCK_SIZE;
+
+use crate::dsp::{Dsp, DspParams};
 
 mod dsp;
 mod gen;
 
+const TARGET_SAMPLERATE: f32 = 96000.;
+
 type Sample = AutoF64x2;
-type Dsp = Series<(
-    Bypass<InputStage<Sample>>,
-    Bypass<Series<(ClipperStage<Sample>, ToneStage<Sample>)>>,
-    OutputStage<Sample>,
-)>;
-
-const OVERSAMPLE: usize = 4;
-const MAX_BLOCK_SIZE: usize = 512;
-
-struct Ts404 {
-    params: Arc<Ts404Params>,
-    dsp: Dsp,
-    oversample: Oversample<Sample>,
-}
+type Sample32 = AutoF32x2;
 
 #[derive(Params)]
 struct Ts404Params {
@@ -50,27 +37,9 @@ struct Ts404Params {
     io_bypass: BoolParam,
 }
 
-impl Default for Ts404 {
-    fn default() -> Self {
-        let samplerate = Sample::splat(OVERSAMPLE as f64 * 44100.0);
-        Self {
-            params: Arc::new(Ts404Params::default()),
-            dsp: Series((
-                Bypass::new(InputStage::new(samplerate, Sample::splat(1.0))),
-                Bypass::new(Series((
-                    ClipperStage::new(samplerate, Sample::splat(0.1)),
-                    ToneStage::new(samplerate, Sample::splat(0.5)),
-                ))),
-                OutputStage::new(samplerate, Sample::splat(1.0)),
-            )),
-            oversample: Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE),
-        }
-    }
-}
-
-impl Default for Ts404Params {
-    fn default() -> Self {
-        Self {
+impl Ts404Params {
+    fn new(remote: &RemoteControl<DspParams>) -> Arc<Self> {
+        Arc::new(Self {
             drive: FloatParam::new(
                 "Drive",
                 1.0,
@@ -82,18 +51,18 @@ impl Default for Ts404Params {
             )
             .with_unit("dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
-            // .with_smoother(SmoothingStyle::Linear(50.0)),
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .bind_to_parameter(remote, DspParams::InputGain),
             dist: FloatParam::new("Distortion", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit("%")
-                // .with_smoother(SmoothingStyle::Linear(50.0))
                 .with_value_to_string(formatters::v2s_f32_percentage(2))
-                .with_string_to_value(formatters::s2v_f32_percentage()),
+                .with_string_to_value(formatters::s2v_f32_percentage())
+                .bind_to_parameter(remote, DspParams::Distortion),
             tone: FloatParam::new("Tone", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit("%")
-                // .with_smoother(SmoothingStyle::Linear(50.0))
                 .with_value_to_string(formatters::v2s_f32_percentage(2))
-                .with_string_to_value(formatters::s2v_f32_percentage()),
+                .with_string_to_value(formatters::s2v_f32_percentage())
+                .bind_to_parameter(remote, DspParams::Tone),
             out_level: FloatParam::new(
                 "Output Level",
                 0.158,
@@ -104,36 +73,37 @@ impl Default for Ts404Params {
                 },
             )
             .with_unit("dB")
-            // .with_smoother(SmoothingStyle::Linear(50.0))
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db()),
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .bind_to_parameter(remote, DspParams::OutputGain),
             component_matching: FloatParam::new(
                 "Component Matching",
                 1.,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )
             .with_unit("%")
-            // .with_smoother(SmoothingStyle::Linear(10.0))
             .with_string_to_value(formatters::s2v_f32_percentage())
-            .with_value_to_string(formatters::v2s_f32_percentage(0)),
-            bypass: BoolParam::new("Bypass", false),
-            io_bypass: BoolParam::new("I/O Buffers Bypass", false),
-        }
+            .with_value_to_string(formatters::v2s_f32_percentage(0))
+            .bind_to_parameter(remote, DspParams::ComponentMismatch),
+            bypass: BoolParam::new("Bypass", false).bind_to_parameter(remote, DspParams::Bypass),
+            io_bypass: BoolParam::new("I/O Buffers Bypass", false)
+                .bind_to_parameter(remote, DspParams::BufferBypass),
+        })
     }
 }
 
-fn component_matching_slew_rate(samplerate: Sample, normalized: Sample) -> Sample {
-    let min = Sample::splat(db_to_gain_fast(30.0) as _);
-    let max = Sample::splat(db_to_gain_fast(100.0) as _);
-    lerp(normalized, min, max) / samplerate
+struct Ts404 {
+    params: Arc<Ts404Params>,
+    dsp: RemoteControlled<Dsp<Sample>>,
 }
 
-fn component_matching_crossover(normalized: Sample) -> (Sample, Sample) {
-    let min = Sample::splat(10.0);
-    let max = Sample::splat(0.5);
-    let a = lerp(normalized, min, max);
-    let b = Sample::from_f64(10.0);
-    (a, b)
+impl Default for Ts404 {
+    fn default() -> Self {
+        let default_samplerate = 44100.0;
+        let dsp = Dsp::new(default_samplerate, TARGET_SAMPLERATE);
+        let params = Ts404Params::new(&dsp.proxy);
+        Self { dsp, params }
+    }
 }
 
 impl Plugin for Ts404 {
@@ -183,36 +153,40 @@ impl Plugin for Ts404 {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        let samplerate = Sample::splat(buffer_config.sample_rate as _);
-        let Series((
-            Bypass {
-                inner: input,
-                active: input_active,
-            },
-            Bypass {
-                inner: Series((clipping, tone)),
-                active: main_active,
-            },
-            output,
-        )) = &mut self.dsp;
+        let dsp = Dsp::new(buffer_config.sample_rate, TARGET_SAMPLERATE);
+        self.dsp.inner = dsp.inner;
 
-        let component_matching = Sample::from_f64(self.params.component_matching.value() as _);
+        let dsp = &self.dsp;
+        dsp.proxy
+            .set_parameter(DspParams::InputGain, self.params.drive.value());
+        dsp.proxy
+            .set_parameter(DspParams::Distortion, self.params.dist.value());
+        dsp.proxy
+            .set_parameter(DspParams::Tone, self.params.tone.value());
+        dsp.proxy
+            .set_parameter(DspParams::OutputGain, self.params.out_level.value());
+        dsp.proxy.set_parameter(
+            DspParams::ComponentMismatch,
+            self.params.component_matching.value(),
+        );
+        dsp.proxy.set_parameter(
+            DspParams::Bypass,
+            if self.params.bypass.value() { 1.0 } else { 0.0 },
+        );
+        dsp.proxy.set_parameter(
+            DspParams::BufferBypass,
+            if self.params.io_bypass.value() {
+                1.0
+            } else {
+                0.0
+            },
+        );
 
-        let io_active = !self.params.io_bypass.value();
-        *main_active = !self.params.bypass.value();
-        *input_active = io_active;
-        output.inner.active = io_active;
-        input.gain = Sample::splat(self.params.drive.value() as _);
-        clipping.set_params(samplerate, Sample::splat(self.params.dist.value() as _));
-        clipping.crossover = component_matching_crossover(component_matching);
-        clipping.slew.max_diff = component_matching_slew_rate(samplerate, component_matching);
-        tone.update_params(samplerate, Sample::splat(self.params.tone.value() as _));
-        output.gain = Sample::splat(self.params.out_level.value() as _);
         true
     }
 
     fn reset(&mut self) {
-        DSP::reset(&mut self.dsp);
+        self.dsp.reset();
     }
 
     fn process(
@@ -221,75 +195,11 @@ impl Plugin for Ts404 {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let samplerate = Sample::splat(context.transport().sample_rate as _);
-        let Series((
-            Bypass {
-                inner: input,
-                active: input_active,
-            },
-            Bypass {
-                inner: Series((clipping, tone)),
-                active: main_active,
-            },
-            output,
-        )) = &mut self.dsp;
-
-        let component_matching = Sample::from_f64(self.params.component_matching.value() as _);
-        let io_active = !self.params.io_bypass.value();
-        *main_active = !self.params.bypass.value();
-        *input_active = io_active;
-        output.inner.active = io_active;
-        input.gain = Sample::splat(self.params.drive.value() as _);
-        clipping.set_params(samplerate, Sample::splat(self.params.dist.value() as _));
-        clipping.crossover = component_matching_crossover(component_matching);
-        clipping.slew.max_diff = component_matching_slew_rate(samplerate, component_matching);
-        tone.update_params(samplerate, Sample::splat(self.params.tone.value() as _));
-        output.gain = Sample::splat(self.params.out_level.value() as _);
-
-        context.set_latency_samples(DSP::latency(&self.dsp) as _);
-
-        let mut inner_buffer = [Sample::zero(); MAX_BLOCK_SIZE];
-        let mut os_block_copy = [Sample::zero(); OVERSAMPLE * MAX_BLOCK_SIZE];
-        for (_, mut block) in buffer.iter_blocks(MAX_BLOCK_SIZE) {
-            for (i, mut frame) in block.iter_samples().enumerate() {
-                let stereo = Sample::new(
-                    *frame.get_mut(0).unwrap() as _,
-                    *frame.get_mut(1).unwrap() as _,
-                );
-                inner_buffer[i] = stereo;
-            }
-
-            let inner_buffer = &mut inner_buffer[..block.samples()];
-            let os_block_copy = &mut os_block_copy[..block.samples() * OVERSAMPLE];
-            let mut os_block = self.oversample.oversample(inner_buffer);
-            os_block_copy.copy_from_slice(&os_block);
-            self.dsp.process_block(
-                slice_to_mono_block(os_block_copy),
-                slice_to_mono_block_mut(&mut os_block),
-            );
-            os_block.finish(inner_buffer);
-
-            for (i, s) in inner_buffer.iter().copied().enumerate() {
-                *block.get_mut(0).unwrap().get_mut(i).unwrap() = s.extract(0) as _;
-                *block.get_mut(1).unwrap().get_mut(i).unwrap() = s.extract(1) as _;
-            }
-        }
-
-        safety_clipper(buffer);
+        context.set_latency_samples(self.dsp.latency() as _);
+        process_buffer_simd64::<_, _, MAX_BLOCK_SIZE>(&mut self.dsp, buffer);
+        //safety_clipper(buffer);
 
         ProcessStatus::Normal
-    }
-}
-
-fn safety_clipper(buffer: &mut Buffer) {
-    let max_ampl = db_to_gain_fast(8.0);
-    for sample in buffer.iter_samples() {
-        for s in sample.into_iter() {
-            if !s.is_finite() || s.abs() > max_ampl {
-                nih_debug_assert_failure!("Safety clip triggered");
-                s.set_zero();
-            }
-        }
     }
 }
 
