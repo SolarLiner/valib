@@ -8,7 +8,7 @@ use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
 use valib::filters::statespace::StateSpace;
 use valib::oversample::{Oversample, Oversampled};
-use valib::saturators::{Clipper, Saturator, Slew};
+use valib::saturators::{Saturator, Slew};
 use valib::Scalar;
 use valib::simd::{AutoF32x2, AutoF64x2, AutoSimd, SimdBool, SimdComplexField, SimdPartialOrd};
 use valib::util::lerp;
@@ -168,8 +168,6 @@ pub struct ClipperStage<T: Scalar> {
     dt: T,
     dist: SmoothedParam,
     state_space: StateSpace<T, 1, 3, 1>,
-    feedback_gain: SmoothedParam,
-    feedback_sample: T,
     slew: Slew<T>,
 }
 
@@ -178,7 +176,6 @@ impl<T: Scalar> DSPMeta for ClipperStage<T> {
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.dt = T::from_f64(samplerate.recip() as _);
-        self.feedback_gain.set_samplerate(samplerate);
         self.state_space.set_samplerate(samplerate);
         self.slew.set_samplerate(samplerate);
     }
@@ -190,22 +187,18 @@ impl<T: Scalar> DSPMeta for ClipperStage<T> {
     fn reset(&mut self) {
         self.state_space.reset();
         self.slew.reset();
-        self.feedback_sample = T::zero();
     }
 }
 
 impl<T: Scalar> DSPProcess<1, 1> for ClipperStage<T> {
     #[replace_float_literals(Self::Sample::from_f64(literal))]
-    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let dist = self.dist.next_sample_as();
         self.update_state_matrices(self.dt, dist);
-        let [y] = self.state_space.process([
-            x - T::from_f64(self.feedback_gain.next_sample() as _) * self.feedback_sample
-        ]);
+        let [y] = self.state_space.process(x);
         let y = y.simd_asinh().simd_clamp(-4.5, 4.5);
-        let [y] = self.slew.process([y]);
-        self.feedback_sample = y;
-        [y]
+        let y = self.slew.process([y]);
+        y
     }
 }
 
@@ -216,8 +209,6 @@ impl<T: Scalar> ClipperStage<T> {
             dt,
             dist: SmoothedParam::exponential(1.0, samplerate, 50.0),
             state_space: crate::gen::clipper(dt, dist),
-            feedback_gain: SmoothedParam::exponential(0.0, samplerate, 50.0),
-            feedback_sample: T::zero(),
             slew: Slew::new(T::from_f64(samplerate as _), T::from_f64(1e4) * dt),
         }
     }
@@ -402,7 +393,6 @@ impl<T: Scalar> HasParameters for Dsp<T> {
             DspParams::ComponentMismatch => {
                 clipper.slew.max_diff =
                     component_matching_slew_rate(self.dt.simd_recip(), T::from_f64(value as _));
-                clipper.feedback_gain.param = lerp(value, -0.5, 0.0);
             }
             DspParams::BufferBypass => {
                 input_active.param = 1. - value;
