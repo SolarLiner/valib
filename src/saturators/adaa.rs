@@ -48,10 +48,10 @@ impl<T: Scalar> Antiderivative2<T> for Asinh {
     }
 }
 
-impl<T: Scalar> Antiderivative<T> for Clipper {
+impl<T: Scalar> Antiderivative<T> for Clipper<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn evaluate(&self, x: T) -> T {
-        x.simd_clamp(-1.0, 1.0)
+        x.simd_clamp(self.min, self.max)
     }
 
     #[replace_float_literals(T::from_f64(literal))]
@@ -59,20 +59,20 @@ impl<T: Scalar> Antiderivative<T> for Clipper {
         let lower = -x;
         let upper = x;
         let middle = (0.5) * (x * x + T::one());
-        let is_lower = x.simd_lt(-T::one());
-        let is_higher = x.simd_gt(T::one());
+        let is_lower = x.simd_lt(self.min);
+        let is_higher = x.simd_gt(self.max);
         lower.select(is_lower, upper.select(is_higher, middle))
     }
 }
 
-impl<T: Scalar> Antiderivative2<T> for Clipper {
+impl<T: Scalar> Antiderivative2<T> for Clipper<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn antiderivative2(&self, x: T) -> T {
         let lower = -0.5 * x * (x - 2.0);
         let upper = x * x / 2.0 * x * T::simd_recip(3.0);
         let middle = T::simd_recip(6.0) * (x * x * x + 9.0 * x + 1.0);
-        let is_lower = x.simd_lt(-1.0);
-        let is_higher = x.simd_gt(1.0);
+        let is_lower = x.simd_lt(self.min);
+        let is_higher = x.simd_gt(self.max);
         lower.select(is_lower, upper.select(is_higher, middle))
     }
 }
@@ -252,7 +252,7 @@ mod tests {
     #[rstest]
     #[case("tanh", Adaa::< _, Tanh, 1 >::default())]
     #[case("asinh", Adaa::< _, Asinh, 1 >::default())]
-    #[case("clipper", Adaa::< _, Clipper, 1 >::default())]
+    #[case("clipper", Adaa::< _, Clipper<f64>, 1 >::default())]
     fn test_adaa1<S: Antiderivative<f64> + Saturator<f64>>(
         #[case] name: &str,
         #[case] mut adaa: Adaa<f64, S, 1>,
@@ -272,7 +272,7 @@ mod tests {
     }
 
     #[rstest]
-    #[case("clipper", Adaa::< _, Clipper, 2 >::default())]
+    #[case("clipper", Adaa::< _, Clipper<f64>, 2 >::default())]
     #[case("asinh", Adaa::< _, Asinh, 2 >::default())]
     fn test_adaa2<S: Antiderivative2<f64> + Saturator<f64>>(
         #[case] name: &str,

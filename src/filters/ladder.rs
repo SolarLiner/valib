@@ -59,7 +59,7 @@ impl<T: Scalar> LadderTopology<T> for Ideal {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OTA<S>(pub [S; 4]);
 
-impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for OTA<S> {
+impl<T: Scalar, S: Default + Saturator<T>> LadderTopology<T> for OTA<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let yd = SVector::from([y[0] - y0, y[1] - y[0], y[2] - y[1], y[3] - y[2]]);
         let sout = SVector::from_fn(|i, _| self.0[i].saturate(yd[i]));
@@ -74,7 +74,7 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for OTA<S> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Transistor<S>(pub [S; 5]);
 
-impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
+impl<T: Scalar, S: Default + Saturator<T>> LadderTopology<T> for Transistor<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let y0sat = wc * self.0[4].saturate(y0);
         let ysat = SVector::<_, 4>::from_fn(|i, _| wc * self.0[i].saturate(y[i]));
@@ -259,7 +259,7 @@ mod tests {
     use rstest::rstest;
     use simba::simd::SimdComplexField;
 
-    use crate::dsp::{buffer::AudioBuffer, DSPProcessBlock};
+    use crate::dsp::{buffer::AudioBuffer, BlockAdapter, DSPProcessBlock};
     use crate::saturators::clippers::DiodeClipperModel;
 
     use super::*;
@@ -271,9 +271,10 @@ mod tests {
         #[values(false, true)] compensated: bool,
         #[values(0.0, 0.1, 0.5, 1.0)] resonance: f64,
     ) {
-        let mut filter =
-            Ladder::<f64, Ideal>::new(1024.0, 200.0, resonance).with_topology::<Topo>(topology);
-        filter.compensated = compensated;
+        let mut filter = BlockAdapter(
+            Ladder::<f64, Ideal>::new(1024.0, 200.0, resonance).with_topology::<Topo>(topology),
+        );
+        filter.0.compensated = compensated;
         let input = AudioBuffer::new([std::iter::once(0.0)
             .chain(std::iter::repeat(1.0))
             .take(1024)

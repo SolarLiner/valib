@@ -1201,6 +1201,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "darling"
+version = "0.20.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "83b2eb4d90d12bdda5ed17de686c2acb4c57914f8f921b8da7e112b5a36f3fe1"
+dependencies = [
+ "darling_core",
+ "darling_macro",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.20.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "622687fe0bac72a04e5599029151f5796111b90f1baaa9b544d807a5e31cd120"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim",
+ "syn 2.0.64",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.20.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "733cabb43482b1a1b53eee8583c2b9e8684d592215ea83efd305dd31bc2f0178"
+dependencies = [
+ "darling_core",
+ "quote",
+ "syn 2.0.64",
+]
+
+[[package]]
 name = "dasp_sample"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1253,7 +1288,6 @@ dependencies = [
 name = "diodeclipper"
 version = "0.1.0"
 dependencies = [
- "enum-map",
  "nih_plug",
  "num-traits",
  "valib",
@@ -1263,7 +1297,6 @@ dependencies = [
 name = "dirty-biquad"
 version = "0.1.0"
 dependencies = [
- "enum-map",
  "nih_plug",
  "valib",
 ]
@@ -1335,26 +1368,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b45de904aa0b010bce2ab45264d0631681847fa7b6f2eaa7dab7619943bc4f59"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "enum-map"
-version = "2.7.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6866f3bfdf8207509a033af1a75a7b08abda06bbaaeae6669323fd5a097df2e9"
-dependencies = [
- "enum-map-derive",
-]
-
-[[package]]
-name = "enum-map-derive"
-version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f282cfdfe92516eb26c2af8589c274c7c17681f5ecc03c18255fe741c6aa64eb"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.64",
 ]
 
 [[package]]
@@ -1593,9 +1606,9 @@ checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "fundsp"
-version = "0.16.0"
+version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3141b9fedca9574471937068b7f8c38bb6da78e11db06aa72f0586e7cdb8de8"
+checksum = "384a8ad7f6f81affc39064e6696bd45653e6997cc0c5eaa8e97c25cbf5f9b578"
 dependencies = [
  "duplicate",
  "dyn-clone",
@@ -1614,9 +1627,9 @@ dependencies = [
 
 [[package]]
 name = "funutd"
-version = "0.12.1"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae3abd023cc7d4c09be0925c855ba1d09a235c3e702c036a688086bf76960938"
+checksum = "1125766e8e2764dad6f7dee7d110aebb8e6cdaa35c7501b52a452ba959f356ff"
 dependencies = [
  "dyn-clone",
  "glam",
@@ -1824,9 +1837,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.24.2"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5418c17512bdf42730f9032c74e1ae39afc408745ebb2acf72fbc4691c17945"
+checksum = "151665d9be52f9bb40fc7966565d39666f2d1e69233571b71b87791c7e0528b3"
 
 [[package]]
 name = "glob"
@@ -1981,6 +1994,12 @@ checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
 ]
+
+[[package]]
+name = "ident_case"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
 
 [[package]]
 name = "image"
@@ -2182,7 +2201,6 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 name = "ladder"
 version = "0.1.0"
 dependencies = [
- "enum-map",
  "nih_plug",
  "valib",
 ]
@@ -3191,6 +3209,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
+name = "prettyplease"
+version = "0.2.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f12335488a2f3b0a83b14edad48dca9879ce89b2edd10e80237e4e852dd645e"
+dependencies = [
+ "proc-macro2",
+ "syn 2.0.64",
+]
+
+[[package]]
 name = "primal-check"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3484,9 +3512,9 @@ checksum = "501026fd03b73546d8327e45399bce64785a15ed1dd7662ef92d3460d963bf18"
 
 [[package]]
 name = "rstest"
-version = "0.18.2"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97eeab2f3c0a199bc4be135c36c924b6590b88c377d416494288c14f2db30199"
+checksum = "9afd55a67069d6e434a95161415f5beeada95a01c7b815508a82dcb0e1593682"
 dependencies = [
  "futures",
  "futures-timer",
@@ -3496,12 +3524,13 @@ dependencies = [
 
 [[package]]
 name = "rstest_macros"
-version = "0.18.2"
+version = "0.21.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d428f8247852f894ee1be110b375111b586d4fa431f6c46e64ba5a0dcccbe605"
+checksum = "4165dfae59a39dd41d8dec720d3cbfbc71f69744efb480a3920f5d4e0cc6798d"
 dependencies = [
  "cfg-if",
  "glob",
+ "proc-macro-crate 3.1.0",
  "proc-macro2",
  "quote",
  "regex",
@@ -3628,7 +3657,6 @@ dependencies = [
 name = "saturators"
 version = "0.1.0"
 dependencies = [
- "enum-map",
  "nih_plug",
  "num-traits",
  "valib",
@@ -3883,7 +3911,6 @@ checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 name = "svfmixer"
 version = "0.1.0"
 dependencies = [
- "enum-map",
  "nalgebra",
  "nih_plug",
  "valib",
@@ -4494,7 +4521,6 @@ name = "valib"
 version = "0.1.0"
 dependencies = [
  "az",
- "enum-map",
  "fundsp",
  "insta",
  "nalgebra",
@@ -4508,6 +4534,19 @@ dependencies = [
  "serde",
  "simba",
  "typenum",
+ "valib_derive",
+]
+
+[[package]]
+name = "valib_derive"
+version = "0.1.0"
+dependencies = [
+ "darling",
+ "insta",
+ "prettyplease",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.64",
 ]
 
 [[package]]

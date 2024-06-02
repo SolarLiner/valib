@@ -1,6 +1,8 @@
 use nalgebra::{SMatrix, SVector};
+use num_traits::One;
 use numeric_literals::replace_float_literals;
 use std::marker::PhantomData;
+use std::ops;
 
 use clippers::DiodeClipperModel;
 
@@ -142,21 +144,44 @@ impl<T: Scalar> Saturator<T> for Asinh {
     }
 }
 
-#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
-pub struct Clipper;
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct Clipper<T> {
+    pub min: T,
+    pub max: T,
+}
 
-impl<S: Scalar> Saturator<S> for Clipper {
+impl<T: Copy + One + ops::Neg<Output = T>> Default for Clipper<T> {
+    fn default() -> Self {
+        let max = T::one();
+        let min = -max;
+        Self { min, max }
+    }
+}
+
+impl<T: Scalar> Saturator<T> for Clipper<T> {
     #[inline(always)]
-    #[replace_float_literals(S::from_f64(literal))]
-    fn saturate(&self, x: S) -> S {
-        x.simd_min(1.0).simd_max(-1.0)
+    #[replace_float_literals(T::from_f64(literal))]
+    fn saturate(&self, x: T) -> T {
+        x.simd_min(self.max).simd_max(self.min)
     }
 
     #[inline(always)]
-    #[replace_float_literals(S::from_f64(literal))]
-    fn sat_diff(&self, x: S) -> S {
+    #[replace_float_literals(T::from_f64(literal))]
+    fn sat_diff(&self, x: T) -> T {
         let mask = x.simd_abs().simd_gt(1.0);
         (1.0).select(mask, 0.0)
+    }
+}
+
+impl<T: Scalar, const N: usize> MultiSaturator<T, N> for Clipper<T> {
+    fn multi_saturate(&self, x: [T; N]) -> [T; N] {
+        x.map(|x| self.saturate(x))
+    }
+
+    fn update_state_multi(&mut self, x: [T; N], y: [T; N]) {}
+
+    fn sat_jacobian(&self, x: [T; N]) -> [T; N] {
+        x.map(|x| self.sat_diff(x))
     }
 }
 
@@ -207,7 +232,7 @@ impl<T: Scalar> Saturator<T> for Dynamic<T> {
     fn saturate(&self, x: T) -> T {
         match self {
             Self::Linear => Linear.saturate(x),
-            Self::HardClipper => Clipper.saturate(x),
+            Self::HardClipper => Clipper::default().saturate(x),
             Self::Tanh => Tanh.saturate(x),
             Self::Asinh => Asinh.saturate(x),
             Self::DiodeClipper(clip) => clip.saturate(x),
@@ -219,7 +244,7 @@ impl<T: Scalar> Saturator<T> for Dynamic<T> {
     fn sat_diff(&self, x: T) -> T {
         match self {
             Self::Linear => Linear.sat_diff(x),
-            Self::HardClipper => Clipper.sat_diff(x),
+            Self::HardClipper => Clipper::default().sat_diff(x),
             Self::Asinh => Asinh.sat_diff(x),
             Self::Tanh => Tanh.sat_diff(x),
             Self::DiodeClipper(clip) => clip.sat_diff(x),

@@ -22,13 +22,11 @@
 //! let mut filter = create_filter(0.25);
 //! let output = filter.process([0.0]);
 //! ```
-use std::f64::NAN;
-
 use nalgebra::{Complex, SMatrix, SVector, SimdComplexField};
 use num_traits::Zero;
 
 use crate::dsp::{analysis::DspAnalysis, DSPMeta, DSPProcess};
-use crate::saturators::{Linear, MultiSaturator, Saturator};
+use crate::saturators::{Linear, MultiSaturator};
 use crate::Scalar;
 
 /// Linear discrete state-space method implementation with direct access to the state space matrices.
@@ -64,7 +62,7 @@ impl<
         let mut zia = zi - a;
         if !zia.try_inverse_mut() {
             zia.iter_mut()
-                .for_each(|v| *v = Complex::from_simd_real(<T as Scalar>::from_f64(NAN)));
+                .for_each(|v| *v = Complex::from_simd_real(<T as Scalar>::from_f64(f64::NAN)));
         }
 
         let h = c * zia * b + d;
@@ -73,7 +71,7 @@ impl<
 }
 
 impl<T: Scalar + Zero, const IN: usize, const STATE: usize, const OUT: usize>
-    StateSpace<T, IN, STATE, OUT>
+    StateSpace<T, IN, STATE, OUT, Linear>
 {
     /// Create a zero state-space system, which blocks all inputs.
     pub fn zeros() -> Self {
@@ -105,22 +103,30 @@ impl<T: Scalar + Zero, const IN: usize, const STATE: usize, const OUT: usize>
     }
 }
 
-impl<T: Scalar, const IN: usize, const STATE: usize, const OUT: usize>
-    StateSpace<T, IN, STATE, OUT>
+impl<
+        T: Scalar,
+        const IN: usize,
+        const STATE: usize,
+        const OUT: usize,
+        S: MultiSaturator<T, STATE>,
+    > StateSpace<T, IN, STATE, OUT, S>
 {
     /// Update the matrices of this state space instance by copying them from another instance.
     /// This is useful to be able to reuse constructors as a mean to fully update the state space.
-    pub fn update_matrices(&mut self, other: &Self) {
+    pub fn update_matrices<S2: MultiSaturator<T, STATE>>(
+        &mut self,
+        other: &StateSpace<T, IN, STATE, OUT, S2>,
+    ) {
         self.a = other.a;
         self.b = other.b;
         self.c = other.c;
         self.d = other.d;
     }
 
-    pub fn with_saturators<S: MultiSaturator<T, STATE>>(
+    pub fn with_saturators<S2: MultiSaturator<T, STATE>>(
         self,
-        saturators: S,
-    ) -> StateSpace<T, IN, STATE, OUT, S> {
+        saturators: S2,
+    ) -> StateSpace<T, IN, STATE, OUT, S2> {
         let Self {
             a, b, c, d, state, ..
         } = self;
@@ -171,7 +177,7 @@ mod tests {
     use numeric_literals::replace_float_literals;
 
     use crate::dsp::buffer::AudioBuffer;
-    use crate::dsp::DSPProcessBlock;
+    use crate::dsp::{BlockAdapter, DSPProcessBlock};
 
     use super::*;
 
@@ -203,7 +209,7 @@ mod tests {
 
     #[test]
     fn test_rc_filter() {
-        let mut filter = RC::new(0.25);
+        let mut filter = BlockAdapter(RC::new(0.25));
         let mut input = AudioBuffer::zeroed(1024);
         let mut output = input.clone();
         input[0][0] = 1.0;

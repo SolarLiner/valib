@@ -116,7 +116,9 @@ impl<T: Scalar, C: Default> Svf<T, C> {
         this.update_coefficients();
         this
     }
+}
 
+impl<T: Scalar, C> Svf<T, C> {
     pub fn reset(&mut self) {
         self.s.fill(T::zero());
     }

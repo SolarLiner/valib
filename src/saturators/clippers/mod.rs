@@ -6,6 +6,7 @@ use numeric_literals::replace_float_literals;
 use simba::simd::SimdBool;
 
 use crate::dsp::DSPMeta;
+use crate::saturators::MultiSaturator;
 use crate::{dsp::DSPProcess, math::newton_rhapson_tol_max_iter};
 use crate::{math::RootEq, saturators::Saturator, Scalar};
 
@@ -39,10 +40,9 @@ impl<T: Copy> DiodeClipper<T> {
 }
 
 impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
-    #[cfg_attr(test, inline(never))]
     #[cfg_attr(not(test), inline)]
     #[replace_float_literals(T::from_f64(literal))]
-    fn eval(&self, input: &nalgebra::SVector<T, 1>) -> nalgebra::SVector<T, 1> {
+    fn eval(&self, input: &SVector<T, 1>) -> SVector<T, 1> {
         let vout = input[0];
         let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
@@ -55,10 +55,9 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
         SVector::<_, 1>::new(res)
     }
 
-    #[cfg_attr(test, inline(never))]
     #[cfg_attr(not(test), inline)]
     #[replace_float_literals(T::from_f64(literal))]
-    fn j_inv(&self, input: &nalgebra::SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
+    fn j_inv(&self, input: &SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
         let vout = input[0];
         let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
@@ -69,9 +68,7 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
         let expm = T::simd_exp(-expin / self.num_diodes_bwd).simd_min(1e35);
         let res = v * self.isat * (expn / self.num_diodes_fwd + expm / self.num_diodes_bwd) + 2.;
         // Biasing to prevent divisions by zero, less accurate around zero
-        let ret = (1e-6)
-            .select(res.simd_abs().simd_lt(1e-6), res)
-            .simd_recip();
+        let ret = 1e-6.select(res.simd_abs().simd_lt(1e-6), res).simd_recip();
         Some(SMatrix::<_, 1, 1>::new(ret))
     }
 }
@@ -214,6 +211,18 @@ impl<T: Scalar> Saturator<T> for DiodeClipperModel<T> {
     #[inline(always)]
     fn saturate(&self, x: T) -> T {
         self.eval(x) / (self.si * self.so)
+    }
+}
+
+impl<T: Scalar, const N: usize> MultiSaturator<T, N> for DiodeClipperModel<T> {
+    fn multi_saturate(&self, x: [T; N]) -> [T; N] {
+        x.map(|x| self.saturate(x))
+    }
+
+    fn update_state_multi(&mut self, _: [T; N], _: [T; N]) {}
+
+    fn sat_jacobian(&self, x: [T; N]) -> [T; N] {
+        x.map(|x| self.sat_diff(x))
     }
 }
 
