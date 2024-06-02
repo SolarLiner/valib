@@ -8,7 +8,7 @@ use nih_plug::nih_debug_assert;
 use nih_plug::params::FloatParam;
 use nih_plug::prelude::*;
 
-use crate::dsp::parameter::{HasParameters, ParamName, RemoteControl};
+use crate::dsp::parameter::{ParamName, RemoteControl};
 use crate::dsp::DSPProcessBlock;
 use crate::Scalar;
 
@@ -155,6 +155,54 @@ pub fn process_buffer_simd<
         for (i, mut c) in block.iter_samples().enumerate() {
             for (ch, s) in c.iter_mut().enumerate() {
                 *s = output.get_frame(i)[0].extract(ch);
+            }
+        }
+    }
+}
+
+/// Processes a [`nih-plug`] buffer in its entirety with a [`DSPBlock`] instance, mapping channels
+/// to lanes in the scalar type.
+///
+/// This function automatically respects the value reported by [`DSPBlock::max_buffer_size`]. Up to
+/// [`MAX_BUF_SIZE`] samples will be processed at once.
+///
+/// # Arguments
+///
+/// * `dsp`: [`DSPBlock`] instance to process the buffer with
+/// * `buffer`: Buffer to process
+///
+/// panics if the scalar type has more channels than the buffer holds.
+pub fn process_buffer_simd64<
+    T: Scalar<Element = f64>,
+    Dsp: DSPProcessBlock<1, 1, Sample = T>,
+    const MAX_BUF_SIZE: usize,
+>(
+    dsp: &mut Dsp,
+    buffer: &mut Buffer,
+) {
+    let channels = buffer.channels();
+    assert!(T::lanes() <= channels);
+    let mut input = AudioBuffer::const_new([[T::from_f64(0.0); MAX_BUF_SIZE]]);
+    let mut output = input;
+    let max_buffer_size = dsp.max_block_size().unwrap_or(MAX_BUF_SIZE);
+    nih_debug_assert!(max_buffer_size <= MAX_BUF_SIZE);
+    for (_, mut block) in buffer.iter_blocks(max_buffer_size) {
+        let mut input = input.array_slice_mut(..block.samples());
+        let mut output = output.array_slice_mut(..block.samples());
+        for (i, mut c) in block.iter_samples().enumerate() {
+            let mut frame = T::zero();
+            for (ch, s) in c.iter_mut().enumerate() {
+                frame.replace(ch, *s as f64);
+            }
+            input.set_frame(i, [frame]);
+        }
+        output.copy_from(input.as_ref());
+
+        dsp.process_block(input.as_ref(), output.as_mut());
+
+        for (i, mut c) in block.iter_samples().enumerate() {
+            for (ch, s) in c.iter_mut().enumerate() {
+                *s = output.get_frame(i)[0].extract(ch) as f32;
             }
         }
     }

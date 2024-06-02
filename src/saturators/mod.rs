@@ -167,6 +167,14 @@ pub struct Slew<T> {
     last_out: T,
 }
 
+impl<T: Scalar> Slew<T> {
+    pub fn is_changing(&self, target: T) -> T::SimdBool {
+        (target - self.last_out)
+            .simd_abs()
+            .simd_gt(T::from_f64(1e-6))
+    }
+}
+
 impl<T: Scalar> Default for Slew<T> {
     fn default() -> Self {
         Self {

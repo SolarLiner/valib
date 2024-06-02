@@ -3,7 +3,7 @@ use nalgebra::Complex;
 use simba::simd::SimdComplexField;
 
 use crate::dsp::DSPMeta;
-use crate::{dsp::DSPProcess, math::freq_to_z};
+use crate::math::freq_to_z;
 
 /// Trait for DSP structs that have a z-domain transfer function available.
 /// For processes with nonlinear methods, the transfer function can still be defined by

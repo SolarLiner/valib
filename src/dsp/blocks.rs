@@ -225,6 +225,7 @@ macro_rules! series_tuple {
                 unreachable!();
             }
 
+            #[allow(unused, non_snake_case)]
             fn into_id(self) -> ParamId {
                 let mut acc = 0;
                 let count = 0;

@@ -27,18 +27,18 @@ pub struct Oversample<T> {
 }
 
 impl<T: Scalar> Oversample<T> {
-    pub fn new(os_factor: usize, max_block_size: usize) -> Self
+    pub fn new(max_os_factor: usize, max_block_size: usize) -> Self
     where
         Complex<T>: SimdComplexField,
     {
-        assert!(os_factor > 1);
-        let os_buffer = vec![T::zero(); max_block_size * os_factor].into_boxed_slice();
-        let fc = 1.5 * f64::recip(2.0 * os_factor as f64);
+        assert!(max_os_factor > 1);
+        let os_buffer = vec![T::zero(); max_block_size * max_os_factor].into_boxed_slice();
+        let fc = 1.5 * f64::recip(2.0 * max_os_factor as f64);
         let filter = Biquad::lowpass(T::from_f64(fc), T::from_f64(FRAC_1_SQRT_2));
         let filters = Series([filter; CASCADE]);
         Self {
-            max_factor: os_factor,
-            os_factor,
+            max_factor: max_os_factor,
+            os_factor: max_os_factor,
             os_buffer,
             pre_filter: filters,
             post_filter: filters,
@@ -278,11 +278,11 @@ where
     }
 
     fn pan(&mut self, midi_note: u8, pan: f32) {
-        self.pan(midi_note, pan)
+        self.inner.pan(midi_note, pan)
     }
 
     fn gain(&mut self, midi_note: u8, gain: f32) {
-        self.gain(midi_note, gain)
+        self.inner.gain(midi_note, gain)
     }
 }
 

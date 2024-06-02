@@ -65,6 +65,13 @@ impl Smoothing {
             }
         }
     }
+
+    fn is_changing(&self, value: f32) -> bool {
+        match self {
+            Self::Exponential { lambda, state, .. } => (value - state).abs() < 1e-6,
+            Self::Linear { slew, .. } => slew.is_changing(value),
+        }
+    }
 }
 
 impl DSPMeta for Smoothing {
@@ -151,6 +158,10 @@ impl SmoothedParam {
     pub fn next_sample_as<T: Scalar>(&mut self) -> T {
         T::from_f64(self.next_sample() as _)
     }
+
+    pub fn is_changing(&self) -> bool {
+        self.smoothing.is_changing(self.param)
+    }
 }
 
 /// Parameter ID alias. Useful for type-erasing parameter names and make communication easier, but
@@ -227,15 +238,7 @@ impl<P: HasParameters> HasParameters for Box<P> {
     type Name = P::Name;
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {
-        HasParameters::set_parameter(&mut *self, param, value);
-    }
-}
-
-impl<P: HasParameters> HasParameters for std::rc::Rc<P> {
-    type Name = P::Name;
-
-    fn set_parameter(&mut self, param: Self::Name, value: f32) {
-        HasParameters::set_parameter(&mut *self, param, value);
+        P::set_parameter(&mut *self, param, value);
     }
 }
 
