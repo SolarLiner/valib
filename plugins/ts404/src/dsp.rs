@@ -1,6 +1,11 @@
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
+
 use nalgebra::Complex;
 use nih_plug::nih_log;
+use nih_plug::prelude::AtomicF32;
 use nih_plug::util::db_to_gain_fast;
+use num_traits::ToPrimitive;
 use numeric_literals::replace_float_literals;
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::dsp::blocks::Series;
@@ -10,8 +15,13 @@ use valib::filters::statespace::StateSpace;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::{Saturator, Slew};
 use valib::Scalar;
-use valib::simd::{AutoF32x2, AutoF64x2, AutoSimd, SimdBool, SimdComplexField, SimdPartialOrd};
+use valib::simd::{
+    AutoF32x2, AutoF64x2, AutoSimd, SimdBool, SimdComplexField, SimdPartialOrd, SimdValue,
+};
 use valib::util::lerp;
+
+use crate::TARGET_SAMPLERATE;
+use crate::util::Rms;
 
 #[replace_float_literals(T::from_f64(literal))]
 fn smooth_min<T: Scalar>(t: T, a: T, b: T) -> T {
@@ -169,6 +179,8 @@ pub struct ClipperStage<T: Scalar> {
     dist: SmoothedParam,
     state_space: StateSpace<T, 1, 3, 1>,
     slew: Slew<T>,
+    led_rms: Rms<f32>,
+    led_display: Arc<AtomicF32>,
 }
 
 impl<T: Scalar> DSPMeta for ClipperStage<T> {
@@ -190,7 +202,10 @@ impl<T: Scalar> DSPMeta for ClipperStage<T> {
     }
 }
 
-impl<T: Scalar> DSPProcess<1, 1> for ClipperStage<T> {
+impl<T: Scalar> DSPProcess<1, 1> for ClipperStage<T>
+where
+    <T as SimdValue>::Element: ToPrimitive,
+{
     #[replace_float_literals(Self::Sample::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let dist = self.dist.next_sample_as();
@@ -198,6 +213,13 @@ impl<T: Scalar> DSPProcess<1, 1> for ClipperStage<T> {
         let [y] = self.state_space.process(x);
         let y = y.simd_asinh().simd_clamp(-4.5, 4.5);
         let y = self.slew.process([y]);
+        let delta = (y[0] - x[0])
+            .simd_abs()
+            .simd_horizontal_sum()
+            .to_f32()
+            .unwrap_or_default();
+        let rms = self.led_rms.add_element(delta);
+        self.led_display.store(rms, Ordering::SeqCst);
         y
     }
 }
@@ -205,11 +227,14 @@ impl<T: Scalar> DSPProcess<1, 1> for ClipperStage<T> {
 impl<T: Scalar> ClipperStage<T> {
     pub fn new(samplerate: f32, dist: T) -> Self {
         let dt = T::from_f64(samplerate as _).simd_recip();
+        let rms_samples = (1e-3 * TARGET_SAMPLERATE) as usize;
         Self {
             dt,
             dist: SmoothedParam::exponential(1.0, samplerate, 50.0),
             state_space: crate::gen::clipper(dt, dist),
             slew: Slew::new(T::from_f64(samplerate as _), T::from_f64(1e4) * dt),
+            led_rms: Rms::new(rms_samples),
+            led_display: Arc::new(AtomicF32::new(0.0)),
         }
     }
 
@@ -343,7 +368,10 @@ impl<T: Scalar> DSPMeta for Dsp<T> {
     type Sample = T;
 }
 
-impl<T: Scalar> DSPProcessBlock<1, 1> for Dsp<T> {
+impl<T: Scalar> DSPProcessBlock<1, 1> for Dsp<T>
+where
+    <T as SimdValue>::Element: ToPrimitive,
+{
     fn process_block(
         &mut self,
         inputs: AudioBufferRef<Self::Sample, 1>,
@@ -405,6 +433,7 @@ impl<T: Scalar> HasParameters for Dsp<T> {
 impl<T: Scalar> Dsp<T>
 where
     Complex<T>: SimdComplexField,
+    <T as SimdValue>::Element: ToPrimitive,
 {
     pub fn new(base_samplerate: f32, target_samplerate: f32) -> RemoteControlled<Self> {
         let oversample = target_samplerate / base_samplerate;
@@ -428,6 +457,11 @@ where
                 dt: T::from_f64(samplerate as _).simd_recip(),
             },
         )
+    }
+
+    pub fn get_led_display(&self) -> Arc<AtomicF32> {
+        // Funny nested access because of semi-structured DSP blocks
+        self.inner.inner.0.inner.0.1.led_display.clone()
     }
 }
 

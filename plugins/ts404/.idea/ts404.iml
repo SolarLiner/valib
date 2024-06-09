@@ -13,6 +13,5 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="Poetry (ts404) interpreter library" level="application" />
   </component>
 </module>

@@ -1,100 +1,32 @@
 use std::sync::Arc;
+use std::sync::mpsc::{channel, Sender};
 
 use nih_plug::prelude::*;
-use nih_plug::util::{gain_to_db, MINUS_INFINITY_DB, MINUS_INFINITY_GAIN};
 use valib::contrib::nih_plug::{BindToParameter, process_buffer_simd64};
 use valib::dsp::DSPMeta;
-use valib::dsp::parameter::{RemoteControl, RemoteControlled};
+use valib::dsp::parameter::RemoteControlled;
 use valib::simd::{AutoF32x2, AutoF64x2};
 
 use dsp::MAX_BLOCK_SIZE;
+use params::Ts404Params;
 
 use crate::dsp::{Dsp, DspParams};
 
 mod dsp;
 mod gen;
+mod util;
+mod editor;
+mod params;
 
 const TARGET_SAMPLERATE: f32 = 96000.;
 
 type Sample = AutoF64x2;
 type Sample32 = AutoF32x2;
 
-#[derive(Params)]
-struct Ts404Params {
-    #[id = "drive"]
-    drive: FloatParam,
-    #[id = "dist"]
-    dist: FloatParam,
-    #[id = "tone"]
-    tone: FloatParam,
-    #[id = "level"]
-    out_level: FloatParam,
-    #[id = "cmpmat"]
-    component_matching: FloatParam,
-    #[id = "bypass"]
-    bypass: BoolParam,
-    #[id = "byp_io"]
-    io_bypass: BoolParam,
-}
-
-impl Ts404Params {
-    fn new(remote: &RemoteControl<DspParams>) -> Arc<Self> {
-        Arc::new(Self {
-            drive: FloatParam::new(
-                "Drive",
-                1.0,
-                FloatRange::Skewed {
-                    min: 0.5,
-                    max: 100.0,
-                    factor: FloatRange::gain_skew_factor(gain_to_db(0.5), gain_to_db(100.0)),
-                },
-            )
-            .with_unit("dB")
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .bind_to_parameter(remote, DspParams::InputGain),
-            dist: FloatParam::new("Distortion", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
-                .with_unit("%")
-                .with_value_to_string(formatters::v2s_f32_percentage(2))
-                .with_string_to_value(formatters::s2v_f32_percentage())
-                .bind_to_parameter(remote, DspParams::Distortion),
-            tone: FloatParam::new("Tone", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 })
-                .with_unit("%")
-                .with_value_to_string(formatters::v2s_f32_percentage(2))
-                .with_string_to_value(formatters::s2v_f32_percentage())
-                .bind_to_parameter(remote, DspParams::Tone),
-            out_level: FloatParam::new(
-                "Output Level",
-                0.158,
-                FloatRange::Skewed {
-                    min: MINUS_INFINITY_GAIN,
-                    max: 1.0,
-                    factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, gain_to_db(1.0)),
-                },
-            )
-            .with_unit("dB")
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .bind_to_parameter(remote, DspParams::OutputGain),
-            component_matching: FloatParam::new(
-                "Component Matching",
-                1.,
-                FloatRange::Linear { min: 0.0, max: 1.0 },
-            )
-            .with_unit("%")
-            .with_string_to_value(formatters::s2v_f32_percentage())
-            .with_value_to_string(formatters::v2s_f32_percentage(0))
-            .bind_to_parameter(remote, DspParams::ComponentMismatch),
-            bypass: BoolParam::new("Bypass", false).bind_to_parameter(remote, DspParams::Bypass),
-            io_bypass: BoolParam::new("I/O Buffers Bypass", false)
-                .bind_to_parameter(remote, DspParams::BufferBypass),
-        })
-    }
-}
-
 struct Ts404 {
     params: Arc<Ts404Params>,
     dsp: RemoteControlled<Dsp<Sample>>,
+    driver_led_tx: Option<Sender<Arc<AtomicF32>>>,
 }
 
 impl Default for Ts404 {
@@ -102,7 +34,7 @@ impl Default for Ts404 {
         let default_samplerate = 44100.0;
         let dsp = Dsp::new(default_samplerate, TARGET_SAMPLERATE);
         let params = Ts404Params::new(&dsp.proxy);
-        Self { dsp, params }
+        Self { dsp, params, driver_led_tx: None,}
     }
 }
 
@@ -145,6 +77,12 @@ impl Plugin for Ts404 {
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
+    }
+
+    fn editor(&mut self, _: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        let (tx, rx) = channel();
+        self.driver_led_tx.replace(tx);
+        editor::create(self.params.clone(), rx)
     }
 
     fn initialize(
