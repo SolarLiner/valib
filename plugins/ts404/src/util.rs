@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use nih_plug::nih_log;
+
 use num_traits::Zero;
 use valib::Scalar;
 
@@ -26,7 +26,7 @@ impl<T: Scalar> Rms<T> {
         self.data.push_back(v2);
         self.get_rms()
     }
-    
+
     pub fn get_rms(&self) -> T {
         self.summed_squared.simd_sqrt()
     }

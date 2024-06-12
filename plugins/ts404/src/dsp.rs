@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use nalgebra::Complex;
 use nih_plug::nih_log;
@@ -7,21 +7,21 @@ use nih_plug::prelude::AtomicF32;
 use nih_plug::util::db_to_gain_fast;
 use num_traits::ToPrimitive;
 use numeric_literals::replace_float_literals;
-use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::dsp::blocks::Series;
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
+use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::statespace::StateSpace;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::{Saturator, Slew};
-use valib::Scalar;
 use valib::simd::{
     AutoF32x2, AutoF64x2, AutoSimd, SimdBool, SimdComplexField, SimdPartialOrd, SimdValue,
 };
 use valib::util::lerp;
+use valib::Scalar;
 
-use crate::TARGET_SAMPLERATE;
 use crate::util::Rms;
+use crate::TARGET_SAMPLERATE;
 
 #[replace_float_literals(T::from_f64(literal))]
 fn smooth_min<T: Scalar>(t: T, a: T, b: T) -> T {
@@ -227,7 +227,7 @@ where
 impl<T: Scalar> ClipperStage<T> {
     pub fn new(samplerate: f32, dist: T) -> Self {
         let dt = T::from_f64(samplerate as _).simd_recip();
-        let rms_samples = (1e-3 * TARGET_SAMPLERATE) as usize;
+        let rms_samples = (16e-3 * TARGET_SAMPLERATE) as usize;
         Self {
             dt,
             dist: SmoothedParam::exponential(1.0, samplerate, 50.0),
@@ -461,7 +461,11 @@ where
 
     pub fn get_led_display(&self) -> Arc<AtomicF32> {
         // Funny nested access because of semi-structured DSP blocks
-        self.inner.inner.0.inner.0.1.led_display.clone()
+        self.inner.inner.0.inner.0 .1.led_display.clone()
+    }
+
+    pub fn set_led_display(&mut self, value: &Arc<AtomicF32>) {
+        self.inner.inner.0.inner.0 .1.led_display.clone_from(value);
     }
 }
 

@@ -1,13 +1,13 @@
-use valib::dsp::parameter::RemoteControl;
-use std::sync::Arc;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use crate::dsp::DspParams;
+use nih_plug::formatters;
 use nih_plug::params::{BoolParam, FloatParam, Params};
 use nih_plug::prelude::{AtomicF32, FloatRange};
 use nih_plug::util::{gain_to_db, MINUS_INFINITY_DB, MINUS_INFINITY_GAIN};
-use nih_plug::formatters;
 use nih_plug_iced::IcedState;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::Arc;
 use valib::contrib::nih_plug::BindToParameter;
-use crate::dsp::DspParams;
+use valib::dsp::parameter::RemoteControl;
 
 #[derive(Params)]
 pub(crate) struct Ts404Params {
@@ -25,7 +25,7 @@ pub(crate) struct Ts404Params {
     pub(crate) bypass: BoolParam,
     #[id = "byp_io"]
     pub(crate) io_bypass: BoolParam,
-    #[persist="editor_state"]
+    #[persist = "editor_state"]
     pub(crate) editor_state: Arc<IcedState>,
 }
 
@@ -41,10 +41,10 @@ impl Ts404Params {
                     factor: FloatRange::gain_skew_factor(gain_to_db(0.5), gain_to_db(100.0)),
                 },
             )
-                .with_unit("dB")
-                .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-                .with_string_to_value(formatters::s2v_f32_gain_to_db())
-                .bind_to_parameter(remote, DspParams::InputGain),
+            .with_unit("dB")
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .bind_to_parameter(remote, DspParams::InputGain),
             dist: FloatParam::new("Distortion", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
                 .with_unit("%")
                 .with_value_to_string(formatters::v2s_f32_percentage(2))
@@ -64,19 +64,19 @@ impl Ts404Params {
                     factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, gain_to_db(1.0)),
                 },
             )
-                .with_unit("dB")
-                .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-                .with_string_to_value(formatters::s2v_f32_gain_to_db())
-                .bind_to_parameter(remote, DspParams::OutputGain),
+            .with_unit("dB")
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .bind_to_parameter(remote, DspParams::OutputGain),
             component_matching: FloatParam::new(
                 "Component Matching",
                 1.,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )
-                .with_unit("%")
-                .with_string_to_value(formatters::s2v_f32_percentage())
-                .with_value_to_string(formatters::v2s_f32_percentage(0))
-                .bind_to_parameter(remote, DspParams::ComponentMismatch),
+            .with_unit("%")
+            .with_string_to_value(formatters::s2v_f32_percentage())
+            .with_value_to_string(formatters::v2s_f32_percentage(0))
+            .bind_to_parameter(remote, DspParams::ComponentMismatch),
             bypass: BoolParam::new("Bypass", false).bind_to_parameter(remote, DspParams::Bypass),
             io_bypass: BoolParam::new("I/O Buffers Bypass", false)
                 .bind_to_parameter(remote, DspParams::BufferBypass),

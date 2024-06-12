@@ -1,10 +1,10 @@
-use std::sync::Arc;
 use std::sync::mpsc::{channel, Sender};
+use std::sync::Arc;
 
 use nih_plug::prelude::*;
-use valib::contrib::nih_plug::{BindToParameter, process_buffer_simd64};
-use valib::dsp::DSPMeta;
+use valib::contrib::nih_plug::{process_buffer_simd64, BindToParameter};
 use valib::dsp::parameter::RemoteControlled;
+use valib::dsp::DSPMeta;
 use valib::simd::{AutoF32x2, AutoF64x2};
 
 use dsp::MAX_BLOCK_SIZE;
@@ -13,10 +13,10 @@ use params::Ts404Params;
 use crate::dsp::{Dsp, DspParams};
 
 mod dsp;
-mod gen;
-mod util;
 mod editor;
+mod gen;
 mod params;
+mod util;
 
 const TARGET_SAMPLERATE: f32 = 96000.;
 
@@ -26,7 +26,6 @@ type Sample32 = AutoF32x2;
 struct Ts404 {
     params: Arc<Ts404Params>,
     dsp: RemoteControlled<Dsp<Sample>>,
-    driver_led_tx: Option<Sender<Arc<AtomicF32>>>,
 }
 
 impl Default for Ts404 {
@@ -34,7 +33,7 @@ impl Default for Ts404 {
         let default_samplerate = 44100.0;
         let dsp = Dsp::new(default_samplerate, TARGET_SAMPLERATE);
         let params = Ts404Params::new(&dsp.proxy);
-        Self { dsp, params, driver_led_tx: None,}
+        Self { dsp, params }
     }
 }
 
@@ -80,9 +79,7 @@ impl Plugin for Ts404 {
     }
 
     fn editor(&mut self, _: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        let (tx, rx) = channel();
-        self.driver_led_tx.replace(tx);
-        editor::create(self.params.clone(), rx)
+        editor::create(self.params.clone(), self.dsp.inner.get_led_display())
     }
 
     fn initialize(
@@ -91,8 +88,11 @@ impl Plugin for Ts404 {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
+        let drive_led = self.dsp.inner.get_led_display();
         let dsp = Dsp::new(buffer_config.sample_rate, TARGET_SAMPLERATE);
         self.dsp.inner = dsp.inner;
+        // Reuse the shared atomic
+        self.dsp.inner.set_led_display(&drive_led);
 
         let dsp = &self.dsp;
         dsp.proxy

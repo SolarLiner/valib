@@ -1,6 +1,6 @@
-use nih_plug_iced::{Color, Element, Layout, Length, Point, Rectangle, renderer, Size, Widget};
 use nih_plug_iced::layout::{Limits, Node};
 use nih_plug_iced::renderer::{Quad, Style};
+use nih_plug_iced::{renderer, Color, Element, Layout, Length, Point, Rectangle, Size, Widget};
 
 pub(crate) struct Led {
     size: Length,
@@ -56,13 +56,19 @@ impl<Message, Renderer: renderer::Renderer> Widget<Message, Renderer> for Led {
     ) {
         let bounds = layout.bounds();
         let radius = bounds.width;
-        let color = scale_color(self.color, self.brightness);
-        renderer.fill_quad(Quad {
-            bounds,
-            border_radius: radius,
-            border_width: 0.0,
-            border_color: Color::TRANSPARENT,
-        }, color);
+        let color = Color {
+            a: self.brightness,
+            ..self.color
+        };
+        renderer.fill_quad(
+            Quad {
+                bounds,
+                border_radius: radius,
+                border_width: 0.0,
+                border_color: Color::TRANSPARENT,
+            },
+            color,
+        );
     }
 }
 
@@ -73,6 +79,6 @@ impl<'a, Message: 'a + Clone> From<Led> for Element<'a, Message> {
 }
 
 fn scale_color(col: Color, amt: f32) -> Color {
-    let [r,g,b] = [col.r, col.g, col.b].map(|x| x * amt);
+    let [r, g, b] = [col.r, col.g, col.b].map(|x| x * amt);
     Color::from_rgba(r, g, b, col.a)
 }
