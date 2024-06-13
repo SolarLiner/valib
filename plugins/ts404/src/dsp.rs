@@ -219,7 +219,7 @@ where
             .to_f32()
             .unwrap_or_default();
         let rms = self.led_rms.add_element(delta);
-        self.led_display.store(rms, Ordering::SeqCst);
+        self.led_display.store(rms, Ordering::Relaxed);
         y
     }
 }

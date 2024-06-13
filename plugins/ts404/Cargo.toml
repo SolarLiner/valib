@@ -17,7 +17,7 @@ crate-type = ["cdylib"]
 enum-map = "2.7.3"
 nalgebra = "0.32.3"
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
-nih_plug_iced = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 num-traits = "0.2.17"
 numeric_literals = "0.2.0"
 #valib = { git = "https://github.com/SolarLiner/valib.git" }

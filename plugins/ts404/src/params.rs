@@ -3,9 +3,9 @@ use nih_plug::formatters;
 use nih_plug::params::{BoolParam, FloatParam, Params};
 use nih_plug::prelude::{AtomicF32, FloatRange};
 use nih_plug::util::{gain_to_db, MINUS_INFINITY_DB, MINUS_INFINITY_GAIN};
-use nih_plug_iced::IcedState;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
+use nih_plug_vizia::ViziaState;
 use valib::contrib::nih_plug::BindToParameter;
 use valib::dsp::parameter::RemoteControl;
 
@@ -26,7 +26,7 @@ pub(crate) struct Ts404Params {
     #[id = "byp_io"]
     pub(crate) io_bypass: BoolParam,
     #[persist = "editor_state"]
-    pub(crate) editor_state: Arc<IcedState>,
+    pub(crate) editor_state: Arc<ViziaState>,
 }
 
 impl Ts404Params {
@@ -56,7 +56,7 @@ impl Ts404Params {
                 .with_string_to_value(formatters::s2v_f32_percentage())
                 .bind_to_parameter(remote, DspParams::Tone),
             out_level: FloatParam::new(
-                "Output Level",
+                "Output",
                 0.158,
                 FloatRange::Skewed {
                     min: MINUS_INFINITY_GAIN,
@@ -64,16 +64,16 @@ impl Ts404Params {
                     factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, gain_to_db(1.0)),
                 },
             )
-            .with_unit("dB")
+            .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
             .bind_to_parameter(remote, DspParams::OutputGain),
             component_matching: FloatParam::new(
-                "Component Matching",
+                "Age",
                 1.,
                 FloatRange::Linear { min: 0.0, max: 1.0 },
             )
-            .with_unit("%")
+            .with_unit(" %")
             .with_string_to_value(formatters::s2v_f32_percentage())
             .with_value_to_string(formatters::v2s_f32_percentage(0))
             .bind_to_parameter(remote, DspParams::ComponentMismatch),
