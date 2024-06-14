@@ -3,6 +3,12 @@
     color: #fff;
 }
 
+zstack {
+    position: relative;
+    top: 0;
+    left: 0;
+}
+
 knob {
     border-radius: 100%;
     width: 35px;
@@ -15,6 +21,10 @@ knob {
 knob arc {
     width: 51px;
     height: 51px;
+}
+
+knob dot {
+    color: #797979;
 }
 
 arc.unmodulated {
@@ -38,9 +48,9 @@ arc.unmodulated {
 
 led {
     position: relative;
-    top: 2px;
-    left: 2px;
-    width: 16px;
-    height: 16px;
+    top: 9px;
+    left: 9px;
+    width: 17px;
+    height: 17px;
     color: red;
 }

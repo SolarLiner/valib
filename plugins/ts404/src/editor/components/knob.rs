@@ -8,7 +8,7 @@ use nih_plug_vizia::{
 
 enum KnobEvents {
     SetValueNormalized(f32),
-    EnterValuePlain(String),
+    //EnterValuePlain(String),
 }
 
 struct Arc {
@@ -21,7 +21,7 @@ impl Arc {
     pub fn new<Params: 'static, P: Param>(
         cx: &mut Context,
         bipolar: bool,
-        params: impl Lens<Target=Params>,
+        params: impl Lens<Target = Params>,
         get_param: impl 'static + Copy + Fn(&Params) -> &P,
         get_normalized_value: impl 'static + Fn(&ParamWidgetBase) -> f32,
     ) -> Handle<Self> {
@@ -30,7 +30,7 @@ impl Arc {
             bipolar,
             get_normalized_value: Box::new(get_normalized_value),
         }
-            .build(cx, |_| ())
+        .build(cx, |_| ())
     }
 }
 
@@ -85,13 +85,13 @@ struct Ring {
 impl Ring {
     pub fn new<Params: 'static, P: Param>(
         cx: &mut Context,
-        params: impl Lens<Target=Params>,
+        params: impl Lens<Target = Params>,
         get_param: impl 'static + Copy + Fn(&Params) -> &P,
     ) -> Handle<Self> {
         Self {
             widget_base: ParamWidgetBase::new(cx, params, get_param),
         }
-            .build(cx, |_| ())
+        .build(cx, |_| ())
     }
 }
 
@@ -145,6 +145,31 @@ impl Model for KnobModel {
     }
 }
 
+struct Dot {
+    widget_base: ParamWidgetBase,
+}
+
+impl View for Dot {
+    fn element(&self) -> Option<&'static str> {
+        Some("dot")
+    }
+    fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
+        let bounds = cx.bounds();
+        let (x, y) = bounds.center();
+        let r = bounds.w.min(bounds.h) * 0.35;
+        let value = self.widget_base.unmodulated_normalized_value();
+        let angle = get_angle(0.7 - value);
+        let (x, y) = (x + r * angle.sin(), y + r * angle.cos());
+
+        let color = cx.font_color();
+        let paint = vg::Paint::color(color.into());
+        let mut path = vg::Path::new();
+        path.circle(x, y, 3.3);
+
+        canvas.fill_path(&path, &paint);
+    }
+}
+
 pub struct Knob {
     widget_base: ParamWidgetBase,
     drag_start: Option<(f32, f32)>,
@@ -154,46 +179,51 @@ impl Knob {
     pub fn new<Params: 'static, P: Param>(
         cx: &mut Context,
         bipolar: bool,
-        params: impl Lens<Target=Params>,
+        params: impl Lens<Target = Params>,
         get_param: impl 'static + Copy + Fn(&Params) -> &P,
     ) -> Handle<Self> {
         Self {
             widget_base: ParamWidgetBase::new(cx, params, get_param),
             drag_start: None,
         }
-            .build(cx, |cx| {
-                KnobModel {
-                    display_textbox: false,
-                    text: String::new(),
-                }
-                    .build(cx);
-                ZStack::new(cx, |cx| {
-                    Arc::new(cx, bipolar, params, get_param, |w| {
-                        w.unmodulated_normalized_value()
-                    })
-                        .class("unmodulated");
-                    Arc::new(cx, bipolar, params, get_param, |w| {
-                        w.modulated_normalized_value()
-                    })
-                        .class("modulated");
-                    Ring::new(cx, params, get_param).z_index(2);
-                    //Textbox::new(cx, KnobModel::text)
-                    //    .class("textbox")
-                    //    .display(KnobModel::display_textbox.map(|display| {
-                    //        if *display {
-                    //            Display::Flex
-                    //        } else {
-                    //            Display::None
-                    //        }
-                    //    }))
-                    //    .on_submit(|cx, data, _| {
-                    //        cx.emit(KnobModelEvent::SetDisplayTextbox(false));
-                    //        cx.emit(KnobEvents::EnterValuePlain(data));
-                    //    })
-                    //    .on_blur(|cx| cx.emit(KnobModelEvent::SetDisplayTextbox(false)));
+        .build(cx, |cx| {
+            KnobModel {
+                display_textbox: false,
+                text: String::new(),
+            }
+            .build(cx);
+            ZStack::new(cx, |cx| {
+                Arc::new(cx, bipolar, params, get_param, |w| {
+                    w.unmodulated_normalized_value()
                 })
-                    .z_index(1);
+                .class("unmodulated");
+                Arc::new(cx, bipolar, params, get_param, |w| {
+                    w.modulated_normalized_value()
+                })
+                .class("modulated");
+                Ring::new(cx, params, get_param).z_index(2);
+                Dot {
+                    widget_base: ParamWidgetBase::new(cx, params, get_param),
+                }
+                .build(cx, |_| ())
+                .z_index(3);
+                //Textbox::new(cx, KnobModel::text)
+                //    .class("textbox")
+                //    .display(KnobModel::display_textbox.map(|display| {
+                //        if *display {
+                //            Display::Flex
+                //        } else {
+                //            Display::None
+                //        }
+                //    }))
+                //    .on_submit(|cx, data, _| {
+                //        cx.emit(KnobModelEvent::SetDisplayTextbox(false));
+                //        cx.emit(KnobEvents::EnterValuePlain(data));
+                //    })
+                //    .on_blur(|cx| cx.emit(KnobModelEvent::SetDisplayTextbox(false)));
             })
+            .z_index(1);
+        })
     }
 }
 
@@ -205,16 +235,16 @@ impl View for Knob {
     fn event(&mut self, cx: &mut EventContext, event: &mut Event) {
         event.map(|event, _| match event {
             WindowEvent::MouseDown(MouseButton::Left)
-            if !cx.modifiers().contains(Modifiers::CTRL) =>
-                {
-                    self.drag_start = Some((
-                        cx.mouse().cursory,
-                        self.widget_base.unmodulated_normalized_value(),
-                    ));
-                    self.widget_base.begin_set_parameter(cx);
-                    cx.capture();
-                    cx.set_active(true);
-                }
+                if !cx.modifiers().contains(Modifiers::CTRL) =>
+            {
+                self.drag_start = Some((
+                    cx.mouse().cursory,
+                    self.widget_base.unmodulated_normalized_value(),
+                ));
+                self.widget_base.begin_set_parameter(cx);
+                cx.capture();
+                cx.set_active(true);
+            }
             WindowEvent::MouseUp(MouseButton::Left) => {
                 self.drag_start = None;
                 cx.release();
@@ -244,10 +274,10 @@ impl View for Knob {
                 self.widget_base.end_set_parameter(cx);
             }
             WindowEvent::MouseDown(MouseButton::Left)
-            if cx.modifiers().contains(Modifiers::CTRL) =>
-                {
-                    cx.emit(KnobModelEvent::SetDisplayTextbox(true));
-                }
+                if cx.modifiers().contains(Modifiers::CTRL) =>
+            {
+                cx.emit(KnobModelEvent::SetDisplayTextbox(true));
+            }
             WindowEvent::MouseDoubleClick(MouseButton::Left) => {
                 self.widget_base.begin_set_parameter(cx);
                 self.widget_base
@@ -263,12 +293,12 @@ impl View for Knob {
         event.map(|event, _| {
             self.widget_base.begin_set_parameter(cx);
             match event {
-                KnobEvents::EnterValuePlain(value) => {
-                    if let Some(normalized) = self.widget_base.string_to_normalized_value(value) {
-                        cx.emit(KnobEvents::SetValueNormalized(normalized));
-                        cx.emit(KnobModelEvent::SetDisplayTextbox(false));
-                    }
-                }
+                //KnobEvents::EnterValuePlain(value) => {
+                //    if let Some(normalized) = self.widget_base.string_to_normalized_value(value) {
+                //        cx.emit(KnobEvents::SetValueNormalized(normalized));
+                //        cx.emit(KnobModelEvent::SetDisplayTextbox(false));
+                //    }
+                //}
                 &KnobEvents::SetValueNormalized(value) => {
                     self.widget_base.begin_set_parameter(cx);
                     self.widget_base.set_normalized_value(cx, value);

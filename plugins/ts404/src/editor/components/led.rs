@@ -25,13 +25,13 @@ impl View for Led {
         let (x, y) = bounds.center();
         let size = bounds.w.min(bounds.h) / 2.;
 
-        let color = cx.background_color();
+        let color = cx.font_color();
         let drive_led = self.drive_led.load(Ordering::Relaxed);
-        let brightness = 1. - f32::exp(-drive_led / 50.);
+        let brightness = 1. - f32::exp(-drive_led / 150.);
         let paint = vg::Paint::color(vg::Color::rgba(
-            color.r(),
-            color.g(),
-            color.b(),
+            (color.r() as f32 * (1. + brightness)) as u8,
+            (color.g() as f32 * (1. + brightness)) as u8,
+            (color.b() as f32 * (1. + brightness)) as u8,
             (brightness * 255.) as _,
         ));
 
