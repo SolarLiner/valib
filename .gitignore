@@ -107,3 +107,6 @@ target/
 *.pdb
 
 *.tsv
+
+# Generates test plots
+/plots
