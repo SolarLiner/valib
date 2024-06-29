@@ -175,7 +175,7 @@ pub mod kernels {
 #[cfg(test)]
 mod tests {
     use crate::dsp::buffer::AudioBuffer;
-    use crate::dsp::DSPProcessBlock;
+    use crate::dsp::{BlockAdapter, DSPProcessBlock};
 
     use super::*;
 
@@ -184,7 +184,7 @@ mod tests {
         let input = Box::from_iter([1.0, 0.0, 0.0, 0.0].into_iter().cycle().take(16));
         let input = AudioBuffer::new([input]).unwrap();
         let mut output = input.clone();
-        let mut fir = Fir::new([0.25, 0.5, 0.25], 1);
+        let mut fir = BlockAdapter(Fir::new([0.25, 0.5, 0.25], 1));
 
         output.fill(0.0);
         fir.process_block(input.as_ref(), output.as_mut());

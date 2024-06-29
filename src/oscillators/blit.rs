@@ -206,13 +206,13 @@ impl<T: Scalar> Square<T> {
 #[cfg(test)]
 mod tests {
     use crate::dsp::buffer::AudioBuffer;
-    use crate::dsp::DSPProcessBlock;
+    use crate::dsp::{BlockAdapter, DSPProcessBlock};
 
     use super::*;
 
     #[test]
     fn test_blit() {
-        let mut blit = Blit::new(8192.0, 10.0);
+        let mut blit = BlockAdapter(Blit::new(8192.0, 10.0));
         insta::assert_debug_snapshot!(&blit);
         let input = AudioBuffer::zeroed(8192);
         let mut actual = AudioBuffer::zeroed(8192);
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn test_sawtooth() {
-        let mut saw = Sawtooth::new(8192.0, 10.0);
+        let mut saw = BlockAdapter(Sawtooth::new(8192.0, 10.0));
         insta::assert_debug_snapshot!(&saw);
         let input = AudioBuffer::zeroed(8192);
         let mut actual = AudioBuffer::zeroed(8192);
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_square() {
-        let mut square = Square::new(8192.0, 10.0, 0.5);
+        let mut square = BlockAdapter(Square::new(8192.0, 10.0, 0.5));
         insta::assert_debug_snapshot!(&square);
         let input = AudioBuffer::zeroed(8192);
         let mut actual = AudioBuffer::zeroed(8192);
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_square_pw() {
-        let mut square = Square::new(8192.0, 10.0, 0.1);
+        let mut square = BlockAdapter(Square::new(8192.0, 10.0, 0.1));
         insta::assert_debug_snapshot!(&square);
         let input = AudioBuffer::zeroed(8192);
         let mut actual = AudioBuffer::zeroed(8192);

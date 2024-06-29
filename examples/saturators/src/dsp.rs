@@ -84,7 +84,7 @@ impl DSPMeta for DspSaturatorDirect {
 impl DSPProcess<1, 1> for DspSaturatorDirect {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let y = match self {
-            Self::HardClip => Clipper.saturate(x),
+            Self::HardClip => Clipper::default().saturate(x),
             Self::Tanh => Tanh.saturate(x),
             Self::Asinh => Asinh.saturate(x),
             Self::Diode(clipper) => clipper.saturate(x),

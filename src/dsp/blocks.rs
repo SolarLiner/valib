@@ -389,6 +389,32 @@ where
     }
 }
 
+impl<'a, P: DSPMeta> DSPMeta for Series<&'a mut [P]> {
+    type Sample = P::Sample;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        for p in &mut *self.0 {
+            p.set_samplerate(samplerate);
+        }
+    }
+
+    fn latency(&self) -> usize {
+        self.0.iter().map(|p| p.latency()).sum()
+    }
+
+    fn reset(&mut self) {
+        for p in &mut *self.0 {
+            p.reset();
+        }
+    }
+}
+
+impl<'a, P: DSPProcess<N, N>, const N: usize> DSPProcess<N, N> for Series<&'a mut [P]> where Self: DSPMeta<Sample = P::Sample> {
+    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+        self.0.iter_mut().fold(x, |x, p| p.process(x))
+    }
+}
+
 /// Specialized `Tuple` struct that doesn't restrict the I/O count of either DSP struct
 #[derive(Debug, Copy, Clone)]
 pub struct Tuple2<A, B, const INNER: usize>(A, PhantomData<[(); INNER]>, B);

@@ -17,10 +17,7 @@ use numeric_literals::replace_float_literals;
 
 use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::{DSPMeta, DSPProcess};
-use crate::{
-    saturators::{Dynamic, Saturator},
-    Scalar,
-};
+use crate::{saturators::{Dynamic, Saturator}, saturators, Scalar};
 
 #[cfg(never)]
 pub mod design;
@@ -264,15 +261,16 @@ mod tests {
         },
         saturators::clippers::DiodeClipperModel,
     };
-
+    use crate::dsp::BlockAdapter;
     use super::*;
 
     #[test]
     fn test_lp_diode_clipper() {
         let samplerate = 1000.0;
         let sat = DiodeClipperModel::new_led(2, 3);
-        let mut biquad = Biquad::lowpass(10.0 / samplerate, 20.0)
+        let biquad = Biquad::lowpass(10.0 / samplerate, 20.0)
             .with_saturators(Dynamic::DiodeClipper(sat), Dynamic::DiodeClipper(sat));
+        let mut biquad = BlockAdapter(biquad);
 
         let input: [_; 512] =
             std::array::from_fn(|i| i as f64 / samplerate).map(|t| (10.0 * t).fract() * 2.0 - 1.0);
