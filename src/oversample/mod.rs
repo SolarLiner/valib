@@ -316,6 +316,7 @@ mod tests {
         osblock.finish(&mut out);
         Plot {
             title: "Oversample: No DC Offset",
+            bode: false,
             series: &[
                 Series {
                     label: "Input",
@@ -378,6 +379,7 @@ mod tests {
         os.process_block(input.as_ref(), output.as_mut());
         Plot {
             title: "Oversample: DSPProcessBlock integration",
+            bode: false,
             series: &[
                 Series {
                     label: "Oversampled",

@@ -259,8 +259,11 @@ mod tests {
     use rstest::rstest;
     use simba::simd::SimdComplexField;
 
-    use crate::dsp::{buffer::AudioBuffer, BlockAdapter, DSPProcessBlock};
     use crate::saturators::clippers::DiodeClipperModel;
+    use crate::{
+        dsp::{buffer::AudioBuffer, BlockAdapter, DSPProcessBlock},
+        util::tests::{Plot, Series},
+    };
 
     use super::*;
 
@@ -271,8 +274,11 @@ mod tests {
         #[values(false, true)] compensated: bool,
         #[values(0.0, 0.1, 0.5, 1.0)] resonance: f64,
     ) {
+        use plotters::prelude::*;
+
+        let samplerate = 4096.0;
         let mut filter = BlockAdapter(
-            Ladder::<f64, Ideal>::new(1024.0, 200.0, resonance).with_topology::<Topo>(topology),
+            Ladder::<f64, Ideal>::new(samplerate, 100.0, resonance).with_topology::<Topo>(topology),
         );
         filter.0.compensated = compensated;
         let input = AudioBuffer::new([std::iter::once(0.0)
@@ -287,6 +293,38 @@ mod tests {
             .replace("::", "__")
             .replace(['<', '>'], "_");
         let name = format!("test_ladder_ir_{topo}_c{compensated}_r{resonance}");
+        let plot_title = format!("Ladder {topo} c={compensated} r={resonance}");
+        let inp_f32 = input
+            .get_channel(0)
+            .iter()
+            .copied()
+            .map(|x| x as f32)
+            .collect::<Box<[_]>>();
+        let out_f32 = output
+            .get_channel(0)
+            .iter()
+            .copied()
+            .map(|x| x as f32)
+            .collect::<Box<[_]>>();
+        Plot {
+            title: &plot_title,
+            bode: false,
+            series: &[
+                Series {
+                    label: "Input",
+                    samplerate: samplerate as f32,
+                    series: &*inp_f32,
+                    color: &BLUE,
+                },
+                Series {
+                    label: "Output",
+                    samplerate: samplerate as f32,
+                    series: &*out_f32,
+                    color: &RED,
+                },
+            ],
+        }
+        .create_svg(format!("plots/ladder/{name}.svg"));
         insta::assert_csv_snapshot!(name, output.get_channel(0), { "[]" => insta::rounded_redaction(3) })
     }
 
@@ -295,13 +333,32 @@ mod tests {
         #[values(false, true)] compensated: bool,
         #[values(0.0, 0.1, 0.2, 0.5, 1.0)] resonance: f64,
     ) {
-        let mut filter = Ladder::<_, Ideal>::new(1024.0, 200.0, resonance);
+        use crate::util::tests::Series;
+        use plotters::prelude::*;
+
+        let samplerate = 1024.0;
+        let mut filter = Ladder::<_, Ideal>::new(samplerate, 200.0, resonance);
         filter.compensated = compensated;
-        let response: [_; 512] = std::array::from_fn(|i| i as f64)
-            .map(|f| filter.freq_response(1024.0, f)[0][0].simd_abs())
-            .map(|x| 20.0 * x.log10());
+        let response: [_; 511] = std::array::from_fn(|i| (i + 1) as f64)
+            .map(|f| filter.freq_response(1024.0, f)[0][0].simd_abs());
+        let response_db = response.map(|x| 20.0 * x.log10());
+        let responsef32 = response.map(|x| x as f32);
 
         let name = format!("test_ladder_hz_c{compensated}_r{resonance}");
-        insta::assert_csv_snapshot!(name, &response as &[_], { "[]" => insta::rounded_redaction(3) })
+        let plot_title = format!("Ladder filter: compensated={compensated}, resonance={resonance}");
+        Plot {
+            title: &plot_title,
+            bode: true,
+            series: &[Series {
+                label: "Frequency response",
+                samplerate,
+                series: &responsef32,
+                color: &BLUE,
+            }],
+        }
+        .create_svg(format!(
+            "plots/ladder/freq_response__c{compensated}__r{resonance}.svg"
+        ));
+        insta::assert_csv_snapshot!(name, &response_db as &[_], { "[]" => insta::rounded_redaction(3) })
     }
 }

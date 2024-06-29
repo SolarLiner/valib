@@ -73,7 +73,7 @@ pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
 pub mod tests {
     use std::{ops::Range, path::Path};
 
-    use plotters::coord;
+    use plotters::coord::{self, ranged1d::ValueFormatter};
     use plotters::{chart::SeriesAnno, prelude::*};
 
     use crate::math::interpolation::{Interpolate, Linear};
@@ -104,10 +104,14 @@ pub mod tests {
             Ok(())
         }
 
-        pub fn timescale(&self) -> Range<f32> {
+        pub fn timescale(&self, bode: bool) -> Range<f32> {
             assert_ok(self.validate());
-            let tmax = self.series.len() as f32 / self.samplerate;
-            0.0..tmax
+            if bode {
+                0.0..self.samplerate / 2.0
+            } else {
+                let tmax = self.series.len() as f32 / self.samplerate;
+                0.0..tmax
+            }
         }
 
         pub fn y_range(&self) -> Range<f32> {
@@ -117,10 +121,14 @@ pub mod tests {
             min..max
         }
 
-        fn as_series<DB: DrawingBackend>(&self) -> LineSeries<DB, (f32, f32)> {
+        fn as_series<DB: DrawingBackend>(&self, bode: bool) -> LineSeries<DB, (f32, f32)> {
             LineSeries::new(
                 self.series.iter().copied().enumerate().map(|(i, y)| {
-                    let x = i as f32 / self.samplerate;
+                    let x = if bode {
+                        i as f32
+                    } else {
+                        i as f32 / self.samplerate
+                    };
                     (x, y)
                 }),
                 self.color,
@@ -136,6 +144,7 @@ pub mod tests {
 
     pub struct Plot<'a> {
         pub title: &'a str,
+        pub bode: bool,
         pub series: &'a [Series<'a>],
     }
 
@@ -155,13 +164,18 @@ pub mod tests {
             let timescale = self
                 .series
                 .iter()
-                .map(|s| s.timescale())
+                .map(|s| s.timescale(self.bode))
                 .reduce(|l, r| {
                     let start = l.start.min(r.start);
                     let end = l.end.max(r.end);
                     start..end
                 })
                 .unwrap();
+            let timescale = if self.bode {
+                timescale.start * 2.0..timescale.end * 2.0
+            } else {
+                timescale
+            };
 
             let yrange = self
                 .series
@@ -174,16 +188,29 @@ pub mod tests {
                 })
                 .unwrap();
 
-            let mut ctx = ChartBuilder::on(output)
-                .set_label_area_size(LabelAreaPosition::Left, 40)
+            let mut ctx = ChartBuilder::on(output);
+            ctx.set_label_area_size(LabelAreaPosition::Left, 40)
                 .set_label_area_size(LabelAreaPosition::Bottom, 40)
-                .caption(self.title, ("sans-serif", 40))
-                .build_cartesian_2d(timescale, yrange)
-                .unwrap();
+                .caption(self.title, ("sans-serif", 40));
+            if self.bode {
+                let ctx = ctx
+                    .build_cartesian_2d(timescale.log_scale(), yrange.log_scale())
+                    .unwrap();
+                self.render(ctx);
+            } else {
+                let ctx = ctx.build_cartesian_2d(timescale, yrange).unwrap();
+                self.render(ctx);
+            }
+        }
+
+        fn render<'ctx, T: 'ctx + Ranged<ValueType = f32> + ValueFormatter<f32>>(
+            &self,
+            mut ctx: ChartContext<'ctx, impl 'ctx + DrawingBackend, Cartesian2d<T, T>>,
+        ) {
             ctx.configure_mesh().draw().unwrap();
 
             for series in self.series {
-                let ann = ctx.draw_series(series.as_series()).unwrap();
+                let ann = ctx.draw_series(series.as_series(self.bode)).unwrap();
                 series.apply_legend(ann);
             }
 
