@@ -42,6 +42,7 @@ valib_derive = { path = "valib_derive" }
 insta = { version = "1.34.0", features = ["csv", "redactions"] }
 rstest = "0.21.0"
 serde = "*"
+plotters = "0.3.6"
 
 [features]
 default = ["biquad-design", "oversample"]
@@ -50,6 +51,7 @@ math-polynom = []
 oversample = ["biquad-design"]
 fundsp = ["dep:fundsp", "dep:numeric-array", "dep:typenum"]
 nih-plug = ["dep:nih_plug"]
+test-plots = []
 
 [profile.dev]
 opt-level = 1
