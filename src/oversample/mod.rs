@@ -4,16 +4,16 @@ use std::ops::{Deref, DerefMut};
 use nalgebra::Complex;
 use simba::simd::SimdComplexField;
 
-use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
-use crate::dsp::parameter::HasParameters;
-use crate::dsp::{DSPMeta, DSPProcess};
-use crate::saturators::Linear;
-use crate::voice::VoiceManager;
-use crate::Scalar;
 use crate::{
     dsp::{blocks::Series, DSPProcessBlock},
     filters::biquad::Biquad,
 };
+use crate::dsp::{DSPMeta, DSPProcess};
+use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
+use crate::dsp::parameter::HasParameters;
+use crate::saturators::Linear;
+use crate::Scalar;
+use crate::voice::VoiceManager;
 
 const CASCADE: usize = 16;
 
@@ -31,7 +31,7 @@ impl<T: Scalar> Oversample<T> {
     where
         Complex<T>: SimdComplexField,
     {
-        assert!(max_os_factor > 1);
+        assert!(max_os_factor >= 1);
         let os_buffer = vec![T::zero(); max_block_size * max_os_factor].into_boxed_slice();
         let fc = 1.5 * f64::recip(2.0 * max_os_factor as f64);
         let filter = Biquad::lowpass(T::from_f64(fc), T::from_f64(FRAC_1_SQRT_2));
@@ -292,11 +292,11 @@ mod tests {
 
     use numeric_literals::replace_float_literals;
 
-    use crate::dsp::DSPMeta;
     use crate::{
         dsp::{buffer::AudioBufferBox, DSPProcessBlock as _},
         Scalar,
     };
+    use crate::dsp::{BlockAdapter, DSPMeta};
 
     use super::Oversample;
 
@@ -342,7 +342,7 @@ mod tests {
             frequency: freq,
             phase: 0.0,
         };
-        let mut os = Oversample::<f32>::new(4, 64).with_dsp(samplerate, dsp);
+        let mut os = Oversample::<f32>::new(4, 64).with_dsp(samplerate, BlockAdapter(dsp));
 
         let input = AudioBufferBox::zeroed(64);
         let mut output = AudioBufferBox::zeroed(64);
