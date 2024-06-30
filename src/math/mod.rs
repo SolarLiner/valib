@@ -150,6 +150,28 @@ pub fn bilinear_prewarming_bounded<T: Scalar>(samplerate: T, wc: T) -> T {
     )
 }
 
+/// Exponential smooth minimum
+#[replace_float_literals(T::from_f64(literal))]
+pub fn smooth_min<T: Scalar>(t: T, a: T, b: T) -> T {
+    // Polynomial
+    //let h = (0.5 + 0.5 * (a - b) / t).simd_clamp(0.0, 1.0);
+    //lerp(h, a, b) - t * h * (1.0 - h)
+
+    // Exponential
+    let r = (-a / t).simd_exp2() + (-b / t).simd_exp2();
+    -t * r.simd_log2()
+}
+
+/// Exponential smooth maximum
+pub fn smooth_max<T: Scalar>(t: T, a: T, b: T) -> T {
+    -smooth_min(t, -a, -b)
+}
+
+/// Exponential smooth clamping
+pub fn smooth_clamp<T: Scalar>(t: T, x: T, min: T, max: T) -> T {
+    smooth_max(t, min, smooth_min(t, x, max))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
