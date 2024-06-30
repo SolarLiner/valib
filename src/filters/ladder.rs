@@ -226,13 +226,18 @@ impl<T: Scalar, Topo: LadderTopology<T>> DSPMeta for Ladder<T, Topo> {
     }
 }
 
+fn quad_falloff<T: Scalar>(t: T) -> T {
+    T::simd_powi(T::one() - t.simd_clamp(T::zero(), T::one()), 2)
+}
+
 impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSPProcess<1, 1> for Ladder<T, Topo> {
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let input_gain = if self.compensated { self.k + 1.0 } else { 1.0 };
         let x = input_gain * x[0];
-        let y0 = x - self.k * self.s[3];
+        let q_correction = quad_falloff(self.wc *self.inv_2fs / T::simd_two_pi());
+        let y0 = x - self.k * self.s[3] * (q_correction);
         let g = self.wc * self.inv_2fs;
         self.s = self.topology.next_output(g, y0, self.s);
         [self.s[3]]
