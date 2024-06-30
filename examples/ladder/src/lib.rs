@@ -11,8 +11,8 @@ use crate::dsp::{DspParameters, LadderType};
 
 mod dsp;
 
-const MAX_BUFFER_SIZE: usize = 512;
-const OVERSAMPLE: usize = 16;
+const MAX_BUFFER_SIZE: usize = 64;
+const OVERSAMPLE: usize = 4;
 
 #[derive(Debug, Params)]
 struct LadderFilterParams {
