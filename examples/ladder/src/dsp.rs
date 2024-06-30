@@ -6,8 +6,7 @@ use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled,
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess};
 use valib::filters::ladder::{Ideal, Ladder, Transistor, OTA};
 use valib::oversample::{Oversample, Oversampled};
-use valib::saturators::clippers::DiodeClipperModel;
-use valib::saturators::Tanh;
+use valib::saturators::{Bjt, Tanh};
 use valib::simd::{AutoF32x2, SimdValue};
 
 use crate::{MAX_BUFFER_SIZE, OVERSAMPLE};
@@ -17,7 +16,7 @@ pub type Sample = AutoF32x2;
 #[allow(clippy::large_enum_variant)]
 enum DspLadder {
     Ideal(Ladder<Sample, Ideal>),
-    Transistor(Ladder<Sample, Transistor<DiodeClipperModel<Sample>>>),
+    Transistor(Ladder<Sample, Transistor<Bjt<Sample>>>),
     Ota(Ladder<Sample, OTA<Tanh>>),
 }
 
