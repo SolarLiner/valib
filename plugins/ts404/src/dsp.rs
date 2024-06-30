@@ -13,7 +13,7 @@ use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled,
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::statespace::StateSpace;
 use valib::oversample::{Oversample, Oversampled};
-use valib::saturators::{Saturator, Slew};
+use valib::saturators::{Bjt, Saturator, Slew};
 use valib::simd::{
     AutoF32x2, AutoF64x2, AutoSimd, SimdBool, SimdComplexField, SimdPartialOrd, SimdValue,
 };
@@ -22,57 +22,6 @@ use valib::Scalar;
 
 use crate::util::Rms;
 use crate::TARGET_SAMPLERATE;
-
-#[replace_float_literals(T::from_f64(literal))]
-fn smooth_min<T: Scalar>(t: T, a: T, b: T) -> T {
-    // Polynomial
-    //let h = (0.5 + 0.5 * (a - b) / t).simd_clamp(0.0, 1.0);
-    //lerp(h, a, b) - t * h * (1.0 - h)
-
-    // Exponential
-    let r = (-a / t).simd_exp2() + (-b / t).simd_exp2();
-    -t * r.simd_log2()
-}
-
-fn smooth_max<T: Scalar>(t: T, a: T, b: T) -> T {
-    -smooth_min(t, -a, -b)
-}
-
-fn smooth_clamp<T: Scalar>(t: T, x: T, min: T, max: T) -> T {
-    smooth_max(t, min, smooth_min(t, x, max))
-}
-
-#[derive(Debug, Copy, Clone)]
-struct Bjt<T> {
-    pub vcc: T,
-    pub vee: T,
-}
-
-impl<T: Scalar> Default for Bjt<T> {
-    fn default() -> Self {
-        Self {
-            vcc: T::from_f64(4.5),
-            vee: T::from_f64(-4.5),
-        }
-    }
-}
-
-impl<T: Scalar> Saturator<T> for Bjt<T> {
-    #[replace_float_literals(T::from_f64(literal))]
-    fn saturate(&self, x: T) -> T {
-        smooth_clamp(0.1, x - 0.770, self.vee, self.vcc) + 0.770
-    }
-}
-
-impl<T: Scalar> DSPMeta for Bjt<T> {
-    type Sample = T;
-}
-
-impl<T: Scalar> DSPProcess<1, 1> for Bjt<T> {
-    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        [self.saturate(x)]
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Bypass<P> {

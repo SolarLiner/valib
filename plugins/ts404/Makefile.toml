@@ -26,6 +26,11 @@ condition = { files_modified = { input = ["./gen_statespace.py"], output = ["./s
 args = ["build", "-p", "ts404", "${@}"]
 dependencies = ["generate"]
 
+[tasks.run]
+command = "cargo"
+args = ["run" ,"-p", "ts404", "${@}"]
+dependencies = ["generate"]
+
 [tasks.bundle]
 dependencies = ["build", "xtask-build"]
 command = "cargo"

@@ -23,7 +23,7 @@ const TARGET_SAMPLERATE: f32 = 96000.;
 type Sample = AutoF64x2;
 type Sample32 = AutoF32x2;
 
-struct Ts404 {
+pub struct Ts404 {
     params: Arc<Ts404Params>,
     dsp: RemoteControlled<Dsp<Sample>>,
 }

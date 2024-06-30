@@ -172,7 +172,7 @@ impl View for Dot {
 
 pub struct Knob {
     widget_base: ParamWidgetBase,
-    drag_start: Option<(f32, f32)>,
+    dragging: bool,
 }
 
 impl Knob {
@@ -184,7 +184,7 @@ impl Knob {
     ) -> Handle<Self> {
         Self {
             widget_base: ParamWidgetBase::new(cx, params, get_param),
-            drag_start: None,
+            dragging: false,
         }
         .build(cx, |cx| {
             KnobModel {
@@ -237,28 +237,26 @@ impl View for Knob {
             WindowEvent::MouseDown(MouseButton::Left)
                 if !cx.modifiers().contains(Modifiers::CTRL) =>
             {
-                self.drag_start = Some((
-                    cx.mouse().cursory,
-                    self.widget_base.unmodulated_normalized_value(),
-                ));
+                self.dragging = true;
                 self.widget_base.begin_set_parameter(cx);
                 cx.capture();
                 cx.set_active(true);
             }
             WindowEvent::MouseUp(MouseButton::Left) => {
-                self.drag_start = None;
+                self.dragging = false;
                 cx.release();
                 self.widget_base.end_set_parameter(cx);
             }
-            &WindowEvent::MouseMove(_, y) => {
-                if let Some((start_y, start_normalized_value)) = self.drag_start {
+            &WindowEvent::MouseMove(..) => {
+                if self.dragging {
                     let speed = if cx.modifiers().contains(Modifiers::SHIFT) {
                         5e-4
                     } else {
                         5e-3
                     };
-                    let normalized_value = start_normalized_value - speed * (y - start_y);
-                    nih_log!("Normalized value: {normalized_value}");
+                    let normalized_value = self.widget_base.unmodulated_normalized_value() - 
+                        speed * cx.mouse().frame_delta().1;
+                    nih_log!("[{}] Normalized value: {normalized_value}", self.widget_base.name());
                     self.widget_base.set_normalized_value(cx, normalized_value);
                 }
             }

@@ -11,12 +11,12 @@ description = "An inspired but fantasy screamer guitar pedal emulation"
 members = ["xtask"]
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["lib", "cdylib"]
 
 [dependencies]
 enum-map = "2.7.3"
 nalgebra = "0.32.3"
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["standalone"] }
 nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 num-traits = "0.2.17"
 numeric_literals = "0.2.0"

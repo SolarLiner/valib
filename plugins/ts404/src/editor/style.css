@@ -3,24 +3,19 @@
     color: #fff;
 }
 
-zstack {
-    position: relative;
-    top: 0;
-    left: 0;
-}
-
 knob {
     border-radius: 100%;
-    width: 35px;
-    height: 35px;
+    width: 51px;
+    height: 51px;
     border-width: 1px;
     background-image: linear-gradient(to bottom, #404040 0%, #262626 100%);
     box-shadow: 0 4px 4px rgba(0, 0, 0, 0.25);
 }
 
 knob arc {
-    width: 51px;
-    height: 51px;
+    width: 61px;
+    height: 61px;
+    color: #F2C94C;
 }
 
 knob dot {
@@ -31,9 +26,13 @@ arc.unmodulated {
     color: #F2C94C;
 }
 
+arc.modulated {
+    color: crimson;
+}
+
 .small knob {
-    width: 21px;
-    height: 21px;
+    width: 37px;
+    height: 37px;
 }
 
 .param label {
@@ -47,9 +46,8 @@ arc.unmodulated {
 }
 
 led {
-    position: relative;
-    top: 9px;
-    left: 9px;
+    top: 68px;
+    left: 25px;
     width: 17px;
     height: 17px;
     color: red;

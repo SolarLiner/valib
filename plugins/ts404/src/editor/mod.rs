@@ -33,20 +33,12 @@ pub(crate) fn create(
             Binding::new(cx, AppData::params, |cx, params| {
                 VStack::new(cx, |cx| {
                     HStack::new(cx, |cx| {
-                        labelled_node_float_generic(
-                            cx,
-                            params,
-                            |params| &params.dist,
-                            |cx| {
-                                ZStack::new(cx, |cx| {
-                                    Knob::new(cx, false, params, |params| &params.dist);
-                                    Binding::new(cx, AppData::drive_led, |cx, drive_led| {
-                                        Led::new(cx, drive_led.get(cx));
-                                    });
-                                })
-                                    .child_space(Pixels(0.));
-                            },
-                        );
+                        ZStack::new(cx, |cx| {
+                            labelled_node_float(cx, false, params, |p| &p.dist);
+                            Binding::new(cx, AppData::drive_led, |cx, drive_led| {
+                                Led::new(cx, drive_led.get(cx));
+                            });
+                        });
                         labelled_node_float(cx, false, params, |params| &params.tone);
                         labelled_node_float(cx, false, params, |params| &params.out_level);
                     });
@@ -56,8 +48,9 @@ pub(crate) fn create(
                     })
                     .class("small");
                 })
+                .max_height(Pixels(150.))
                 .id("ui");
-            })
+            });
         },
     )
 }
