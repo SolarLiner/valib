@@ -104,6 +104,7 @@ impl<T: Scalar> DSPMeta for InputStage<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<1, 1> for InputStage<T> {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let gain = T::from_f64(self.gain.next_sample() as _);
@@ -151,6 +152,7 @@ impl<T: Scalar> DSPMeta for ClipperStage<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<1, 1> for ClipperStage<T>
 where
     <T as SimdValue>::Element: ToPrimitive,
@@ -218,6 +220,7 @@ impl<T: Scalar> DSPMeta for ToneStage<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<1, 1> for ToneStage<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let tone = self.tone.next_sample_as();
@@ -281,6 +284,7 @@ impl<T: Scalar> DSPMeta for OutputStage<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<1, 1> for OutputStage<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let y = self.inner.process(x);
@@ -317,6 +321,7 @@ impl<T: Scalar> DSPMeta for Dsp<T> {
     type Sample = T;
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcessBlock<1, 1> for Dsp<T>
 where
     <T as SimdValue>::Element: ToPrimitive,

@@ -20,8 +20,12 @@ nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["s
 nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 num-traits = "0.2.17"
 numeric_literals = "0.2.0"
+profiling = { version = "1.0.15", features = ["profile-with-tracy"], optional = true }
 #valib = { git = "https://github.com/SolarLiner/valib.git" }
 valib = { path = "../valib", features = ["nih-plug"] }
+
+[features]
+profiling = ["dep:profiling"]
 
 [profile.dev]
 opt-level = 1

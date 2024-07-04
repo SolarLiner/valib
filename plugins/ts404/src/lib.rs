@@ -88,6 +88,11 @@ impl Plugin for Ts404 {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
+        #[cfg(feature = "profiling")]
+        {
+            profiling::tracy_client::Client::start();
+        }
+        profiling::scope!("Ts404::initialize");
         let drive_led = self.dsp.inner.get_led_display();
         let dsp = Dsp::new(buffer_config.sample_rate, TARGET_SAMPLERATE);
         self.dsp.inner = dsp.inner;
@@ -133,10 +138,12 @@ impl Plugin for Ts404 {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        profiling::register_thread!("Plugin audio thread");
         context.set_latency_samples(self.dsp.latency() as _);
         process_buffer_simd64::<_, _, MAX_BLOCK_SIZE>(&mut self.dsp, buffer);
         //safety_clipper(buffer);
 
+        profiling::finish_frame!();
         ProcessStatus::Normal
     }
 }
