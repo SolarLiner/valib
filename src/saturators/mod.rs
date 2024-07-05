@@ -104,12 +104,15 @@ impl<S: Scalar> Saturator<S> for Linear {
 
 #[profiling::all_functions]
 impl<S: Scalar, const N: usize> MultiSaturator<S, N> for Linear {
+    #[inline(always)]
     fn multi_saturate(&self, x: [S; N]) -> [S; N] {
         x
     }
 
+    #[inline(always)]
     fn update_state_multi(&mut self, x: [S; N], y: [S; N]) {}
 
+    #[inline(always)]
     fn sat_jacobian(&self, x: [S; N]) -> [S; N] {
         [S::one(); N]
     }
