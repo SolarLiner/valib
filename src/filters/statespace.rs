@@ -152,6 +152,7 @@ impl<
     type Sample = T;
 }
 
+#[profiling::all_functions]
 impl<
         T: Scalar,
         S: MultiSaturator<T, STATE>,

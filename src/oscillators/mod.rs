@@ -16,6 +16,7 @@ impl<T: Scalar> DSPMeta for Phasor<T> {
     type Sample = T;
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<0, 1> for Phasor<T> {
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
         let p = self.phase;

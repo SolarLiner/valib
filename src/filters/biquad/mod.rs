@@ -17,7 +17,11 @@ use numeric_literals::replace_float_literals;
 
 use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::{DSPMeta, DSPProcess};
-use crate::{saturators::{Dynamic, Saturator}, saturators, Scalar};
+use crate::{
+    saturators,
+    saturators::{Dynamic, Saturator},
+    Scalar,
+};
 
 #[cfg(never)]
 pub mod design;
@@ -54,8 +58,10 @@ impl<T: Copy, S> Biquad<T, S> {
 }
 
 // TODO: Make those return linear biquads, where the user can then pass their saturators directly through `with_saturators`
+#[profiling::all_functions]
 impl<T: Scalar, S: Default> Biquad<T, S> {
     /// Create a new instance of a Biquad with the provided poles and zeros coefficients.
+    #[profiling::skip]
     pub fn new(b: [T; 3], a: [T; 2]) -> Self {
         Self {
             na: a.map(T::neg),
@@ -223,6 +229,7 @@ impl<T: Scalar, S: Saturator<T>> DSPMeta for Biquad<T, S> {
     type Sample = T;
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 1> for Biquad<T, S> {
     #[inline]
     #[replace_float_literals(T::from_f64(literal))]
@@ -254,6 +261,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::dsp::BlockAdapter;
     use crate::{
         dsp::{
             buffer::{AudioBufferBox, AudioBufferRef},
@@ -261,8 +270,6 @@ mod tests {
         },
         saturators::clippers::DiodeClipperModel,
     };
-    use crate::dsp::BlockAdapter;
-    use super::*;
 
     #[test]
     fn test_lp_diode_clipper() {

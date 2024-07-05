@@ -45,6 +45,7 @@ pub trait LadderTopology<T>: Default {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Ideal;
 
+#[profiling::all_functions]
 impl<T: Scalar> LadderTopology<T> for Ideal {
     #[replace_float_literals(T::from_f64(literal))]
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
@@ -59,6 +60,7 @@ impl<T: Scalar> LadderTopology<T> for Ideal {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OTA<S>(pub [S; 4]);
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Default + Saturator<T>> LadderTopology<T> for OTA<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let yd = SVector::from([y[0] - y0, y[1] - y[0], y[2] - y[1], y[3] - y[2]]);
@@ -74,6 +76,7 @@ impl<T: Scalar, S: Default + Saturator<T>> LadderTopology<T> for OTA<S> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Transistor<S>(pub [S; 5]);
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Default + Saturator<T>> LadderTopology<T> for Transistor<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let y0sat = wc * self.0[4].saturate(y0);
@@ -230,13 +233,14 @@ fn quad_falloff<T: Scalar>(t: T) -> T {
     T::simd_powi(T::one() - t.simd_clamp(T::zero(), T::one()), 2)
 }
 
+#[profiling::all_functions]
 impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSPProcess<1, 1> for Ladder<T, Topo> {
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let input_gain = if self.compensated { self.k + 1.0 } else { 1.0 };
         let x = input_gain * x[0];
-        let q_correction = quad_falloff(self.wc *self.inv_2fs / T::simd_two_pi());
+        let q_correction = quad_falloff(self.wc * self.inv_2fs / T::simd_two_pi());
         let y0 = x - self.k * self.s[3] * (q_correction);
         let g = self.wc * self.inv_2fs;
         self.s = self.topology.next_output(g, y0, self.s);

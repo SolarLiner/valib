@@ -94,6 +94,7 @@ impl<P: DSPProcess<I, O>, const I: usize, const O: usize> DSPProcess<I, O> for B
     }
 }
 
+#[profiling::all_functions]
 impl<P, const I: usize, const O: usize> DSPProcessBlock<I, O> for BlockAdapter<P>
 where
     P: DSPProcess<I, O>,
@@ -200,6 +201,7 @@ where
     }
 }
 
+#[profiling::all_functions]
 impl<P, const I: usize, const O: usize> DSPProcess<I, O> for SampleAdapter<P, I, O>
 where
     P: DSPProcessBlock<I, O>,

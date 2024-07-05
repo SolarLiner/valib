@@ -28,6 +28,7 @@ where
     }
 }
 
+#[profiling::all_functions]
 impl<Node: AudioNode> DSPProcess<{ Node::Inputs::USIZE }, { Node::Outputs::USIZE }> for An<Node>
 where
     Node::Sample: crate::Scalar,

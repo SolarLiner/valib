@@ -4,8 +4,8 @@
 
 use num_traits::Zero;
 
-use crate::dsp::{analysis::DspAnalysis, DSPMeta, DSPProcess};
 use crate::dsp::blocks::Series;
+use crate::dsp::{analysis::DspAnalysis, DSPMeta, DSPProcess};
 use crate::Scalar;
 
 /// Specialized 2nd-order allpass filter.
@@ -29,6 +29,7 @@ impl<T: Scalar> DSPMeta for Allpass<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<1, 1> for Allpass<T> {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let [x0, x1, x2] = self.x;
@@ -67,6 +68,7 @@ impl<T: Scalar, const ORDER: usize> DSPMeta for HalfbandFilter<T, ORDER> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, const ORDER: usize> DSPProcess<1, 1> for HalfbandFilter<T, ORDER> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let y = (self.filter_a.process(x)[0] + self.y0) * T::from_f64(0.5);

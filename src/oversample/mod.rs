@@ -60,6 +60,7 @@ impl<T: Scalar> Oversample<T> {
         self.os_buffer.len() / self.os_factor
     }
 
+    #[profiling::function]
     pub fn oversample(&mut self, buffer: &[T]) -> OversampleBlock<T> {
         let os_len = self.zero_stuff(buffer);
         let (buf, _) = self.os_buffer.split_at_mut(os_len);
@@ -102,6 +103,7 @@ impl<T: Scalar> Oversample<T> {
         }
     }
 
+    #[profiling::function]
     fn zero_stuff(&mut self, inp: &[T]) -> usize {
         let os_len = inp.len() * self.os_factor;
         assert!(self.os_buffer.len() >= os_len);
@@ -113,6 +115,7 @@ impl<T: Scalar> Oversample<T> {
         os_len
     }
 
+    #[profiling::function]
     fn decimate(&mut self, out: &mut [T]) {
         let os_len = out.len() * self.os_factor;
         assert!(os_len <= self.os_buffer.len());
@@ -129,6 +132,7 @@ impl<T: Scalar> Oversample<T> {
         }
     }
 
+    #[profiling::function]
     fn finish_buffer(&mut self, out: &mut [T]) {
         let os_len = out.len() * self.os_factor;
         let mut filter = Series(&mut self.post_filter[..self.os_factor]);
@@ -159,6 +163,7 @@ impl<'a, T> DerefMut for OversampleBlock<'a, T> {
 }
 
 impl<'a, T: Scalar> OversampleBlock<'a, T> {
+    #[profiling::function]
     pub fn finish(self, out: &mut [T]) {
         self.filter.finish_buffer(out);
     }
@@ -211,6 +216,7 @@ impl<T: Scalar, P: DSPMeta<Sample = T>> DSPMeta for Oversampled<T, P> {
     }
 }
 
+#[profiling::all_functions]
 impl<T, P> DSPProcessBlock<1, 1> for Oversampled<T, P>
 where
     Self: DSPMeta<Sample = T>,
@@ -294,10 +300,13 @@ mod tests {
 
     use numeric_literals::replace_float_literals;
 
-    use crate::{dsp::{BlockAdapter, DSPMeta}, util::tests::{Plot, Series}};
     use crate::{
         dsp::{buffer::AudioBufferBox, DSPProcessBlock as _},
         Scalar,
+    };
+    use crate::{
+        dsp::{BlockAdapter, DSPMeta},
+        util::tests::{Plot, Series},
     };
 
     use super::Oversample;
@@ -335,9 +344,10 @@ mod tests {
                     samplerate: 1.,
                     color: &RED,
                     series: &out,
-                }
-            ]
-        }.create_svg("plots/oversample/no_dc_offset.svg");
+                },
+            ],
+        }
+        .create_svg("plots/oversample/no_dc_offset.svg");
         insta::assert_csv_snapshot!("post os", &out as &[_], { "[]" => insta::rounded_redaction(3) });
     }
 
@@ -392,9 +402,10 @@ mod tests {
                     samplerate,
                     series: output.get_channel(0),
                     color: &BLUE,
-                }
+                },
             ],
-        }.create_svg("plots/oversample/dsp_block.svg");
+        }
+        .create_svg("plots/oversample/dsp_block.svg");
         insta::assert_csv_snapshot!(output.get_channel(0), { "[]" => insta::rounded_redaction(3) });
     }
 }

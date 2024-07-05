@@ -7,7 +7,7 @@ use std::ops;
 use clippers::DiodeClipperModel;
 
 use crate::dsp::{DSPMeta, DSPProcess};
-use crate::math::{newton_rhapson_steps, RootEq, smooth_clamp};
+use crate::math::{newton_rhapson_steps, smooth_clamp, RootEq};
 use crate::Scalar;
 
 pub mod adaa;
@@ -102,6 +102,7 @@ impl<S: Scalar> Saturator<S> for Linear {
     }
 }
 
+#[profiling::all_functions]
 impl<S: Scalar, const N: usize> MultiSaturator<S, N> for Linear {
     fn multi_saturate(&self, x: [S; N]) -> [S; N] {
         x
@@ -117,6 +118,7 @@ impl<S: Scalar, const N: usize> MultiSaturator<S, N> for Linear {
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct Tanh;
 
+#[profiling::all_functions]
 impl<S: Scalar> Saturator<S> for Tanh {
     #[inline(always)]
     fn saturate(&self, x: S) -> S {
@@ -133,6 +135,7 @@ impl<S: Scalar> Saturator<S> for Tanh {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct Asinh;
 
+#[profiling::all_functions]
 impl<T: Scalar> Saturator<T> for Asinh {
     fn saturate(&self, x: T) -> T {
         x.simd_asinh()
@@ -158,6 +161,7 @@ impl<T: Copy + One + ops::Neg<Output = T>> Default for Clipper<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> Saturator<T> for Clipper<T> {
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
@@ -173,6 +177,7 @@ impl<T: Scalar> Saturator<T> for Clipper<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, const N: usize> MultiSaturator<T, N> for Clipper<T> {
     fn multi_saturate(&self, x: [T; N]) -> [T; N] {
         x.map(|x| self.saturate(x))
@@ -191,6 +196,7 @@ pub struct Blend<T, S> {
     inner: S,
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Saturator<T>> Saturator<T> for Blend<T, S> {
     #[inline(always)]
     fn saturate(&self, x: T) -> T {
@@ -227,6 +233,7 @@ pub enum Dynamic<T> {
     SoftClipper(Blend<T, DiodeClipperModel<T>>),
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> Saturator<T> for Dynamic<T> {
     #[inline(always)]
     fn saturate(&self, x: T) -> T {
@@ -294,6 +301,7 @@ impl<T: Scalar> DSPMeta for Slew<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<1, 1> for Slew<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let y = self.slew(x[0]);
@@ -329,6 +337,7 @@ impl<T: Scalar> Slew<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> Saturator<T> for Slew<T> {
     fn saturate(&self, x: T) -> T {
         self.slew(x)
@@ -358,6 +367,7 @@ impl<T: Scalar> Default for Bjt<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> Saturator<T> for Bjt<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn saturate(&self, x: T) -> T {
@@ -369,6 +379,7 @@ impl<T: Scalar> DSPMeta for Bjt<T> {
     type Sample = T;
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<1, 1> for Bjt<T> {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         [self.saturate(x)]
@@ -381,6 +392,7 @@ pub struct Driven<T, S> {
     pub saturator: S,
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Saturator<T>> Saturator<T> for Driven<T, S> {
     fn saturate(&self, x: T) -> T {
         self.saturator.saturate(x * self.drive) / self.drive

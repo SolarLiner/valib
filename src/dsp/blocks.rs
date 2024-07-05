@@ -177,6 +177,7 @@ impl<T: Scalar> P1<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<1, 3> for P1<T>
 where
     Self: DSPMeta<Sample = T>,
@@ -289,13 +290,19 @@ macro_rules! series_tuple {
         }
 
         #[allow(non_snake_case)]
+        #[profiling::all_functions]
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPProcess<N, N, Sample = __Sample>),*, const N: usize> DSPProcess<N, N> for $crate::dsp::blocks::Series<($($p),*)> {
             #[allow(non_snake_case)]
             #[inline(always)]
             fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
                 let Self(($($p),*)) = self;
+                let mut i = 0;
                 $(
-                let x = $p.process(x);
+                {
+                    profiling::scope!("Series inner", &format!("{i}"));
+                    let x = $p.process(x);
+                    i += 1;
+                }
                 )*
                 x
             }
@@ -371,8 +378,12 @@ impl<P: DSPProcess<N, N>, const N: usize, const C: usize> DSPProcess<N, N> for S
 where
     Self: DSPMeta<Sample = P::Sample>,
 {
+    #[profiling::function]
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        self.0.iter_mut().fold(x, |x, dsp| dsp.process(x))
+        self.0.iter_mut().enumerate().fold(x, |x, (i, dsp)| {
+            profiling::scope!("Series", &format!("{i}"));
+            dsp.process(x)
+        })
     }
 }
 
@@ -409,9 +420,15 @@ impl<'a, P: DSPMeta> DSPMeta for Series<&'a mut [P]> {
     }
 }
 
-impl<'a, P: DSPProcess<N, N>, const N: usize> DSPProcess<N, N> for Series<&'a mut [P]> where Self: DSPMeta<Sample = P::Sample> {
+impl<'a, P: DSPProcess<N, N>, const N: usize> DSPProcess<N, N> for Series<&'a mut [P]>
+where
+    Self: DSPMeta<Sample = P::Sample>,
+{
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        self.0.iter_mut().fold(x, |x, p| p.process(x))
+        self.0.iter_mut().enumerate().fold(x, |x, (i, dsp)| {
+            profiling::scope!("Series", &format!("{i}"));
+            dsp.process(x)
+        })
     }
 }
 
@@ -485,6 +502,7 @@ where
     }
 }
 
+#[profiling::all_functions]
 impl<A, B, const I: usize, const J: usize, const O: usize> DSPProcess<I, O> for Tuple2<A, B, J>
 where
     Self: DSPMeta<Sample = A::Sample>,
@@ -549,13 +567,19 @@ macro_rules! parallel_tuple {
         #[allow(non_snake_case)]
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPProcess<N, N, Sample = __Sample>),*, const N: usize> $crate::dsp::DSPProcess<N, N> for $crate::dsp::blocks::Parallel<($($p),*)> {
             #[inline(always)]
+            #[profiling::function]
             fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
                 let Self(($($p),*)) = self;
                 let mut ret = [Self::Sample::zero(); N];
+                let mut n = 0;
                 $(
-                let y = $p.process(x);
-                for i in 0..N {
-                    ret[i] += y[i];
+                {
+                    profiling::scope!("Parallel", &format!("{n}"));
+                    let y = $p.process(x);
+                    for i in 0..N {
+                        ret[i] += y[i];
+                    }
+                    n += 1;
                 }
                 )*
                 ret
@@ -602,6 +626,7 @@ impl<P: DSPMeta, const C: usize> DSPMeta for Parallel<[P; C]> {
     }
 }
 
+#[profiling::all_functions]
 impl<P: DSPProcess<I, O>, const I: usize, const O: usize, const N: usize> DSPProcess<I, O>
     for Parallel<[P; N]>
 where
@@ -610,7 +635,11 @@ where
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
         self.0
             .iter_mut()
-            .map(|dsp| dsp.process(x))
+            .enumerate()
+            .map(|(i, dsp)| {
+                profiling::scope!("Parallel", &format!("{i}"));
+                dsp.process(x)
+            })
             .fold([Self::Sample::from_f64(0.0); O], |out, dsp| {
                 std::array::from_fn(|i| out[i] + dsp[i])
             })
@@ -692,6 +721,7 @@ where
     type Sample = T;
 }
 
+#[profiling::all_functions]
 impl<T, const I: usize, const O: usize> DSPProcess<I, O> for ModMatrix<T, I, O>
 where
     Self: DSPMeta<Sample = T>,
@@ -800,6 +830,7 @@ where
     }
 }
 
+#[profiling::all_functions]
 impl<FF: DSPProcess<N, N>, const N: usize> DSPProcess<N, N> for Feedback<FF, (), N>
 where
     Self: DSPMeta<Sample = FF::Sample>,
@@ -816,6 +847,7 @@ where
     }
 }
 
+#[profiling::all_functions]
 impl<FF, FB, const N: usize> DSPProcess<N, N> for Feedback<FF, FB, N>
 where
     Self: DSPMeta<Sample = FF::Sample>,

@@ -25,6 +25,7 @@ impl<T: Scalar> DSPMeta for Blit<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<0, 1> for Blit<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
@@ -72,12 +73,12 @@ impl<T: Scalar> Blit<T> {
         self.fc = freq;
         self.update_coefficients();
     }
-    
+
     pub fn set_position(&mut self, pos: T) {
         let delta = pos - self.p;
         self.p += delta * self.pmax;
     }
-    
+
     pub fn with_position(mut self, pos: T) -> Self {
         self.set_position(pos);
         self
@@ -104,6 +105,7 @@ impl<T: Scalar> DSPMeta for Sawtooth<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<0, 1> for Sawtooth<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 0]) -> [Self::Sample; 1] {
@@ -155,6 +157,7 @@ impl<T: Scalar> DSPMeta for Square<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<0, 1> for Square<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 0]) -> [Self::Sample; 1] {

@@ -17,6 +17,7 @@ impl<T, const N: usize> Lut<T, N> {
         Self { array, range }
     }
 
+    #[profiling::function]
     pub fn get<Interp, const I: usize>(&self, interp: &Interp, index: T) -> T
     where
         T: Scalar + SimdInterpolatable,

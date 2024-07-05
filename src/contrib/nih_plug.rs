@@ -28,14 +28,23 @@ pub trait BindToParameter<P: ParamName> {
 impl<P: 'static + Send + Sync + ParamName> BindToParameter<P> for FloatParam {
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
         let set = set.clone();
-        self.with_callback(Arc::new(move |value| set.set_parameter(param, value)))
+        self.with_callback(Arc::new(move |value| {
+            profiling::scope!(
+                "set_parameter",
+                &format!("{}: {value}", param.name().as_ref())
+            );
+            set.set_parameter(param, value)
+        }))
     }
 }
 
 impl<P: 'static + Send + Sync + ParamName> BindToParameter<P> for IntParam {
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
         let set = set.clone();
-        self.with_callback(Arc::new(move |x| set.set_parameter(param, x as _)))
+        self.with_callback(Arc::new(move |x| {
+            profiling::scope!("set_parameter", &format!("{}: {x}", param.name().as_ref()));
+            set.set_parameter(param, x as _)
+        }))
     }
 }
 
@@ -43,6 +52,7 @@ impl<P: 'static + Send + Sync + ParamName> BindToParameter<P> for BoolParam {
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
         let set = set.clone();
         self.with_callback(Arc::new(move |b| {
+            profiling::scope!("set_parameter", &format!("{}: {b}", param.name().as_ref()));
             set.set_parameter(param, if b { 1.0 } else { 0.0 })
         }))
     }
@@ -54,7 +64,12 @@ impl<E: 'static + PartialEq + Enum, P: 'static + Send + Sync + ParamName> BindTo
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self {
         let set = set.clone();
         self.with_callback(Arc::new(move |e| {
-            set.set_parameter(param, e.to_index() as _)
+            let ix = e.to_index();
+            profiling::scope!(
+                "set_parameter",
+                &format!("{}: {}", param.name().as_ref(), E::variants()[ix])
+            );
+            set.set_parameter(param, ix as _)
         }))
     }
 }
@@ -68,6 +83,7 @@ impl<E: 'static + PartialEq + Enum, P: 'static + Send + Sync + ParamName> BindTo
 /// * `buffer`: Buffer to process
 ///
 /// panics if the scalar type has more channels than the buffer holds.
+#[profiling::function]
 pub fn process_buffer<
     T: Scalar<Element = f32>,
     Dsp,
@@ -124,6 +140,7 @@ pub fn process_buffer<
 /// * `buffer`: Buffer to process
 ///
 /// panics if the scalar type has more channels than the buffer holds.
+#[profiling::function]
 pub fn process_buffer_simd<
     T: Scalar<Element = f32>,
     Dsp: DSPProcessBlock<1, 1, Sample = T>,
@@ -172,6 +189,7 @@ pub fn process_buffer_simd<
 /// * `buffer`: Buffer to process
 ///
 /// panics if the scalar type has more channels than the buffer holds.
+#[profiling::function]
 pub fn process_buffer_simd64<
     T: Scalar<Element = f64>,
     Dsp: DSPProcessBlock<1, 1, Sample = T>,

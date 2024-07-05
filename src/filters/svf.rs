@@ -58,6 +58,7 @@ impl<T: Scalar, Mode: Saturator<T>> DSPMeta for Svf<T, Mode> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 3> for Svf<T, S> {
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
@@ -136,6 +137,7 @@ impl<T: Scalar, C> Svf<T, C> {
         self.update_coefficients();
     }
 
+    #[profiling::function]
     #[replace_float_literals(T::from_f64(literal))]
     fn update_coefficients(&mut self) {
         self.g = self.w_step * self.fc;

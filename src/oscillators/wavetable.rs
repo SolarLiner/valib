@@ -19,6 +19,7 @@ impl<T: Scalar, Interp, const I: usize, const N: usize> DSPMeta for Wavetable<T,
     type Sample = T;
 }
 
+#[profiling::all_functions]
 impl<T: Scalar + SimdCast<isize>, const N: usize, const I: usize, Interp: Interpolate<T, I>>
     DSPProcess<1, 1> for Wavetable<T, N, Interp, I>
 where

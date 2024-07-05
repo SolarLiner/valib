@@ -436,6 +436,7 @@ impl<P: HasParameters + DSPProcess<I, O>, const I: usize, const O: usize> DSPPro
     }
 }
 
+#[profiling::all_functions]
 impl<P: HasParameters + DSPProcessBlock<I, O>, const I: usize, const O: usize> DSPProcessBlock<I, O>
     for RemoteControlled<P>
 {
@@ -468,6 +469,7 @@ impl<P: HasParameters> RemoteControlled<P> {
     }
 }
 
+#[profiling::all_functions]
 impl<P: HasParameters> RemoteControlled<P> {
     pub fn update_parameters(&mut self) {
         for param in P::Name::iter() {

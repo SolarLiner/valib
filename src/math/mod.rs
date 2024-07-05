@@ -46,6 +46,7 @@ where
 
 /// Solve the given root equation using Newton-Rhapson for a specified number of setps.
 #[inline]
+#[profiling::function]
 pub fn newton_rhapson_steps<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
@@ -71,6 +72,7 @@ where
 /// Solve the given root equation using Newton-Rhapson until the RMS of the differential is lesser than the given tolerance.
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline(always))]
+#[profiling::function]
 pub fn newton_rhapson_tolerance<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,
@@ -99,6 +101,7 @@ where
 /// given tolerances, or the specified max number of steps has been taken.
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline(always))]
+#[profiling::function]
 pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
     value: &mut SVector<T, N>,

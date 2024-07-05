@@ -147,6 +147,7 @@ impl<T: Scalar, S: Antiderivative<T>> Adaa<T, S, 1> {
 
 impl<T: Scalar, S: Antiderivative2<T>> Adaa<T, S, 2> {
     #[replace_float_literals(T::from_f64(literal))]
+    #[profiling::function]
     pub fn next_sample_immutable(&self, x: T) -> T {
         let [x1, x2] = self.memory;
         let den1 = x - x1;
@@ -177,6 +178,7 @@ impl<T: Scalar, S: Antiderivative2<T>> Adaa<T, S, 2> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Antiderivative<T> + Saturator<T>> Saturator<T> for Adaa<T, S, 1> {
     fn saturate(&self, x: T) -> T {
         self.next_sample_immutable(x)
@@ -196,6 +198,7 @@ impl<T: Scalar, S> DSPMeta for Adaa<T, S, 1> {
     type Sample = T;
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Antiderivative<T>> DSPProcess<1, 1> for Adaa<T, S, 1>
 where
     Self: DSPMeta<Sample = T>,
@@ -205,6 +208,7 @@ where
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Antiderivative2<T> + Saturator<T>> Saturator<T> for Adaa<T, S, 2> {
     #[replace_float_literals(T::from_f64(literal))]
     fn saturate(&self, x: T) -> T {
@@ -233,6 +237,7 @@ impl<T: Scalar, S> DSPMeta for Adaa<T, S, 2> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Antiderivative2<T>> DSPProcess<1, 1> for Adaa<T, S, 2>
 where
     Self: DSPMeta<Sample = T>,
