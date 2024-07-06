@@ -1,3 +1,4 @@
+use std::borrow::{Borrow, BorrowMut};
 use std::ops::{Deref, DerefMut};
 
 use nalgebra::Complex;
@@ -5,7 +6,7 @@ use simba::simd::SimdComplexField;
 
 use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use crate::dsp::parameter::HasParameters;
-use crate::dsp::{blocks::Series, DSPProcessBlock};
+use crate::dsp::DSPProcessBlock;
 use crate::dsp::{DSPMeta, DSPProcess};
 use crate::filters::halfband;
 use crate::filters::halfband::HalfbandFilter;
@@ -15,12 +16,139 @@ use crate::Scalar;
 const CASCADE: usize = 16;
 
 #[derive(Debug, Clone)]
+struct PingPongBuffer<T> {
+    left: Box<[T]>,
+    right: Box<[T]>,
+    input_is_left: bool,
+}
+
+impl<T> PingPongBuffer<T> {
+    fn new<I: IntoIterator<Item = T>>(contents: I) -> Self
+    where
+        I::IntoIter: Clone,
+    {
+        let it = contents.into_iter();
+        Self {
+            left: it.clone().collect(),
+            right: it.collect(),
+            input_is_left: true,
+        }
+    }
+
+    fn fill(&mut self, value: T)
+    where
+        T: Copy,
+    {
+        self.left.fill(value);
+        self.right.fill(value);
+    }
+
+    fn get_io_buffers<I: Clone>(&mut self, index: I) -> (&[T], &mut [T])
+    where
+        [T]: std::ops::IndexMut<I, Output = [T]>,
+    {
+        if self.input_is_left {
+            let input = &self.left[index.clone()];
+            let output = &mut self.right[index];
+            (input, output)
+        } else {
+            let input = &self.right[index.clone()];
+            let output = &mut self.left[index];
+            (input, output)
+        }
+    }
+
+    fn get_output_ref<I>(&self, index: I) -> &[T]
+    where
+        [T]: std::ops::Index<I, Output = [T]>,
+    {
+        if self.input_is_left {
+            &self.right[index]
+        } else {
+            &self.left[index]
+        }
+    }
+
+    fn copy_into(&self, output: &mut [T])
+    where
+        T: Copy,
+    {
+        let slice = if self.input_is_left {
+            &self.right[..output.len()]
+        } else {
+            &self.left[..output.len()]
+        };
+        output.copy_from_slice(slice);
+    }
+
+    fn switch(&mut self) {
+        self.input_is_left = !self.input_is_left;
+    }
+
+    fn is_empty(&self) -> bool {
+        self.left.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        self.left.len()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ResampleStage<T, const UPSAMPLE: bool> {
+    filter: HalfbandFilter<T, 6>,
+}
+
+impl<T: Scalar, const UPSAMPLE: bool> Default for ResampleStage<T, UPSAMPLE> {
+    fn default() -> Self {
+        Self {
+            filter: halfband::steep_order12(),
+        }
+    }
+}
+
+impl<T: Scalar, const UPSAMPLE: bool> ResampleStage<T, UPSAMPLE> {
+    fn latency(&self) -> usize {
+        self.filter.latency()
+    }
+
+    fn reset(&mut self) {
+        self.filter.reset();
+    }
+}
+
+impl<T: Scalar> ResampleStage<T, true> {
+    #[allow(clippy::identity_op)]
+    fn process_block(&mut self, input: &[T], output: &mut [T]) {
+        assert_eq!(input.len() * 2, output.len());
+        for (i, s) in input.iter().copied().enumerate() {
+            let [x0] = self.filter.process([s + s]);
+            let [x1] = self.filter.process([T::zero()]);
+            output[2 * i + 0] = x0;
+            output[2 * i + 1] = x1;
+        }
+    }
+}
+
+impl<T: Scalar> ResampleStage<T, false> {
+    #[allow(clippy::identity_op)]
+    fn process_block(&mut self, input: &[T], output: &mut [T]) {
+        assert_eq!(input.len(), 2 * output.len());
+        for i in 0..output.len() {
+            let [y] = self.filter.process([input[2 * i + 0]]);
+            let [_] = self.filter.process([input[2 * i + 1]]);
+            output[i] = y;
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Oversample<T> {
     max_factor: usize,
-    os_factor: usize,
-    os_buffer: Box<[T]>,
-    pre_filter: Box<[HalfbandFilter<T, 6>]>,
-    post_filter: Box<[HalfbandFilter<T, 6>]>,
+    num_stages_active: usize,
+    os_buffer: PingPongBuffer<T>,
+    upsample: Box<[ResampleStage<T, true>]>,
+    downsample: Box<[ResampleStage<T, false>]>,
 }
 
 impl<T: Scalar> Oversample<T> {
@@ -29,59 +157,47 @@ impl<T: Scalar> Oversample<T> {
         Complex<T>: SimdComplexField,
     {
         assert!(max_os_factor >= 1);
-        let os_buffer = vec![T::zero(); max_block_size * max_os_factor].into_boxed_slice();
-        let filters = (0..max_os_factor)
-            .map(|_| halfband::steep_order12())
-            .collect::<Box<[_]>>();
+        let max_os_factor = max_os_factor.next_power_of_two();
+        let num_stages = max_os_factor.ilog2() as usize;
+        let os_buffer = vec![T::zero(); max_block_size * max_os_factor];
+        let os_buffer = PingPongBuffer::new(os_buffer);
+        let upsample = (0..num_stages).map(|_| ResampleStage::default()).collect();
+        let downsample = (0..num_stages).map(|_| ResampleStage::default()).collect();
         Self {
             max_factor: max_os_factor,
-            os_factor: max_os_factor,
+            num_stages_active: num_stages,
             os_buffer,
-            pre_filter: filters.clone(),
-            post_filter: filters,
+            upsample,
+            downsample,
         }
     }
 
     pub(crate) fn set_oversampling_amount(&mut self, amt: usize) {
         assert!(amt <= self.max_factor);
-        self.os_factor = amt;
+        self.num_stages_active = amt.next_power_of_two().ilog2() as _;
     }
 
     pub fn latency(&self) -> usize {
-        let filter_latency = self.pre_filter[..self.os_factor]
-            .iter()
-            .chain(self.post_filter[..self.os_factor].iter())
-            .map(|p| p.latency())
-            .sum::<usize>();
-        2 * self.os_factor + filter_latency
+        let upsample_latency = self.upsample.iter().map(|p| p.latency()).sum::<usize>();
+        let downsample_latency = self.downsample.iter().map(|p| p.latency()).sum::<usize>();
+        2 * self.num_stages_active + upsample_latency + downsample_latency
     }
 
     pub fn max_block_size(&self) -> usize {
-        self.os_buffer.len() / self.os_factor
+        self.os_buffer.len() / usize::pow(2, self.num_stages_active as _)
     }
 
-    #[profiling::function]
-    pub fn oversample(&mut self, buffer: &[T]) -> OversampleBlock<T> {
-        let os_len = self.zero_stuff(buffer);
-        let (buf, _) = self.os_buffer.split_at_mut(os_len);
-        let mut filter = Series(&mut self.pre_filter[..self.os_factor]);
-        for s in buf {
-            *s = filter.process([*s])[0];
-        }
-        OversampleBlock {
-            filter: self,
-            os_len,
-        }
+    pub fn get_os_len(&self, input_len: usize) -> usize {
+        input_len * usize::pow(2, self.num_stages_active as _)
     }
 
     pub fn reset(&mut self) {
         self.os_buffer.fill(T::zero());
-        for p in self
-            .pre_filter
-            .iter_mut()
-            .chain(self.post_filter.iter_mut())
-        {
-            p.reset();
+        for stage in &mut self.upsample {
+            stage.reset();
+        }
+        for stage in &mut self.downsample {
+            stage.reset();
         }
     }
 
@@ -94,78 +210,54 @@ impl<T: Scalar> Oversample<T> {
         // Verify that we satisfy the inner DSPBlock instance's requirement on maximum block size
         assert!(self.os_buffer.len() <= max_block_size);
         let staging_buffer = vec![T::zero(); max_block_size].into_boxed_slice();
-        dsp.set_samplerate(samplerate * self.os_factor as f32);
+        dsp.set_samplerate(samplerate * self.num_stages_active as f32);
         Oversampled {
             oversampling: self,
             staging_buffer,
             inner: dsp,
-            samplerate,
+            base_samplerate: samplerate,
         }
     }
 
-    #[profiling::function]
-    fn zero_stuff(&mut self, inp: &[T]) -> usize {
-        let os_len = inp.len() * self.os_factor;
-        assert!(self.os_buffer.len() >= os_len);
-
-        self.os_buffer[..os_len].fill(T::zero());
-        for (i, s) in inp.iter().copied().enumerate() {
-            self.os_buffer[self.os_factor * i] = s * T::from_f64(self.os_factor as f64);
+    fn upsample(&mut self, input: &[T]) -> &mut [T] {
+        assert!(input.len() <= self.max_block_size());
+        if self.num_stages_active == 0 {
+            let (_, output) = self.os_buffer.get_io_buffers(..input.len());
+            output.copy_from_slice(input);
+            return output;
         }
-        os_len
-    }
 
-    #[profiling::function]
-    fn decimate(&mut self, out: &mut [T]) {
-        let os_len = out.len() * self.os_factor;
-        assert!(os_len <= self.os_buffer.len());
-
-        for (i, s) in self
-            .os_buffer
-            .iter()
-            .step_by(self.os_factor)
-            .copied()
-            .enumerate()
-            .take(out.len())
-        {
-            out[i] = s;
+        let os_len = self.get_os_len(input.len());
+        let mut len = input.len();
+        let (_, output) = self.os_buffer.get_io_buffers(..len);
+        output.copy_from_slice(input);
+        for stage in &mut self.upsample[..self.num_stages_active] {
+            self.os_buffer.switch();
+            let (input, output) = self.os_buffer.get_io_buffers(..2 * len);
+            stage.process_block(&input[..len], output);
+            len *= 2;
         }
+        let (_, output) = self.os_buffer.get_io_buffers(..os_len);
+        output
     }
 
     #[profiling::function]
-    fn finish_buffer(&mut self, out: &mut [T]) {
-        let os_len = out.len() * self.os_factor;
-        let mut filter = Series(&mut self.post_filter[..self.os_factor]);
-        for s in &mut self.os_buffer[..os_len] {
-            *s = filter.process([*s])[0];
+    fn downsample(&mut self, out: &mut [T]) {
+        if self.num_stages_active == 0 {
+            let inner_out = self.os_buffer.get_output_ref(..out.len());
+            out.copy_from_slice(inner_out);
+            return;
         }
-        self.decimate(out);
-    }
-}
 
-pub struct OversampleBlock<'a, T> {
-    filter: &'a mut Oversample<T>,
-    os_len: usize,
-}
-
-impl<'a, T> Deref for OversampleBlock<'a, T> {
-    type Target = [T];
-
-    fn deref(&self) -> &Self::Target {
-        &self.filter.os_buffer[..self.os_len]
-    }
-}
-
-impl<'a, T> DerefMut for OversampleBlock<'a, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.filter.os_buffer[..self.os_len]
-    }
-}
-
-impl<'a, T: Scalar> OversampleBlock<'a, T> {
-    #[profiling::function]
-    pub fn finish(self, out: &mut [T]) {
-        self.filter.finish_buffer(out);
+        let os_len = self.get_os_len(out.len());
+        let mut len = os_len;
+        for stage in &mut self.downsample {
+            self.os_buffer.switch();
+            let (input, output) = self.os_buffer.get_io_buffers(..len);
+            stage.process_block(input, &mut output[..len / 2]);
+            len /= 2;
+        }
+        self.os_buffer.copy_into(out);
     }
 }
 
@@ -173,12 +265,12 @@ pub struct Oversampled<T, P> {
     oversampling: Oversample<T>,
     staging_buffer: Box<[T]>,
     pub inner: P,
-    samplerate: f32,
+    base_samplerate: f32,
 }
 
 impl<T, P> Oversampled<T, P> {
     pub fn os_factor(&self) -> usize {
-        self.oversampling.os_factor
+        usize::pow(2, self.oversampling.num_stages_active as _)
     }
 
     pub fn into_inner(self) -> P {
@@ -194,7 +286,7 @@ where
     pub fn set_oversampling_amount(&mut self, amt: usize) {
         assert!(amt > 1);
         self.oversampling.set_oversampling_amount(amt);
-        self.set_samplerate(self.samplerate);
+        self.set_samplerate(self.base_samplerate);
     }
 }
 
@@ -224,16 +316,16 @@ where
     P: DSPProcessBlock<1, 1, Sample = T>,
 {
     fn process_block(&mut self, inputs: AudioBufferRef<T, 1>, mut outputs: AudioBufferMut<T, 1>) {
-        let mut os_block = self.oversampling.oversample(inputs.get_channel(0));
+        let os_block = self.oversampling.upsample(inputs.get_channel(0));
+
         let mut inner_input =
             AudioBufferMut::new([&mut self.staging_buffer[..os_block.len()]]).unwrap();
-        inner_input.copy_from_slice(0, &os_block);
-        {
-            let mut inner_output = AudioBufferMut::new([&mut os_block]).unwrap();
-            self.inner
-                .process_block(inner_input.as_ref(), inner_output.as_mut());
-        }
-        os_block.finish(outputs.get_channel_mut(0));
+        inner_input.copy_from_slice(0, os_block);
+        let inner_output = AudioBufferMut::new([os_block]).unwrap();
+
+        self.inner.process_block(inner_input.as_ref(), inner_output);
+
+        self.oversampling.downsample(outputs.get_channel_mut(0));
     }
 
     fn max_block_size(&self) -> Option<usize> {
@@ -296,8 +388,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{f32::consts::TAU, hint::black_box};
-
     use numeric_literals::replace_float_literals;
 
     use crate::{
@@ -309,46 +399,21 @@ mod tests {
         util::tests::{Plot, Series},
     };
 
-    use super::Oversample;
+    use super::{Oversample, PingPongBuffer};
 
     #[test]
-    fn oversample_no_dc_offset() {
-        use plotters::prelude::*;
+    fn ping_pong_works() {
+        let mut pingpong = PingPongBuffer::new([0; 8]);
+        let (input, output) = pingpong.get_io_buffers(..);
+        assert_eq!(0, input[0]);
+        assert_eq!(0, output[0]);
 
-        let inp: [f32; 512] = std::array::from_fn(|i| (TAU * i as f32 / 64.).sin());
-        let mut out = [0.0; 512];
-        let mut os = Oversample::new(4, 512);
+        output[0] = 1;
+        pingpong.switch();
 
-        let osblock = black_box(os.oversample(&inp));
-        insta::assert_csv_snapshot!("os block", &*osblock, { "[]" => insta::rounded_redaction(3) });
-
-        osblock.finish(&mut out);
-        Plot {
-            title: "Oversample: No DC Offset",
-            bode: false,
-            series: &[
-                Series {
-                    label: "Input",
-                    samplerate: 1.,
-                    color: &BLUE,
-                    series: &inp,
-                },
-                Series {
-                    label: "Oversampled",
-                    samplerate: 4.,
-                    color: &YELLOW,
-                    series: &*os.os_buffer,
-                },
-                Series {
-                    label: "Output",
-                    samplerate: 1.,
-                    color: &RED,
-                    series: &out,
-                },
-            ],
-        }
-        .create_svg("plots/oversample/no_dc_offset.svg");
-        insta::assert_csv_snapshot!("post os", &out as &[_], { "[]" => insta::rounded_redaction(3) });
+        let (input, output) = pingpong.get_io_buffers(..);
+        assert_eq!(1, input[0]);
+        assert_eq!(0, output[0]);
     }
 
     #[test]
@@ -388,13 +453,13 @@ mod tests {
         let mut output = AudioBufferBox::zeroed(64);
         os.process_block(input.as_ref(), output.as_mut());
         Plot {
-            title: "Oversample: DSPProcessBlock integration",
+            title: "Oversample block",
             bode: false,
             series: &[
                 Series {
                     label: "Oversampled",
                     samplerate: 4. * samplerate,
-                    series: &*os.oversampling.os_buffer,
+                    series: os.oversampling.os_buffer.get_output_ref(..),
                     color: &YELLOW,
                 },
                 Series {

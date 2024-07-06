@@ -228,13 +228,13 @@ impl<T: Scalar, const N: usize> MultiSaturator<T, N> for DiodeClipperModel<T> {
 
 #[cfg(test)]
 mod tests {
+    use plotters::prelude::*;
+    use simba::simd::SimdValue;
     use std::hint;
 
-    use simba::simd::SimdValue;
-
-    use crate::dsp::DSPProcess;
-
     use super::{DiodeClipper, DiodeClipperModel};
+    use crate::dsp::DSPProcess;
+    use crate::util::tests::{Plot, Series};
 
     fn dc_sweep(name: &str, mut dsp: impl DSPProcess<1, 1, Sample = f32>) {
         let results = Vec::from_iter(
@@ -243,6 +243,18 @@ mod tests {
                 .map(|v| dsp.process([v as f32])[0]),
         );
         let full_name = format!("{name}/dc_sweep");
+        let plot_title = format!("DC sweep: {name}");
+        Plot {
+            title: &plot_title,
+            bode: false,
+            series: &[Series {
+                label: name,
+                samplerate: 100.0,
+                series: &results,
+                color: &Default::default(),
+            }],
+        }
+        .create_svg(format!("plots/saturators/clippers/dc_sweep_{name}.svg"));
         insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
     }
 
@@ -255,6 +267,18 @@ mod tests {
             .map(|v| hint::black_box(dsp.process([v as f32])[0]));
         let results = Vec::from_iter(output.map(|v| v.extract(0)));
         let full_name = format!("{name}/drive_test");
+        let plot_title = format!("Drive test: {name}");
+        Plot {
+            title: &plot_title,
+            bode: false,
+            series: &[Series {
+                label: "Output",
+                samplerate: 10.,
+                series: &results,
+                color: &BLUE,
+            }],
+        }
+        .create_svg(format!("plots/saturators/clippers/drive_{name}.svg"));
         insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
     }
 

@@ -12,7 +12,7 @@ use crate::dsp::{create_dsp, DspInnerParams, DspParams, SaturatorType};
 
 mod dsp;
 
-const OVERSAMPLE: usize = 16;
+const MAX_OVERSAMPLE: usize = 16;
 
 const MAX_BLOCK_SIZE: usize = 512;
 
@@ -85,13 +85,15 @@ impl SaturatorsParams {
             .bind_to_parameter(remote, DspParams::InnerParam(DspInnerParams::AdaaEpsilon)),
             oversampling: IntParam::new(
                 "Oversampling",
-                OVERSAMPLE as _,
+                usize::ilog2(MAX_OVERSAMPLE) as _,
                 IntRange::Linear {
-                    min: 1,
-                    max: OVERSAMPLE as _,
+                    min: 0,
+                    max: usize::ilog2(MAX_OVERSAMPLE) as _,
                 },
             )
             .with_unit("x")
+            .with_string_to_value(formatters::s2v_i32_power_of_two())
+            .with_value_to_string(formatters::v2s_i32_power_of_two())
             .bind_to_parameter(remote, DspParams::Oversampling),
             dc_blocker: BoolParam::new("Block DC", true)
                 .bind_to_parameter(remote, DspParams::DcBlocker),
@@ -106,7 +108,7 @@ struct SaturatorsPlugin {
 
 impl Default for SaturatorsPlugin {
     fn default() -> Self {
-        let dsp = create_dsp(44100.0, OVERSAMPLE, MAX_BLOCK_SIZE);
+        let dsp = create_dsp(44100.0, MAX_OVERSAMPLE, MAX_BLOCK_SIZE);
         let params = SaturatorsParams::new(&dsp.proxy);
         Self { dsp, params }
     }

@@ -270,14 +270,13 @@ mod tests {
             }
         }
 
-        let mut adaptor = SampleAdapter::new_with_max_buffer_size(Counter::<f32>::new(), 4);
+        let adaptor = SampleAdapter::new_with_max_buffer_size(Counter::<f32>::new(), 4);
         assert_eq!(3, adaptor.latency());
 
         let expected = [0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 0.0];
         let mut actual = [0.0; 8];
 
-        // Calling `process_block` but it's actually calling the impl for all `DSP` passing each sample through.
-        adaptor.process_block(
+        BlockAdapter(adaptor).process_block(
             AudioBufferRef::empty(8),
             AudioBufferMut::new([&mut actual]).unwrap(),
         );

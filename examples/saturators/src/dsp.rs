@@ -1,5 +1,5 @@
 use nih_plug::prelude::Enum;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use std::borrow::Cow;
 
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
@@ -102,7 +102,11 @@ enum DspSaturatorAdaa1 {
 impl Antiderivative<Sample64> for DspSaturatorAdaa1 {
     fn evaluate(&self, x: Sample64) -> Sample64 {
         match self {
-            Self::HardClip => Clipper.evaluate(x),
+            Self::HardClip => Clipper {
+                min: -Sample64::one(),
+                max: Sample64::one(),
+            }
+            .evaluate(x),
             Self::Tanh => Tanh.evaluate(x),
             Self::Asinh => Asinh.evaluate(x),
         }
@@ -110,7 +114,11 @@ impl Antiderivative<Sample64> for DspSaturatorAdaa1 {
 
     fn antiderivative(&self, x: Sample64) -> Sample64 {
         match self {
-            DspSaturatorAdaa1::HardClip => Clipper.antiderivative(x),
+            DspSaturatorAdaa1::HardClip => Clipper {
+                min: -Sample64::one(),
+                max: Sample64::one(),
+            }
+            .antiderivative(x),
             DspSaturatorAdaa1::Tanh => Tanh.antiderivative(x),
             DspSaturatorAdaa1::Asinh => Asinh.antiderivative(x),
         }
@@ -125,14 +133,22 @@ enum DspSaturatorAdaa2 {
 impl Antiderivative<Sample64> for DspSaturatorAdaa2 {
     fn evaluate(&self, x: Sample64) -> Sample64 {
         match self {
-            Self::HardClip => Clipper.evaluate(x),
+            Self::HardClip => Clipper {
+                min: -Sample64::one(),
+                max: Sample64::one(),
+            }
+            .evaluate(x),
             Self::Asinh => Asinh.evaluate(x),
         }
     }
 
     fn antiderivative(&self, x: Sample64) -> Sample64 {
         match self {
-            Self::HardClip => Clipper.antiderivative(x),
+            Self::HardClip => Clipper {
+                min: -Sample64::one(),
+                max: Sample64::one(),
+            }
+            .antiderivative(x),
             Self::Asinh => Asinh.antiderivative(x),
         }
     }
@@ -141,7 +157,11 @@ impl Antiderivative<Sample64> for DspSaturatorAdaa2 {
 impl Antiderivative2<Sample64> for DspSaturatorAdaa2 {
     fn antiderivative2(&self, x: Sample64) -> Sample64 {
         match self {
-            Self::HardClip => Clipper.antiderivative2(x),
+            Self::HardClip => Clipper {
+                min: -Sample64::one(),
+                max: Sample64::one(),
+            }
+            .antiderivative2(x),
             Self::Asinh => Asinh.antiderivative2(x),
         }
     }
@@ -379,7 +399,6 @@ impl DSPProcessBlock<1, 1> for Dsp {
     ) {
         let mut staging = AudioBufferMut::from(&mut self.dc_blocker_staging[..inputs.samples()]);
 
-        self.inner.set_oversampling_amount(self.oversample_amount);
         self.inner.process_block(inputs, staging.as_mut());
         if self.use_dc_blocker {
             self.dc_blocker
@@ -399,7 +418,10 @@ impl HasParameters for Dsp {
             DspParams::DcBlocker => {
                 self.use_dc_blocker = value > 0.5;
             }
-            DspParams::Oversampling => self.oversample_amount = value.min(16.0) as _,
+            DspParams::Oversampling => {
+                self.oversample_amount = usize::pow(2, value as _);
+                self.inner.set_oversampling_amount(self.oversample_amount);
+            }
         }
     }
 }

@@ -53,7 +53,7 @@ impl<T: Zero> Allpass<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct HalfbandFilter<T, const ORDER: usize> {
     filter_a: Series<[Allpass<T>; ORDER]>,
     filter_b: Series<[Allpass<T>; ORDER]>,
