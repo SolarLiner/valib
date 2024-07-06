@@ -7,10 +7,19 @@ use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess};
 use valib::filters::svf::Svf;
 use valib::oversample::Oversampled;
 use valib::saturators::{Clipper, Saturator, Slew};
-use valib::simd::{AutoSimd, SimdValue};
+use valib::simd::{AutoSimd, SimdComplexField, SimdValue};
 use valib::Scalar;
 
 pub(crate) type Sample = AutoSimd<[f32; 2]>;
+
+#[derive(Debug, Copy, Clone, Default)]
+struct Sinh;
+
+impl Saturator<Sample> for Sinh {
+    fn saturate(&self, x: Sample) -> Sample {
+        x.simd_sinh()
+    }
+}
 
 pub type Dsp = Oversampled<Sample, BlockAdapter<DspInner>>;
 
@@ -24,21 +33,12 @@ pub enum DspParam {
     HpGain,
 }
 
-type Filter = Svf<Sample, OpAmp<Sample>>;
+type Filter = Svf<Sample, Sinh>;
 
 pub struct DspInner {
     params: ParamMap<DspParam, SmoothedParam>,
     filter: Filter,
     mod_matrix: ModMatrix<Sample, 3, 1>,
-}
-
-impl DspInner {
-    pub(crate) fn set_samplerate(&mut self, samplerate: f32) {
-        for (_, param) in self.params.iter_mut() {
-            param.set_samplerate(samplerate);
-        }
-        self.filter.set_samplerate(samplerate);
-    }
 }
 
 impl DspInner {
@@ -118,7 +118,7 @@ impl DSPProcess<1, 1> for DspInner {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct OpAmp<T>(Clipper, Slew<T>);
+struct OpAmp<T>(Clipper<T>, Slew<T>);
 
 impl<T: Scalar> Default for OpAmp<T> {
     fn default() -> Self {
@@ -128,7 +128,7 @@ impl<T: Scalar> Default for OpAmp<T> {
 
 impl<T: Scalar> Saturator<T> for OpAmp<T>
 where
-    Clipper: Saturator<T>,
+    Clipper<T>: Saturator<T>,
     Slew<T>: Saturator<T>,
 {
     fn saturate(&self, x: T) -> T {

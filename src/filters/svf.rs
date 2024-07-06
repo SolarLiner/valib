@@ -34,7 +34,7 @@ pub struct Svf<T, Mode = Linear> {
     d: T,
     w_step: T,
     samplerate: T,
-    sats: [Mode; 2],
+    saturator: Mode,
 }
 
 impl<T: Scalar, Mode: Saturator<T>> HasParameters for Svf<T, Mode> {
@@ -65,7 +65,11 @@ impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 3> for Svf<T, S> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
         let [s1, s2] = self.s;
 
-        let hp = (x[0] - self.g1 * s1 - s2) * self.d;
+        let bpp = self.saturator.saturate(s1);
+        let bpl = (self.r - 1.) * s1;
+        let bp1 = 2. * (bpp + bpl);
+        let hp = (x[0] - bp1 - s2) * self.d;
+        self.saturator.update_state(s1, bpp);
 
         let v1 = self.g * hp;
         let bp = v1 + s1;
@@ -75,12 +79,7 @@ impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 3> for Svf<T, S> {
         let lp = v2 + s2;
         let s2 = lp + v2;
 
-        self.s = [
-            self.sats[0].saturate(s1 / 10.) * 10.,
-            self.sats[1].saturate(s2 / 10.) * 10.,
-        ];
-        self.sats[0].update_state(s1 / 10., self.s[0]);
-        self.sats[1].update_state(s2 / 10., self.s[1]);
+        self.s = [s1, s2];
         [lp, bp, hp]
     }
 }
@@ -112,7 +111,7 @@ impl<T: Scalar, C: Default> Svf<T, C> {
             d: T::zero(),
             samplerate,
             w_step: T::simd_pi() / samplerate,
-            sats: Default::default(),
+            saturator: C::default(),
         };
         this.update_coefficients();
         this
@@ -148,13 +147,13 @@ impl<T: Scalar, C> Svf<T, C> {
 
 impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
     /// Apply these new saturators to this SVF instance, returning a new instance of it.
-    pub fn set_saturators(&mut self, s1: S, s2: S) {
-        self.sats = [s1, s2];
+    pub fn set_saturator(&mut self, sat: S) {
+        self.saturator = sat;
     }
 
     /// Replace the saturators in this Biquad instance with the provided values.
-    pub fn with_saturators(mut self, s1: S, s2: S) -> Self {
-        self.set_saturators(s1, s2);
+    pub fn with_saturator(mut self, sat: S) -> Self {
+        self.set_saturator(sat);
         self
     }
 }
