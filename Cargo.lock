@@ -4789,6 +4789,7 @@ name = "valib"
 version = "0.1.0"
 dependencies = [
  "az",
+ "bumpalo",
  "fundsp",
  "insta",
  "nalgebra",
@@ -5101,6 +5102,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "xml-rs",
+]
+
+[[package]]
+name = "wdfclipper"
+version = "0.1.0"
+dependencies = [
+ "nih_plug",
+ "num-traits",
+ "valib",
 ]
 
 [[package]]
