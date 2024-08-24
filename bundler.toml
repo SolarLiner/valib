@@ -18,3 +18,6 @@ name = "Slew"
 
 [abrasive]
 name = "Abrasive EQ"
+
+[wdfclipper]
+name = "Diode Clipper (WDF)"

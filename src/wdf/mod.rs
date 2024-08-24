@@ -1,3 +1,4 @@
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::Scalar;
 use num_traits::Zero;
 use simba::simd::SimdComplexField;
@@ -42,7 +43,7 @@ pub trait Wdf {
     fn reflected(&mut self) -> Self::Scalar;
     fn set_samplerate(&mut self, samplerate: f64) {}
     fn set_port_resistance(&mut self, resistance: Self::Scalar) {}
-    fn reset(&mut self) {}
+    fn reset(&mut self);
 }
 
 impl<'a, T: Wdf> Wdf for &'a mut T {
@@ -60,7 +61,13 @@ impl<'a, T: Wdf> Wdf for &'a mut T {
         T::reflected(self)
     }
 
-    fn set_samplerate(&mut self, _: f64) {}
+    fn set_samplerate(&mut self, samplerate: f64) {
+        T::set_samplerate(self, samplerate)
+    }
+
+    fn reset(&mut self) {
+        T::reset(self)
+    }
 }
 
 pub trait AdaptedWdf: Wdf {
@@ -106,6 +113,11 @@ impl<Root: Wdf, Leaf: AdaptedWdf<Scalar = Root::Scalar>> WdfModule<Root, Leaf> {
         root.incident(leaf.reflected());
         leaf.incident(root.reflected());
     }
+
+    pub fn reset(&mut self) {
+        self.root.borrow_mut().reset();
+        self.leaf.borrow_mut().reset();
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -144,7 +156,10 @@ impl<T: Scalar> Wdf for IdealVoltageSource<T> {
         self.b
     }
 
-    fn set_samplerate(&mut self, _: f64) {}
+    fn reset(&mut self) {
+        self.a.set_zero();
+        self.b.set_zero();
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -174,7 +189,10 @@ impl<T: Scalar> Wdf for ResistiveVoltageSource<T> {
         self.b
     }
 
-    fn set_samplerate(&mut self, _: f64) {}
+    fn reset(&mut self) {
+        self.a.set_zero();
+        self.b.set_zero();
+    }
 }
 
 impl<T: Scalar> AdaptedWdf for ResistiveVoltageSource<T> {
@@ -218,7 +236,9 @@ impl<T: Scalar> Wdf for Resistor<T> {
         T::zero()
     }
 
-    fn set_samplerate(&mut self, _: f64) {}
+    fn reset(&mut self) {
+        self.a.set_zero();
+    }
 }
 
 impl<T: Scalar> AdaptedWdf for Resistor<T> {
@@ -237,16 +257,16 @@ impl<T: Scalar> Resistor<T> {
 pub struct Capacitor<T> {
     pub fs: T,
     pub c: T,
-    z: T,
+    a: T,
     b: T,
 }
 
 impl<T: Scalar> Capacitor<T> {
-    fn new(fs: T, c: T) -> Self {
+    pub fn new(fs: T, c: T) -> Self {
         Self {
             fs,
             c,
-            z: T::zero(),
+            a: T::zero(),
             b: T::zero(),
         }
     }
@@ -257,17 +277,17 @@ impl<T: Scalar> Wdf for Capacitor<T> {
 
     fn wave(&self) -> Wave<Self::Scalar> {
         Wave {
-            a: self.z,
+            a: self.a,
             b: self.b,
         }
     }
 
     fn incident(&mut self, x: Self::Scalar) {
-        self.z = x;
+        self.a = x;
     }
 
     fn reflected(&mut self) -> Self::Scalar {
-        self.b = self.z;
+        self.b = self.a;
         self.b
     }
 
@@ -276,13 +296,130 @@ impl<T: Scalar> Wdf for Capacitor<T> {
     }
 
     fn reset(&mut self) {
-        self.z.set_zero();
+        self.a.set_zero();
+        self.b.set_zero();
     }
 }
 
 impl<T: Scalar> AdaptedWdf for Capacitor<T> {
     fn admittance(&self) -> Self::Scalar {
         self.c * self.fs * T::from_f64(2.0)
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ShortCircuit<T> {
+    a: T,
+}
+
+impl<T: Zero> Default for ShortCircuit<T> {
+    fn default() -> Self {
+        Self { a: T::zero() }
+    }
+}
+
+impl<T: Scalar> Wdf for ShortCircuit<T> {
+    type Scalar = T;
+
+    fn wave(&self) -> Wave<Self::Scalar> {
+        Wave {
+            a: self.a,
+            b: -self.a,
+        }
+    }
+
+    fn incident(&mut self, x: Self::Scalar) {
+        self.a = x;
+    }
+
+    fn reflected(&mut self) -> Self::Scalar {
+        -self.a
+    }
+
+    fn reset(&mut self) {
+        self.a.set_zero();
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct OpenCircuit<T> {
+    a: T,
+}
+
+impl<T: Zero> Default for OpenCircuit<T> {
+    fn default() -> Self {
+        Self { a: T::zero() }
+    }
+}
+
+impl<T: Scalar> Wdf for OpenCircuit<T> {
+    type Scalar = T;
+
+    fn wave(&self) -> Wave<Self::Scalar> {
+        Wave {
+            a: self.a,
+            b: self.a,
+        }
+    }
+
+    fn incident(&mut self, x: Self::Scalar) {
+        self.a = x;
+    }
+
+    fn reflected(&mut self) -> Self::Scalar {
+        self.a
+    }
+
+    fn reset(&mut self) {
+        self.a.set_zero();
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct WdfDsp<P: DSPMeta> {
+    pub dsp: P,
+    a: P::Sample,
+    b: P::Sample,
+}
+
+impl<P: DSPMeta<Sample: Zero>> WdfDsp<P> {
+    pub fn new(dsp: P) -> Self {
+        Self {
+            dsp,
+            a: P::Sample::zero(),
+            b: P::Sample::zero(),
+        }
+    }
+}
+
+impl<P: DSPProcess<1, 1>> Wdf for WdfDsp<P> {
+    type Scalar = P::Sample;
+
+    fn wave(&self) -> Wave<Self::Scalar> {
+        Wave {
+            a: self.a,
+            b: self.b,
+        }
+    }
+
+    fn incident(&mut self, x: Self::Scalar) {
+        self.a = x;
+    }
+
+    fn reflected(&mut self) -> Self::Scalar {
+        let [y] = self.dsp.process([self.a]);
+        self.b = P::Sample::from_f64(2.0) * y - self.a;
+        self.b
+    }
+
+    fn set_samplerate(&mut self, samplerate: f64) {
+        self.dsp.set_samplerate(samplerate as _);
+    }
+
+    fn reset(&mut self) {
+        self.dsp.reset();
+        self.a.set_zero();
+        self.b.set_zero();
     }
 }
 
@@ -336,6 +473,18 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Wdf for Series<A, B> {
         let mut right = self.right.borrow_mut();
         self.b = -left.reflected() - right.reflected();
         self.b
+    }
+
+    fn set_samplerate(&mut self, samplerate: f64) {
+        self.left.borrow_mut().set_samplerate(samplerate);
+        self.right.borrow_mut().set_samplerate(samplerate);
+    }
+
+    fn reset(&mut self) {
+        self.left.borrow_mut().reset();
+        self.right.borrow_mut().reset();
+        self.a.set_zero();
+        self.b.set_zero();
     }
 }
 
@@ -401,6 +550,20 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Wdf for Parallel<A, B> {
         self.b = b2 + self.btemp;
         self.b
     }
+
+    fn set_samplerate(&mut self, samplerate: f64) {
+        self.left.borrow_mut().set_samplerate(samplerate);
+        self.right.borrow_mut().set_samplerate(samplerate);
+    }
+
+    fn reset(&mut self) {
+        self.left.borrow_mut().reset();
+        self.right.borrow_mut().reset();
+        self.a.set_zero();
+        self.b.set_zero();
+        self.btemp.set_zero();
+        self.bdiff.set_zero();
+    }
 }
 
 impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> AdaptedWdf for Parallel<A, B> {
@@ -446,6 +609,16 @@ impl<A: AdaptedWdf> Wdf for Inverter<A> {
         self.b = -self.inner.borrow_mut().reflected();
         self.b
     }
+
+    fn set_samplerate(&mut self, samplerate: f64) {
+        self.inner.borrow_mut().set_samplerate(samplerate);
+    }
+
+    fn reset(&mut self) {
+        self.inner.borrow_mut().reset();
+        self.a.set_zero();
+        self.b.set_zero();
+    }
 }
 
 impl<A: AdaptedWdf> AdaptedWdf for Inverter<A> {
@@ -460,8 +633,11 @@ impl<A: AdaptedWdf> AdaptedWdf for Inverter<A> {
 
 #[cfg(test)]
 mod tests {
-    use crate::wdf::{node, voltage, IdealVoltageSource, Inverter, Resistor, Series, WdfModule};
+    use super::*;
+    use crate::util::tests::Plot;
     use crate::Scalar;
+    use plotters::prelude::{BLUE, GREEN, RED};
+    use std::f32::consts::TAU;
 
     #[test]
     fn test_voltage_divider() {
@@ -476,5 +652,52 @@ mod tests {
         );
         module.next_sample();
         assert_eq!(6.0, voltage(&out));
+    }
+
+    #[test]
+    fn test_lowpass_filter() {
+        const C: f32 = 33e-9;
+        const CUTOFF: f32 = 256.0;
+        const FS: f32 = 4096.0;
+        let r = f32::recip(TAU * C * CUTOFF);
+        let rvs = node(ResistiveVoltageSource::new(r, 0.));
+        let mut tree = WdfModule::new(
+            node(OpenCircuit::default()),
+            node(Parallel::new(rvs.clone(), node(Capacitor::new(FS, C)))),
+        );
+
+        let input = (0..256)
+            .map(|i| f32::fract(50.0 * i as f32 / FS))
+            .map(|x| 2.0 * x - 1.)
+            .map(|x| 1.0 * x)
+            .collect::<Vec<_>>();
+
+        let mut output = Vec::with_capacity(input.len());
+        for x in input.iter().copied() {
+            rvs.borrow_mut().vs = x;
+            tree.next_sample();
+            output.push(voltage(&tree.root));
+        }
+
+        Plot {
+            title: "Diode Clipper",
+            bode: false,
+            series: &[
+                crate::util::tests::Series {
+                    label: "Input",
+                    samplerate: FS,
+                    series: &input,
+                    color: &BLUE,
+                },
+                crate::util::tests::Series {
+                    label: "Output",
+                    samplerate: FS,
+                    series: &output,
+                    color: &RED,
+                },
+            ],
+        }
+        .create_svg("plots/wdf/low_pass.svg");
+        insta::assert_csv_snapshot!(&output, { "[]" => insta::rounded_redaction(4) })
     }
 }

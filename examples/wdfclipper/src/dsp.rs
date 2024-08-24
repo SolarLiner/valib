@@ -1,16 +1,23 @@
+use crate::ClipperPlugin;
 use nih_plug::nih_log;
-use nih_plug::prelude::Enum;
-use num_traits::Zero;
-
+use num_traits::{FloatConst, Zero};
+use std::cell::{OnceCell, RefCell};
+use std::f64::consts::TAU;
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
-use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
+use valib::dsp::parameter::{
+    HasParameters, ParamId, ParamName, RemoteControl, RemoteControlled, SmoothedParam,
+};
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
-use valib::saturators::clippers::{DiodeClipper, DiodeClipperModel};
+use valib::saturators::clippers::DiodeClipperModel;
 use valib::saturators::Linear;
 use valib::simd::{AutoF32x2, AutoF64x2, SimdComplexField};
-use valib::{Scalar, SimdCast};
+use valib::wdf::diode::{DiodeLambert, DiodeModel};
+use valib::wdf::{
+    node, voltage, Capacitor, Parallel, ResistiveVoltageSource, Wave, Wdf, WdfModule,
+};
+use valib::{wdf, Scalar, SimdCast};
 
 struct DcBlocker<T>(Biquad<T, Linear>);
 
@@ -57,67 +64,54 @@ impl<T: Scalar> DSPProcess<1, 1> for DcBlocker<T> {
 type Sample = AutoF32x2;
 type Sample64 = AutoF64x2;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Enum, ParamName)]
-pub enum DiodeType {
-    Silicon,
-    Germanium,
-    #[name = "LED"]
-    Led,
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, ParamName)]
 pub enum DspParams {
     Drive,
-    ModelSwitch,
-    DiodeType,
-    NumForward,
-    NumBackward,
+    Cutoff,
     ForceReset,
 }
 
 pub struct DspInner {
     drive: SmoothedParam,
-    model_switch: bool,
-    num_forward: u8,
-    num_backward: u8,
-    diode_type: DiodeType,
-    force_reset: bool,
-    nr_model: DiodeClipperModel<Sample64>,
-    nr_nr: DiodeClipper<Sample64>,
+    cutoff: SmoothedParam,
+    model: WdfModule<
+        DiodeLambert<Sample64>,
+        Parallel<ResistiveVoltageSource<Sample64>, Capacitor<Sample64>>,
+    >,
+    rvs: wdf::Node<ResistiveVoltageSource<Sample64>>,
 }
 
+// Safety: this is safe because nothing about the tree is exposed outside of the audio thread.
+// It would be nice to not have to do this, but until I implement a custom arena solution, this is here
+unsafe impl Send for DspInner {}
+
 impl DspInner {
+    const C: f64 = 33e-9;
     fn new(samplerate: f32) -> Self {
+        let rvs = node(ResistiveVoltageSource::new(
+            Self::resistance_for_cutoff(3000.),
+            Sample64::zero(),
+        ));
+        let module = WdfModule::new(
+            node(DiodeLambert::germanium(1)),
+            node(Parallel::new(
+                rvs.clone(),
+                node(Capacitor::new(
+                    Sample64::from_f64(samplerate as _),
+                    Sample64::from_f64(Self::C),
+                )),
+            )),
+        );
         Self {
             drive: SmoothedParam::exponential(1.0, samplerate, 10.0),
-            model_switch: false,
-            num_forward: 1,
-            num_backward: 1,
-            diode_type: DiodeType::Silicon,
-            force_reset: false,
-            nr_model: DiodeClipperModel::new_silicon(1, 1),
-            nr_nr: DiodeClipper::new_silicon(1, 1, Sample64::zero()),
+            cutoff: SmoothedParam::exponential(3000., samplerate, 10.),
+            model: module,
+            rvs,
         }
     }
 
-    fn update_from_params(&mut self) {
-        let num_fwd = self.num_forward;
-        let num_bck = self.num_backward;
-        self.nr_model = match self.diode_type {
-            DiodeType::Silicon => DiodeClipperModel::new_silicon(num_fwd, num_bck),
-            DiodeType::Germanium => DiodeClipperModel::new_germanium(num_fwd, num_bck),
-            DiodeType::Led => DiodeClipperModel::new_led(num_fwd, num_bck),
-        };
-        let last_vout = self.nr_nr.last_output();
-        self.nr_nr = match self.diode_type {
-            DiodeType::Silicon => {
-                DiodeClipper::new_silicon(num_fwd as usize, num_bck as usize, last_vout)
-            }
-            DiodeType::Germanium => {
-                DiodeClipper::new_germanium(num_fwd as usize, num_bck as usize, last_vout)
-            }
-            DiodeType::Led => DiodeClipper::new_led(num_fwd as usize, num_bck as usize, last_vout),
-        };
+    fn resistance_for_cutoff(cutoff: f32) -> Sample64 {
+        Sample64::simd_recip(Sample64::from_f64(TAU * Self::C * cutoff as f64))
     }
 }
 
@@ -125,33 +119,17 @@ impl HasParameters for DspInner {
     type Name = DspParams;
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {
-        let mut do_update = false;
+        nih_log!("DspInner::set_parameter {param:?} {value}");
         match param {
             DspParams::Drive => {
                 self.drive.param = value;
             }
-            DspParams::ModelSwitch => {
-                self.model_switch = value > 0.5;
-            }
-            DspParams::DiodeType => {
-                self.diode_type =
-                    DiodeType::from_id(value.clamp(0.0, DiodeType::variants().len() as _) as _);
-                do_update = true;
-            }
-            DspParams::NumForward => {
-                self.num_forward = value.clamp(1.0, 5.0) as _;
-                do_update = true;
-            }
-            DspParams::NumBackward => {
-                self.num_backward = value.clamp(1.0, 5.0) as _;
-                do_update = true;
+            DspParams::Cutoff => {
+                self.cutoff.param = value;
             }
             DspParams::ForceReset => {
                 self.reset();
             }
-        }
-        if do_update {
-            self.update_from_params();
         }
     }
 }
@@ -161,43 +139,38 @@ impl DSPMeta for DspInner {
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.drive.set_samplerate(samplerate);
-        self.nr_model.set_samplerate(samplerate);
-        self.nr_nr.set_samplerate(samplerate);
+        self.model.set_samplerate(samplerate as _);
     }
 
     fn latency(&self) -> usize {
-        if self.model_switch {
-            self.nr_model.latency()
-        } else {
-            self.nr_nr.latency()
-        }
+        1
     }
 
     fn reset(&mut self) {
         self.drive.reset();
-        self.nr_model.reset();
-        self.nr_nr.reset();
-        self.force_reset = false;
+        self.model.reset();
     }
 }
 
 impl DSPProcess<1, 1> for DspInner {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let drive = self.drive.next_sample_as::<Sample64>();
-        let x64 = x.map(|x| x.cast() * drive);
-        if self.model_switch {
-            self.nr_model.process(x64)
-        } else {
-            self.nr_nr.process(x64)
+        {
+            let x: Sample64 = x[0].cast();
+            let mut rvs = self.rvs.borrow_mut();
+            rvs.r = Self::resistance_for_cutoff(self.cutoff.next_sample());
+            rvs.vs = drive * x;
         }
-        .map(|x| x / drive.simd_asinh())
-        .map(|x| x.cast())
+        self.model.next_sample();
+        let out = voltage(&self.model.root) / drive.simd_tanh();
+        [out.cast()]
     }
 }
 
 pub struct Dsp {
-    inner: Oversampled<Sample, BlockAdapter<DspInner>>,
+    inner: RemoteControlled<Oversampled<Sample, BlockAdapter<DspInner>>>,
     dc_blocker: DcBlocker<Sample>,
+    pub rc: RemoteControl<DspParams>,
 }
 
 impl DSPMeta for Dsp {
@@ -239,7 +212,7 @@ impl HasParameters for Dsp {
     type Name = DspParams;
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {
-        self.inner.set_parameter(param, value);
+        self.inner.inner.inner.0.set_parameter(param, value); // lol
     }
 }
 
@@ -248,13 +221,15 @@ pub fn create_dsp(
     oversample: usize,
     max_block_size: usize,
 ) -> RemoteControlled<Dsp> {
-    let inner = Oversample::new(oversample, max_block_size).with_dsp(
-        samplerate,
-        BlockAdapter(DspInner::new(samplerate * oversample as f32)),
-    );
+    nih_log!("dsp::create_dsp {:?}", std::thread::current().id());
+    let inner = DspInner::new(samplerate * oversample as f32);
+    let os = Oversample::new(oversample, max_block_size).with_dsp(samplerate, BlockAdapter(inner));
+    let inner = RemoteControlled::new(samplerate, 1e3, os);
+    let rc = inner.proxy.clone();
     let dsp = Dsp {
         inner,
         dc_blocker: DcBlocker::new(samplerate),
+        rc,
     };
     RemoteControlled::new(samplerate, 1e3, dsp)
 }
