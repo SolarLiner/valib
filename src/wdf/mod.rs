@@ -99,7 +99,7 @@ mod tests {
     use super::*;
     use crate::util::tests::Plot;
     use crate::wdf::adapters::{Inverter, Parallel, Series};
-    use crate::wdf::dsl::{node, node_mut, voltage};
+    use crate::wdf::dsl::*;
     use crate::wdf::leaves::{Capacitor, ResistiveVoltageSource, Resistor};
     use crate::wdf::module::WdfModule;
     use crate::wdf::unadapted::{IdealVoltageSource, OpenCircuit};
@@ -109,15 +109,9 @@ mod tests {
 
     #[test]
     fn test_voltage_divider() {
-        let inp = node(IdealVoltageSource::new(12.));
-        let out = node(Resistor::new(100.0));
-        let mut module = WdfModule::new(
-            inp,
-            node(Inverter::new(node(Series::new(
-                node(Resistor::new(100.0)),
-                out.clone(),
-            )))),
-        );
+        let inp = ivsource(12.);
+        let out = resistor(100.0);
+        let mut module = module(inp, inverter(series(resistor(100.0), out.clone())));
         module.process_sample();
         assert_eq!(6.0, voltage(&out));
     }
@@ -128,11 +122,8 @@ mod tests {
         const CUTOFF: f32 = 256.0;
         const FS: f32 = 4096.0;
         let r = f32::recip(TAU * C * CUTOFF);
-        let rvs = node(ResistiveVoltageSource::new(r, 0.));
-        let mut tree = WdfModule::new(
-            node(OpenCircuit::default()),
-            node(Parallel::new(rvs.clone(), node(Capacitor::new(FS, C)))),
-        );
+        let rvs = rvsource(r, 0.);
+        let mut module = module(open_circuit(), parallel(rvs.clone(), capacitor(FS, C)));
 
         let input = (0..256)
             .map(|i| f32::fract(50.0 * i as f32 / FS))
@@ -143,8 +134,8 @@ mod tests {
         let mut output = Vec::with_capacity(input.len());
         for x in input.iter().copied() {
             node_mut(&rvs).vs = x;
-            tree.process_sample();
-            output.push(voltage(&tree.root));
+            module.process_sample();
+            output.push(voltage(&module.root));
         }
 
         Plot {

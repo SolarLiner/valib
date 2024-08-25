@@ -1,4 +1,5 @@
-use crate::wdf::{AdaptedWdf, Node, NodeMut, NodeRef, Wdf};
+use crate::saturators::clippers::DiodeClipperModel;
+use crate::wdf::*;
 use crate::Scalar;
 use atomic_refcell::AtomicRefCell;
 use std::sync::Arc;
@@ -27,4 +28,78 @@ pub fn voltage<T: Scalar>(node: &Node<impl Wdf<Scalar = T>>) -> T {
 pub fn current<T: Scalar>(node: &Node<impl AdaptedWdf<Scalar = T>>) -> T {
     let n = node_ref(node);
     n.wave().current(n.impedance())
+}
+
+#[inline]
+pub fn resistor<T: Scalar>(r: T) -> Node<Resistor<T>> {
+    node(Resistor::new(r))
+}
+
+#[inline]
+pub fn capacitor<T: Scalar>(fs: T, c: T) -> Node<Capacitor<T>> {
+    node(Capacitor::new(fs, c))
+}
+
+#[inline]
+pub fn rvsource<T: Scalar>(r: T, vs: T) -> Node<ResistiveVoltageSource<T>> {
+    node(ResistiveVoltageSource::new(r, vs))
+}
+
+#[inline]
+pub fn ivsource<T: Zero>(vs: T) -> Node<IdealVoltageSource<T>> {
+    node(IdealVoltageSource::new(vs))
+}
+
+#[inline]
+pub fn short_circuit<T: Zero>() -> Node<ShortCircuit<T>> {
+    node(ShortCircuit::default())
+}
+
+#[inline]
+pub fn open_circuit<T: Zero>() -> Node<OpenCircuit<T>> {
+    node(OpenCircuit::default())
+}
+
+#[inline]
+pub fn dsp<P: DSPMeta<Sample: Zero>>(dsp: P) -> Node<WdfDsp<P>> {
+    node(WdfDsp::new(dsp))
+}
+
+#[inline]
+pub fn series<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>>(
+    left: Node<A>,
+    right: Node<B>,
+) -> Node<Series<A, B>> {
+    node(Series::new(left, right))
+}
+
+#[inline]
+pub fn parallel<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>>(
+    left: Node<A>,
+    right: Node<B>,
+) -> Node<Parallel<A, B>> {
+    node(Parallel::new(left, right))
+}
+
+#[inline]
+pub fn inverter<W: AdaptedWdf>(inner: Node<W>) -> Node<Inverter<W>> {
+    node(Inverter::new(inner))
+}
+
+#[inline]
+pub fn diode_lambert<T: Scalar>(isat: T, vt: T) -> Node<DiodeLambert<T>> {
+    node(DiodeLambert::new(isat, vt))
+}
+
+#[inline]
+pub fn diode_model<T: Scalar>(model: DiodeClipperModel<T>) -> Node<DiodeModel<T>> {
+    dsp(model)
+}
+
+#[inline]
+pub fn module<Root: Wdf, Leaf: AdaptedWdf<Scalar = Root::Scalar>>(
+    root: Node<Root>,
+    leaf: Node<Leaf>,
+) -> WdfModule<Root, Leaf> {
+    WdfModule::new(root, leaf)
 }

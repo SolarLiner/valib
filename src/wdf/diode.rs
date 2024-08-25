@@ -25,28 +25,6 @@ fn lambdertw<T: Scalar>(x: T) -> T {
         / (2.0 + pexpminusw * (2.0 - minusw))
 }
 
-#[derive(Debug, Copy, Clone)]
-pub struct RModel<T> {
-    pub q: T,
-    pub y0: T,
-    pub b: T,
-    pub m: T,
-    pub n: T,
-}
-
-impl<T: Scalar> RModel<T>
-where
-    T::SimdRealField: Scalar,
-{
-    pub fn eval(&self, r: T) -> T {
-        -T::simd_ln(self.q * r)
-            + self.y0
-            + self.b * r.simd_powf(T::SimdRealField::from_f64(0.25))
-            + self.m * r.simd_sqrt()
-            + self.n * r
-    }
-}
-
 pub type DiodeModel<T> = WdfDsp<DiodeClipperModel<T>>;
 
 #[derive(Debug, Copy, Clone)]
@@ -114,10 +92,10 @@ impl<T: Scalar> DiodeLambert<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::saturators::clippers::DiodeClipper;
     use crate::util::tests::{Plot, Series};
     use crate::wdf::adapters::Parallel;
-    use crate::wdf::dsl::node_mut;
-    use crate::wdf::dsl::{node, voltage};
+    use crate::wdf::dsl::*;
     use crate::wdf::leaves::{Capacitor, ResistiveVoltageSource};
     use crate::wdf::module::WdfModule;
     use plotters::style::*;
@@ -129,12 +107,13 @@ mod tests {
         const CUTOFF: f32 = 256.0;
         const FS: f32 = 4096.0;
         let r = f32::recip(TAU * C * CUTOFF);
-        let c = node(Capacitor::new(FS, C));
-        let rvs = node(ResistiveVoltageSource::new(r, 0.));
-        let mut tree = WdfModule::new(
-            node(DiodeLambert::germanium(1)),
-            node(Parallel::new(rvs.clone(), c.clone())),
-        );
+        let c = capacitor(FS, C);
+        let rvs = rvsource(r, 0.);
+        let diode = {
+            let data = DiodeClipper::new_germanium(1, 1, 0.);
+            diode_lambert(data.isat, data.vt)
+        };
+        let mut module = module(diode, parallel(rvs.clone(), c.clone()));
 
         let input = (0..256)
             .map(|i| f32::fract(50.0 * i as f32 / FS))
@@ -145,8 +124,8 @@ mod tests {
 
         for x in input.iter().copied() {
             node_mut(&rvs).vs = x;
-            tree.process_sample();
-            output.push(voltage(&tree.root));
+            module.process_sample();
+            output.push(voltage(&module.root));
         }
 
         Plot {
@@ -177,11 +156,11 @@ mod tests {
         const CUTOFF: f32 = 256.0;
         const FS: f32 = 4096.0;
         let r = f32::recip(TAU * C * CUTOFF);
-        let c = node(Capacitor::new(FS, C));
-        let rvs = node(ResistiveVoltageSource::new(r, 0.));
-        let mut tree = WdfModule::new(
-            node(DiodeModel::new(DiodeClipperModel::new_germanium(1, 1))),
-            node(Parallel::new(rvs.clone(), c.clone())),
+        let c = capacitor(FS, C);
+        let rvs = rvsource(r, 0.);
+        let mut module = module(
+            diode_model(DiodeClipperModel::new_germanium(1, 1)),
+            parallel(rvs.clone(), c.clone()),
         );
 
         let input = (0..256)
@@ -192,8 +171,8 @@ mod tests {
 
         for x in input.iter().copied() {
             node_mut(&rvs).vs = 10. * x;
-            tree.process_sample();
-            output.push(voltage(&tree.root));
+            module.process_sample();
+            output.push(voltage(&module.root));
         }
 
         Plot {
