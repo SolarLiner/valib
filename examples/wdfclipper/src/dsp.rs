@@ -10,12 +10,12 @@ use valib::dsp::parameter::{
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
-use valib::saturators::clippers::DiodeClipperModel;
+use valib::saturators::clippers::DiodeClipper;
 use valib::saturators::Linear;
 use valib::simd::{AutoF32x2, AutoF64x2, SimdComplexField};
 use valib::wdf::adapters::Parallel;
 use valib::wdf::diode::{DiodeLambert, DiodeModel};
-use valib::wdf::dsl::{node, node_mut, voltage};
+use valib::wdf::dsl::*;
 use valib::wdf::leaves::{Capacitor, ResistiveVoltageSource};
 use valib::wdf::module::WdfModule;
 use valib::wdf::{Wave, Wdf};
@@ -90,15 +90,19 @@ impl DspInner {
             Self::resistance_for_cutoff(3000.),
             Sample64::zero(),
         ));
-        let module = WdfModule::new(
-            node(DiodeLambert::germanium(1)),
-            node(Parallel::new(
+        let diode = {
+            let data = DiodeClipper::new_germanium(1, 1, Sample64::zero());
+            diode_lambert(data.isat, data.vt)
+        };
+        let module = module(
+            diode,
+            parallel(
                 rvs.clone(),
-                node(Capacitor::new(
+                capacitor(
                     Sample64::from_f64(samplerate as _),
                     Sample64::from_f64(Self::C),
-                )),
-            )),
+                ),
+            ),
         );
         Self {
             drive: SmoothedParam::exponential(1.0, samplerate, 10.0),
