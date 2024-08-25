@@ -1,5 +1,6 @@
 use crate::saturators::clippers::DiodeClipperModel;
-use crate::wdf::{Wave, Wdf, WdfDsp};
+use crate::wdf::unadapted::WdfDsp;
+use crate::wdf::{Wave, Wdf};
 use crate::Scalar;
 use num_traits::Zero;
 use numeric_literals::replace_float_literals;
@@ -114,7 +115,10 @@ impl<T: Scalar> DiodeLambert<T> {
 mod tests {
     use super::*;
     use crate::util::tests::{Plot, Series};
-    use crate::wdf::{node, voltage, Capacitor, Parallel, ResistiveVoltageSource, WdfModule};
+    use crate::wdf::adapters::Parallel;
+    use crate::wdf::leaves::{Capacitor, ResistiveVoltageSource};
+    use crate::wdf::module::WdfModule;
+    use crate::wdf::{node, voltage};
     use plotters::style::*;
     use std::f32::consts::TAU;
 

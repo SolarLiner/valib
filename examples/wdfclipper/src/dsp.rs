@@ -13,10 +13,11 @@ use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::DiodeClipperModel;
 use valib::saturators::Linear;
 use valib::simd::{AutoF32x2, AutoF64x2, SimdComplexField};
+use valib::wdf::adapters::Parallel;
 use valib::wdf::diode::{DiodeLambert, DiodeModel};
-use valib::wdf::{
-    node, voltage, Capacitor, Parallel, ResistiveVoltageSource, Wave, Wdf, WdfModule,
-};
+use valib::wdf::leaves::{Capacitor, ResistiveVoltageSource};
+use valib::wdf::module::WdfModule;
+use valib::wdf::{node, voltage, Wave, Wdf};
 use valib::{wdf, Scalar, SimdCast};
 
 struct DcBlocker<T>(Biquad<T, Linear>);
