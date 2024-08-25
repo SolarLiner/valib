@@ -4798,6 +4798,7 @@ dependencies = [
 name = "valib"
 version = "0.1.0"
 dependencies = [
+ "atomic_refcell",
  "az",
  "bumpalo",
  "fundsp",

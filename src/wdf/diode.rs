@@ -116,9 +116,10 @@ mod tests {
     use super::*;
     use crate::util::tests::{Plot, Series};
     use crate::wdf::adapters::Parallel;
+    use crate::wdf::dsl::node_mut;
+    use crate::wdf::dsl::{node, voltage};
     use crate::wdf::leaves::{Capacitor, ResistiveVoltageSource};
     use crate::wdf::module::WdfModule;
-    use crate::wdf::{node, voltage};
     use plotters::style::*;
     use std::f32::consts::TAU;
 
@@ -143,8 +144,8 @@ mod tests {
         let mut output = Vec::with_capacity(input.len());
 
         for x in input.iter().copied() {
-            rvs.borrow_mut().vs = x;
-            tree.next_sample();
+            node_mut(&rvs).vs = x;
+            tree.process_sample();
             output.push(voltage(&tree.root));
         }
 
@@ -190,8 +191,8 @@ mod tests {
         let mut output = Vec::with_capacity(input.len());
 
         for x in input.iter().copied() {
-            rvs.borrow_mut().vs = 10. * x;
-            tree.next_sample();
+            node_mut(&rvs).vs = 10. * x;
+            tree.process_sample();
             output.push(voltage(&tree.root));
         }
 

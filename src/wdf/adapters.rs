@@ -1,5 +1,7 @@
+use crate::wdf::dsl::{node_mut, node_ref};
 use crate::wdf::{AdaptedWdf, Node, Wave, Wdf};
 use num_traits::Zero;
+use simba::simd::SimdComplexField;
 
 #[derive(Debug, Clone)]
 pub struct Series<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> {
@@ -35,8 +37,8 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Wdf for Series<A, B> {
     fn incident(&mut self, x: Self::Scalar) {
         let z = self.impedance(); // Borrows self.left & self.right
 
-        let mut left = self.left.borrow_mut();
-        let mut right = self.right.borrow_mut();
+        let mut left = node_mut(&self.left);
+        let mut right = node_mut(&self.right);
         let p1z = left.impedance() / z;
         let w1 = left.wave();
         let w2 = right.wave();
@@ -47,20 +49,20 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Wdf for Series<A, B> {
     }
 
     fn reflected(&mut self) -> Self::Scalar {
-        let mut left = self.left.borrow_mut();
-        let mut right = self.right.borrow_mut();
+        let mut left = node_mut(&self.left);
+        let mut right = node_mut(&self.right);
         self.b = -left.reflected() - right.reflected();
         self.b
     }
 
     fn set_samplerate(&mut self, samplerate: f64) {
-        self.left.borrow_mut().set_samplerate(samplerate);
-        self.right.borrow_mut().set_samplerate(samplerate);
+        node_mut(&self.left).set_samplerate(samplerate);
+        node_mut(&self.right).set_samplerate(samplerate);
     }
 
     fn reset(&mut self) {
-        self.left.borrow_mut().reset();
-        self.right.borrow_mut().reset();
+        node_mut(&self.left).reset();
+        node_mut(&self.right).reset();
         self.a.set_zero();
         self.b.set_zero();
     }
@@ -68,8 +70,8 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Wdf for Series<A, B> {
 
 impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> AdaptedWdf for Series<A, B> {
     fn impedance(&self) -> Self::Scalar {
-        let left = self.left.borrow();
-        let right = self.right.borrow();
+        let left = node_ref(&self.left);
+        let right = node_ref(&self.right);
         left.impedance() + right.impedance()
     }
 }
@@ -107,8 +109,8 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Wdf for Parallel<A, B> {
     }
 
     fn incident(&mut self, x: Self::Scalar) {
-        let mut left = self.left.borrow_mut();
-        let mut right = self.right.borrow_mut();
+        let mut left = node_mut(&self.left);
+        let mut right = node_mut(&self.right);
         let b2 = x + self.btemp;
         left.incident(self.bdiff + b2);
         right.incident(b2);
@@ -118,8 +120,8 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Wdf for Parallel<A, B> {
     fn reflected(&mut self) -> Self::Scalar {
         let z = self.impedance(); // Borrows self.left & self.right
 
-        let mut left = self.left.borrow_mut();
-        let mut right = self.right.borrow_mut();
+        let mut left = node_mut(&self.left);
+        let mut right = node_mut(&self.right);
         let p1z = (left.impedance() / z).simd_recip();
         let b1 = left.reflected();
         let b2 = right.reflected();
@@ -130,13 +132,13 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Wdf for Parallel<A, B> {
     }
 
     fn set_samplerate(&mut self, samplerate: f64) {
-        self.left.borrow_mut().set_samplerate(samplerate);
-        self.right.borrow_mut().set_samplerate(samplerate);
+        node_mut(&self.left).set_samplerate(samplerate);
+        node_mut(&self.right).set_samplerate(samplerate);
     }
 
     fn reset(&mut self) {
-        self.left.borrow_mut().reset();
-        self.right.borrow_mut().reset();
+        node_mut(&self.left).reset();
+        node_mut(&self.right).reset();
         self.a.set_zero();
         self.b.set_zero();
         self.btemp.set_zero();
@@ -146,8 +148,8 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Wdf for Parallel<A, B> {
 
 impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> AdaptedWdf for Parallel<A, B> {
     fn admittance(&self) -> Self::Scalar {
-        let left = self.left.borrow();
-        let right = self.right.borrow();
+        let left = node_ref(&self.left);
+        let right = node_ref(&self.right);
         left.admittance() + right.admittance()
     }
 }
@@ -179,21 +181,21 @@ impl<A: AdaptedWdf> Wdf for Inverter<A> {
     }
 
     fn incident(&mut self, x: Self::Scalar) {
-        self.inner.borrow_mut().incident(-x);
+        node_mut(&self.inner).incident(-x);
         self.a = x;
     }
 
     fn reflected(&mut self) -> Self::Scalar {
-        self.b = -self.inner.borrow_mut().reflected();
+        self.b = -node_mut(&self.inner).reflected();
         self.b
     }
 
     fn set_samplerate(&mut self, samplerate: f64) {
-        self.inner.borrow_mut().set_samplerate(samplerate);
+        node_mut(&self.inner).set_samplerate(samplerate);
     }
 
     fn reset(&mut self) {
-        self.inner.borrow_mut().reset();
+        node_mut(&self.inner).reset();
         self.a.set_zero();
         self.b.set_zero();
     }
@@ -201,10 +203,10 @@ impl<A: AdaptedWdf> Wdf for Inverter<A> {
 
 impl<A: AdaptedWdf> AdaptedWdf for Inverter<A> {
     fn impedance(&self) -> Self::Scalar {
-        self.inner.borrow().impedance()
+        node_ref(&self.inner).impedance()
     }
 
     fn admittance(&self) -> Self::Scalar {
-        self.inner.borrow().admittance()
+        node_ref(&self.inner).admittance()
     }
 }

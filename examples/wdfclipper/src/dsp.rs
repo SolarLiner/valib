@@ -15,9 +15,10 @@ use valib::saturators::Linear;
 use valib::simd::{AutoF32x2, AutoF64x2, SimdComplexField};
 use valib::wdf::adapters::Parallel;
 use valib::wdf::diode::{DiodeLambert, DiodeModel};
+use valib::wdf::dsl::{node, node_mut, voltage};
 use valib::wdf::leaves::{Capacitor, ResistiveVoltageSource};
 use valib::wdf::module::WdfModule;
-use valib::wdf::{node, voltage, Wave, Wdf};
+use valib::wdf::{Wave, Wdf};
 use valib::{wdf, Scalar, SimdCast};
 
 struct DcBlocker<T>(Biquad<T, Linear>);
@@ -81,10 +82,6 @@ pub struct DspInner {
     >,
     rvs: wdf::Node<ResistiveVoltageSource<Sample64>>,
 }
-
-// Safety: this is safe because nothing about the tree is exposed outside of the audio thread.
-// It would be nice to not have to do this, but until I implement a custom arena solution, this is here
-unsafe impl Send for DspInner {}
 
 impl DspInner {
     const C: f64 = 33e-9;
@@ -158,11 +155,11 @@ impl DSPProcess<1, 1> for DspInner {
         let drive = self.drive.next_sample_as::<Sample64>();
         {
             let x: Sample64 = x[0].cast();
-            let mut rvs = self.rvs.borrow_mut();
+            let mut rvs = node_mut(&self.rvs);
             rvs.r = Self::resistance_for_cutoff(self.cutoff.next_sample());
             rvs.vs = drive * x;
         }
-        self.model.next_sample();
+        self.model.process_sample();
         let out = voltage(&self.model.root) / drive.simd_tanh();
         [out.cast()]
     }

@@ -1,43 +1,28 @@
 use crate::dsp::{DSPMeta, DSPProcess};
 use crate::Scalar;
-use num_traits::Zero;
-use simba::simd::SimdComplexField;
-use std::any::Any;
-use std::cell::{Ref, RefCell, RefMut};
-use std::rc::Rc;
-
 pub use adapters::*;
+use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 pub use diode::*;
 pub use leaves::*;
 pub use module::*;
+use num_traits::Zero;
+use simba::simd::SimdComplexField;
+use std::any::Any;
+use std::sync::Arc;
 pub use unadapted::*;
 
 pub mod adapters;
 pub mod diode;
+pub mod dsl;
 pub mod leaves;
 pub mod module;
 pub mod unadapted;
 
-pub type Node<T> = Rc<RefCell<T>>;
+pub type Node<T> = Arc<AtomicRefCell<T>>;
 
-pub type NodeRef<'a, T> = Ref<'a, T>;
+pub type NodeRef<'a, T> = AtomicRef<'a, T>;
 
-pub type NodeMut<'a, T> = RefMut<'a, T>;
-
-#[inline]
-pub fn node<T>(value: T) -> Node<T> {
-    Rc::new(RefCell::new(value))
-}
-
-#[inline]
-pub fn voltage<T: Scalar>(node: &impl Wdf<Scalar = T>) -> T {
-    node.wave().voltage()
-}
-
-#[inline]
-pub fn current<T: Scalar>(node: &impl AdaptedWdf<Scalar = T>) -> T {
-    node.wave().current(node.impedance())
-}
+pub type NodeMut<'a, T> = AtomicRefMut<'a, T>;
 
 #[derive(Debug, Copy, Clone)]
 pub struct Wave<T> {
@@ -56,7 +41,7 @@ impl<T: Scalar> Wave<T> {
 }
 
 #[allow(unused)]
-pub trait Wdf: Any {
+pub trait Wdf {
     type Scalar: Scalar;
     fn wave(&self) -> Wave<Self::Scalar>;
     fn incident(&mut self, x: Self::Scalar);
@@ -114,6 +99,7 @@ mod tests {
     use super::*;
     use crate::util::tests::Plot;
     use crate::wdf::adapters::{Inverter, Parallel, Series};
+    use crate::wdf::dsl::{node, node_mut, voltage};
     use crate::wdf::leaves::{Capacitor, ResistiveVoltageSource, Resistor};
     use crate::wdf::module::WdfModule;
     use crate::wdf::unadapted::{IdealVoltageSource, OpenCircuit};
@@ -132,7 +118,7 @@ mod tests {
                 out.clone(),
             )))),
         );
-        module.next_sample();
+        module.process_sample();
         assert_eq!(6.0, voltage(&out));
     }
 
@@ -156,8 +142,8 @@ mod tests {
 
         let mut output = Vec::with_capacity(input.len());
         for x in input.iter().copied() {
-            rvs.borrow_mut().vs = x;
-            tree.next_sample();
+            node_mut(&rvs).vs = x;
+            tree.process_sample();
             output.push(voltage(&tree.root));
         }
 

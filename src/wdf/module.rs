@@ -1,3 +1,4 @@
+use crate::wdf::dsl::node_mut;
 use crate::wdf::{AdaptedWdf, Node, Wdf};
 
 pub struct WdfModule<Root: Wdf, Leaf: AdaptedWdf<Scalar = Root::Scalar>> {
@@ -11,22 +12,22 @@ impl<Root: Wdf, Leaf: AdaptedWdf<Scalar = Root::Scalar>> WdfModule<Root, Leaf> {
     }
 
     pub fn set_samplerate(&mut self, samplerate: f64) {
-        let mut root = self.root.borrow_mut();
-        let mut leaf = self.leaf.borrow_mut();
+        let mut root = node_mut(&self.root);
+        let mut leaf = node_mut(&self.leaf);
         root.set_samplerate(samplerate);
         leaf.set_samplerate(samplerate);
     }
 
-    pub fn next_sample(&mut self) {
-        let mut root = self.root.borrow_mut();
-        let mut leaf = self.leaf.borrow_mut();
+    pub fn process_sample(&mut self) {
+        let mut root = node_mut(&self.root);
+        let mut leaf = node_mut(&self.leaf);
         root.set_port_resistance(leaf.impedance());
         root.incident(leaf.reflected());
         leaf.incident(root.reflected());
     }
 
     pub fn reset(&mut self) {
-        self.root.borrow_mut().reset();
-        self.leaf.borrow_mut().reset();
+        node_mut(&self.root).reset();
+        node_mut(&self.leaf).reset();
     }
 }
