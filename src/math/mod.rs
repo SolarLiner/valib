@@ -71,7 +71,7 @@ where
 
 /// Solve the given root equation using Newton-Rhapson until the RMS of the differential is lesser than the given tolerance.
 #[cfg_attr(test, inline(never))]
-#[cfg_attr(not(test), inline(always))]
+#[cfg_attr(not(test), inline)]
 #[profiling::function]
 pub fn newton_rhapson_tolerance<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
@@ -100,7 +100,7 @@ where
 /// Solve the given root equation using Newton-Rhapson, until either the RMS of the differential is less than the
 /// given tolerances, or the specified max number of steps has been taken.
 #[cfg_attr(test, inline(never))]
-#[cfg_attr(not(test), inline(always))]
+#[cfg_attr(not(test), inline)]
 #[profiling::function]
 pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
     eq: &impl RootEq<T, N>,
@@ -114,12 +114,12 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
         let Some(step) = nr_step(eq, value) else {
             break;
         };
+        let changed = *value - step;
         let tgt = rms(&step).simd_lt(tol);
+        *value = value.zip_map(&changed, |v, c| v.select(tgt, c));
         if tgt.all() {
             break;
         }
-        let changed = *value - step;
-        *value = value.zip_map(&changed, |v, c| v.select(tgt, c));
     }
 }
 

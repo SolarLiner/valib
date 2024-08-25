@@ -18,7 +18,7 @@ use valib::wdf::diode::{DiodeLambert, DiodeModel};
 use valib::wdf::dsl::*;
 use valib::wdf::leaves::{Capacitor, ResistiveVoltageSource};
 use valib::wdf::module::WdfModule;
-use valib::wdf::{Wave, Wdf};
+use valib::wdf::{DiodeNR, Wave, Wdf};
 use valib::{wdf, Scalar, SimdCast};
 
 struct DcBlocker<T>(Biquad<T, Linear>);
@@ -77,7 +77,7 @@ pub struct DspInner {
     drive: SmoothedParam,
     cutoff: SmoothedParam,
     model: WdfModule<
-        DiodeLambert<Sample64>,
+        DiodeNR<Sample64>,
         Parallel<ResistiveVoltageSource<Sample64>, Capacitor<Sample64>>,
     >,
     rvs: wdf::Node<ResistiveVoltageSource<Sample64>>,
@@ -92,7 +92,8 @@ impl DspInner {
         ));
         let diode = {
             let data = DiodeClipper::new_germanium(1, 1, Sample64::zero());
-            diode_lambert(data.isat, data.vt)
+            //diode_lambert(data.isat, data.vt)
+            diode_nr(data)
         };
         let module = module(
             diode,

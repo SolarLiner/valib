@@ -289,7 +289,7 @@ macro_rules! series_tuple {
             }
         }
 
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case, unused)]
         #[profiling::all_functions]
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPProcess<N, N, Sample = __Sample>),*, const N: usize> DSPProcess<N, N> for $crate::dsp::blocks::Series<($($p),*)> {
             #[allow(non_snake_case)]
@@ -380,8 +380,8 @@ where
 {
     #[profiling::function]
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        self.0.iter_mut().enumerate().fold(x, |x, (i, dsp)| {
-            profiling::scope!("Series", &format!("{i}"));
+        self.0.iter_mut().enumerate().fold(x, |x, (_i, dsp)| {
+            profiling::scope!("Series", &format!("{_i}"));
             dsp.process(x)
         })
     }
@@ -425,8 +425,8 @@ where
     Self: DSPMeta<Sample = P::Sample>,
 {
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        self.0.iter_mut().enumerate().fold(x, |x, (i, dsp)| {
-            profiling::scope!("Series", &format!("{i}"));
+        self.0.iter_mut().enumerate().fold(x, |x, (_i, dsp)| {
+            profiling::scope!("Series", &format!("{_i}"));
             dsp.process(x)
         })
     }
@@ -536,7 +536,7 @@ pub struct Parallel<T>(pub T);
 
 macro_rules! parallel_tuple {
     ($params_name: ident; $($p:ident),*) => {
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case,unused)]
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPMeta<Sample = __Sample>),*> $crate::dsp::DSPMeta for $crate::dsp::blocks::Parallel<($($p),*)> {
             type Sample = __Sample;
 
@@ -564,7 +564,7 @@ macro_rules! parallel_tuple {
             }
         }
 
-        #[allow(non_snake_case)]
+        #[allow(non_snake_case,unused)]
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPProcess<N, N, Sample = __Sample>),*, const N: usize> $crate::dsp::DSPProcess<N, N> for $crate::dsp::blocks::Parallel<($($p),*)> {
             #[inline(always)]
             #[profiling::function]
@@ -636,8 +636,8 @@ where
         self.0
             .iter_mut()
             .enumerate()
-            .map(|(i, dsp)| {
-                profiling::scope!("Parallel", &format!("{i}"));
+            .map(|(_i, dsp)| {
+                profiling::scope!("Parallel", &format!("{_i}"));
                 dsp.process(x)
             })
             .fold([Self::Sample::from_f64(0.0); O], |out, dsp| {
@@ -754,7 +754,7 @@ impl<FF: ParamName, FB: ParamName, const N: ParamId> ParamName for FeedbackParam
             return Self::Feedback(FB::from_id(value));
         }
         let value = value - FB::count() as ParamId;
-        return Self::Mix(Dynamic::from_id(value));
+        Self::Mix(Dynamic::from_id(value))
     }
 
     fn into_id(self) -> ParamId {

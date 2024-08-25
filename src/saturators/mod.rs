@@ -1,13 +1,11 @@
-use nalgebra::{SMatrix, SVector};
 use num_traits::One;
 use numeric_literals::replace_float_literals;
-use std::marker::PhantomData;
 use std::ops;
 
 use clippers::DiodeClipperModel;
 
 use crate::dsp::{DSPMeta, DSPProcess};
-use crate::math::{newton_rhapson_steps, smooth_clamp, RootEq};
+use crate::math::{smooth_clamp, RootEq};
 use crate::Scalar;
 
 pub mod adaa;
@@ -110,10 +108,10 @@ impl<S: Scalar, const N: usize> MultiSaturator<S, N> for Linear {
     }
 
     #[inline(always)]
-    fn update_state_multi(&mut self, x: [S; N], y: [S; N]) {}
+    fn update_state_multi(&mut self, _x: [S; N], _y: [S; N]) {}
 
     #[inline(always)]
-    fn sat_jacobian(&self, x: [S; N]) -> [S; N] {
+    fn sat_jacobian(&self, _x: [S; N]) -> [S; N] {
         [S::one(); N]
     }
 }
@@ -186,7 +184,7 @@ impl<T: Scalar, const N: usize> MultiSaturator<T, N> for Clipper<T> {
         x.map(|x| self.saturate(x))
     }
 
-    fn update_state_multi(&mut self, x: [T; N], y: [T; N]) {}
+    fn update_state_multi(&mut self, _x: [T; N], _y: [T; N]) {}
 
     fn sat_jacobian(&self, x: [T; N]) -> [T; N] {
         x.map(|x| self.sat_diff(x))

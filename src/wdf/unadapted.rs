@@ -2,6 +2,7 @@ use crate::dsp::{DSPMeta, DSPProcess};
 use crate::wdf::{Wave, Wdf};
 use crate::Scalar;
 use num_traits::Zero;
+use simba::simd::SimdBool;
 
 #[derive(Debug, Copy, Clone)]
 pub struct IdealVoltageSource<T> {
@@ -110,6 +111,48 @@ impl<T: Scalar> Wdf for OpenCircuit<T> {
 
     fn reset(&mut self) {
         self.a.set_zero();
+    }
+}
+
+pub struct Switch<T: Scalar> {
+    pub closed: T::SimdBool,
+    a: T,
+    b: T,
+}
+
+impl<T: Scalar> Wdf for Switch<T> {
+    type Scalar = T;
+
+    fn wave(&self) -> Wave<Self::Scalar> {
+        Wave {
+            a: self.a,
+            b: self.b,
+        }
+    }
+
+    fn incident(&mut self, x: Self::Scalar) {
+        self.a = x;
+    }
+
+    fn reflected(&mut self) -> Self::Scalar {
+        let k = self.closed.if_else(|| -T::one(), || T::one());
+        self.b = k * self.a;
+        self.b
+    }
+
+    fn reset(&mut self) {
+        self.a.set_zero();
+        self.b.set_zero();
+    }
+}
+
+impl<T: Scalar> Switch<T> {
+    pub fn new(closed: T::SimdBool) -> Self {
+        Self {
+            closed,
+            a: T::zero(),
+            b: T::zero(),
+        }
     }
 }
 

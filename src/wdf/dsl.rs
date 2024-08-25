@@ -1,4 +1,4 @@
-use crate::saturators::clippers::DiodeClipperModel;
+use crate::saturators::clippers::{DiodeClipper, DiodeClipperModel};
 use crate::wdf::*;
 use crate::Scalar;
 use atomic_refcell::AtomicRefCell;
@@ -94,6 +94,11 @@ pub fn diode_lambert<T: Scalar>(isat: T, vt: T) -> Node<DiodeLambert<T>> {
 #[inline]
 pub fn diode_model<T: Scalar>(model: DiodeClipperModel<T>) -> Node<DiodeModel<T>> {
     dsp(model)
+}
+
+#[inline]
+pub fn diode_nr<T: Scalar>(data: DiodeClipper<T>) -> Node<DiodeNR<T>> {
+    node(DiodeNR::from_data(data))
 }
 
 #[inline]
