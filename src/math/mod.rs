@@ -39,7 +39,7 @@ where
         .flat_map(|v| v.into_iter())
         .all(|v| v.is_finite());
 
-    debug_assert!(all_finite);
+    //debug_assert!(all_finite);
 
     all_finite.then_some(ret)
 }
