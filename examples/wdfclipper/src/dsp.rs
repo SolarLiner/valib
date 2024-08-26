@@ -1,7 +1,5 @@
-use crate::ClipperPlugin;
 use nih_plug::nih_log;
-use num_traits::{FloatConst, Zero};
-use std::cell::{OnceCell, RefCell};
+use num_traits::Zero;
 use std::f64::consts::TAU;
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib::dsp::parameter::{
@@ -14,11 +12,10 @@ use valib::saturators::clippers::DiodeClipper;
 use valib::saturators::Linear;
 use valib::simd::{AutoF32x2, AutoF64x2, SimdComplexField};
 use valib::wdf::adapters::Parallel;
-use valib::wdf::diode::{DiodeLambert, DiodeModel};
 use valib::wdf::dsl::*;
 use valib::wdf::leaves::{Capacitor, ResistiveVoltageSource};
 use valib::wdf::module::WdfModule;
-use valib::wdf::{DiodeNR, Wave, Wdf};
+use valib::wdf::DiodeNR;
 use valib::{wdf, Scalar, SimdCast};
 
 struct DcBlocker<T>(Biquad<T, Linear>);

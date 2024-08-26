@@ -107,20 +107,21 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
     value: &mut SVector<T, N>,
     tol: T,
     max_iter: usize,
-) where
+) -> usize where
     T::Element: Float,
 {
-    for _ in 0..max_iter {
+    for i in 0..max_iter {
         let Some(step) = nr_step(eq, value) else {
-            break;
+            return i;
         };
         let changed = *value - step;
         let tgt = rms(&step).simd_lt(tol);
         *value = value.zip_map(&changed, |v, c| v.select(tgt, c));
         if tgt.all() {
-            break;
+            return i;
         }
     }
+    return max_iter;
 }
 
 #[replace_float_literals(Complex::from(T::from_f64(literal)))]

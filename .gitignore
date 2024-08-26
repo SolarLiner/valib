@@ -110,3 +110,7 @@ target/
 
 # Generates test plots
 /plots
+
+# Python
+__pycache__
+*.pyc

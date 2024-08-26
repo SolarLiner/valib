@@ -3,7 +3,7 @@ use crate::saturators::clippers::{DiodeClipper, DiodeClipperModel};
 use crate::wdf::unadapted::WdfDsp;
 use crate::wdf::{Wave, Wdf};
 use crate::Scalar;
-use nalgebra::{SMatrix, SVector};
+use nalgebra::{SMatrix, SVector, SimdBool};
 use num_traits::{Float, Zero};
 use numeric_literals::replace_float_literals;
 
@@ -104,11 +104,12 @@ impl<T: Scalar> RootEq<T, 1> for DiodeRootEq<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn eval(&self, input: &SVector<T, 1>) -> SVector<T, 1> {
         let b = input[0];
-        let x0 = 0.5 * (self.a - b) / (self.r * self.n * self.vt);
+        let x0 = 0.5 * (self.a + b);
+        let x1 = T::simd_recip(self.n * self.vt);
         SVector::<_, 1>::new(
-            -0.5 * (self.a + b)
-                + self.isat
-                    * ((1.0 - (-x0 / self.nf).simd_exp()) + (x0 / self.nb).simd_exp() - 1.0),
+            -self.isat * (-1.0 + (-x0 * x1 / self.nb).simd_exp())
+                + self.isat * ((x0 * x1 / self.nf).simd_exp() - 1.0)
+                - 0.5 * (self.a - b) / self.r,
         )
     }
 
@@ -116,11 +117,12 @@ impl<T: Scalar> RootEq<T, 1> for DiodeRootEq<T> {
     fn j_inv(&self, input: &SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
         let b = input[0];
         let x0 = self.nf * self.nb * self.n * self.vt;
-        let x1 = 0.5 * (self.a - b) / (self.r * self.n * self.vt);
+        let x1 = 0.5 * (self.a + b) / (self.n * self.vt);
+        let x2 = self.r * self.isat;
         let j_inv = SVector::<_, 1>::new(
-            -2.0 * x0
-                / (self.nf * self.isat * (-x1 / self.nb).simd_exp()
-                    + self.nb * self.isat * (x1 / self.nf).simd_exp()
+            2.0 * self.r * x0
+                / (self.nf * x2 * (-x1 / self.nb).simd_exp()
+                    + self.nb * x2 * (x1 / self.nf).simd_exp()
                     + x0),
         );
         Some(j_inv)
@@ -129,6 +131,8 @@ impl<T: Scalar> RootEq<T, 1> for DiodeRootEq<T> {
 
 pub struct DiodeNR<T: Scalar> {
     pub root_eq: DiodeRootEq<T>,
+    pub max_tolerance: T,
+    pub max_iter: usize,
     b: T,
 }
 
@@ -144,6 +148,8 @@ impl<T: Scalar> DiodeNR<T> {
                 a: T::zero(),
                 r: T::zero(),
             },
+            max_tolerance: T::from_f64(1e-4),
+            max_iter: 50,
             b: T::zero(),
         }
     }
@@ -164,8 +170,8 @@ impl<T: Scalar<Element: Float>> Wdf for DiodeNR<T> {
     }
 
     fn reflected(&mut self) -> Self::Scalar {
-        let mut value = SVector::<_, 1>::new(-self.root_eq.a);
-        newton_rhapson_tol_max_iter(&self.root_eq, &mut value, T::from_f64(1e-6), 100);
+        let mut value = SVector::<_, 1>::new((self.root_eq.a + self.root_eq.a).simd_clamp(-self.root_eq.nb, self.root_eq.nf) - self.root_eq.a);
+        newton_rhapson_tol_max_iter(&self.root_eq, &mut value, self.max_tolerance, self.max_iter);
         self.b = value[0];
         self.b
     }
