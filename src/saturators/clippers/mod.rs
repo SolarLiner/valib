@@ -113,7 +113,7 @@ impl<T: Scalar> DiodeClipper<T> {
             vin,
             num_diodes_fwd: T::from_f64(nf as f64),
             num_diodes_bwd: T::from_f64(nb as f64),
-            sim_tol: 1e-3,
+            sim_tol: 1e-4,
             max_iter: 50,
             last_vout: vin.simd_tanh(),
         }
@@ -130,10 +130,10 @@ where
 {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         self.vin = x[0];
-        let mut vout = SVector::<_, 1>::new(self.last_vout);
-        newton_rhapson_tol_max_iter(self, &mut vout, self.sim_tol, self.max_iter);
-        self.last_vout = vout[0];
-        [vout[0]]
+        let mut value = SVector::<_, 1>::new(self.vin.simd_clamp(-self.num_diodes_bwd, self.num_diodes_fwd));
+        newton_rhapson_tol_max_iter(self, &mut value, self.sim_tol, self.max_iter);
+        self.last_vout = value[0];
+        [value[0]]
     }
 }
 
