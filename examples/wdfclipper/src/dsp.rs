@@ -1,10 +1,9 @@
-use nih_plug::nih_log;
+use nih_plug::{nih_log, prelude::Enum};
 use num_traits::Zero;
 use std::f64::consts::TAU;
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
-use valib::dsp::parameter::{
-    HasParameters, ParamId, ParamName, RemoteControl, RemoteControlled, SmoothedParam,
-};
+use valib::dsp::parameter::ParamId;
+use valib::dsp::parameter::{HasParameters, ParamName, RemoteControlled, SmoothedParam};
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
@@ -67,7 +66,17 @@ type Sample64 = AutoF64x2;
 pub enum DspParams {
     Drive,
     Cutoff,
+    NumForward,
+    NumBackward,
+    DiodeType,
     ForceReset,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Enum, ParamName)]
+pub enum DiodeType {
+    Silicon,
+    Germanium,
+    Led,
 }
 
 pub struct DspInner {
@@ -127,6 +136,24 @@ impl HasParameters for DspInner {
             DspParams::Cutoff => {
                 self.cutoff.param = value;
             }
+            DspParams::NumForward => {
+                node_mut(&self.model.root).root_eq.nf = Sample64::from_f64(value as _);
+            }
+            DspParams::NumBackward => {
+                node_mut(&self.model.root).root_eq.nb = Sample64::from_f64(value as _);
+            }
+            DspParams::DiodeType => {
+                let mut root_node = node_mut(&self.model.root);
+                let DiodeNR { root_eq, .. } = &mut *root_node;
+                let data = match DiodeType::from_id(value as _) {
+                    DiodeType::Silicon => DiodeClipper::new_silicon(1, 1, Sample64::zero()),
+                    DiodeType::Germanium => DiodeClipper::new_germanium(1, 1, Sample64::zero()),
+                    DiodeType::Led => DiodeClipper::new_led(1, 1, Sample64::zero()),
+                };
+                root_eq.isat = data.isat;
+                root_eq.n = data.n;
+                root_eq.vt = data.vt;
+            }
             DspParams::ForceReset => {
                 self.reset();
             }
@@ -168,9 +195,8 @@ impl DSPProcess<1, 1> for DspInner {
 }
 
 pub struct Dsp {
-    inner: RemoteControlled<Oversampled<Sample, BlockAdapter<DspInner>>>,
+    inner: Oversampled<Sample, BlockAdapter<DspInner>>,
     dc_blocker: DcBlocker<Sample>,
-    pub rc: RemoteControl<DspParams>,
 }
 
 impl DSPMeta for Dsp {
@@ -212,7 +238,7 @@ impl HasParameters for Dsp {
     type Name = DspParams;
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {
-        self.inner.inner.inner.0.set_parameter(param, value); // lol
+        self.inner.inner.0.set_parameter(param, value); // lol
     }
 }
 
@@ -223,13 +249,10 @@ pub fn create_dsp(
 ) -> RemoteControlled<Dsp> {
     nih_log!("dsp::create_dsp {:?}", std::thread::current().id());
     let inner = DspInner::new(samplerate * oversample as f32);
-    let os = Oversample::new(oversample, max_block_size).with_dsp(samplerate, BlockAdapter(inner));
-    let inner = RemoteControlled::new(samplerate, 1e3, os);
-    let rc = inner.proxy.clone();
+    let os = Oversample::new(oversample, max_block_size);
     let dsp = Dsp {
-        inner,
+        inner: os.with_dsp(samplerate, BlockAdapter(inner)),
         dc_blocker: DcBlocker::new(samplerate),
-        rc,
     };
     RemoteControlled::new(samplerate, 1e3, dsp)
 }

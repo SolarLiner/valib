@@ -25,6 +25,12 @@ struct ClipperParams {
     drive: FloatParam,
     #[id = "cutoff"]
     cutoff: FloatParam,
+    #[id = "nf"]
+    nf: IntParam,
+    #[id = "nb"]
+    nb: IntParam,
+    #[id = "dtype"]
+    diode_type: EnumParam<dsp::DiodeType>,
     #[id = "reset"]
     force_reset: BoolParam,
 }
@@ -57,6 +63,9 @@ impl ClipperParams {
             .with_value_to_string(formatters::v2s_f32_hz_then_khz(1))
             .with_string_to_value(formatters::s2v_f32_hz_then_khz())
             .bind_to_parameter(remote, DspParams::Cutoff),
+            nf: IntParam::new("# Forward", 1, IntRange::Linear { min: 1, max: 5 }).bind_to_parameter(remote, DspParams::NumForward),
+            nb: IntParam::new("# Backward", 1, IntRange::Linear { min: 1, max: 5 }).bind_to_parameter(remote, DspParams::NumBackward),
+            diode_type: EnumParam::new("Diode Type", dsp::DiodeType::Germanium).bind_to_parameter(remote, DspParams::DiodeType),
             force_reset: BoolParam::new("Force reset", false)
                 .bind_to_parameter(remote, DspParams::ForceReset),
         })
