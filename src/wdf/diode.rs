@@ -90,7 +90,7 @@ impl<T: Scalar> DiodeLambert<T> {
     }
 }
 
-struct DiodeRootEq<T: Scalar> {
+pub struct DiodeRootEq<T: Scalar> {
     pub isat: T,
     pub n: T,
     pub vt: T,
