@@ -47,6 +47,61 @@ impl<T: Scalar> Wdf for IdealVoltageSource<T> {
 }
 
 #[derive(Debug, Copy, Clone)]
+pub struct IdealCurrentSource<T> {
+    pub j: T,
+    r: T,
+    a: T,
+    b: T,
+}
+
+impl<T: Zero> IdealCurrentSource<T> {
+    pub fn new(j: T) -> Self {
+        Self {
+            j,
+            r: T::zero(),
+            a: T::zero(),
+            b: T::zero(),
+        }
+    }
+}
+
+impl<T: Zero> Default for IdealCurrentSource<T> {
+    fn default() -> Self {
+        Self::new(T::zero())
+    }
+}
+
+impl<T: Scalar> Wdf for IdealCurrentSource<T> {
+    type Scalar = T;
+
+    fn wave(&self) -> Wave<Self::Scalar> {
+        Wave {
+            a: self.a,
+            b: self.b,
+        }
+    }
+
+    fn incident(&mut self, x: Self::Scalar) {
+        self.a = x;
+    }
+
+    fn reflected(&mut self) -> Self::Scalar {
+        self.b = T::from_f64(2.) * self.r * self.j + self.a;
+        self.b
+    }
+
+    fn set_port_resistance(&mut self, resistance: Self::Scalar) {
+        self.r = resistance;
+    }
+
+    fn reset(&mut self) {
+        self.a.set_zero();
+        self.b.set_zero();
+        self.r.set_zero();
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct ShortCircuit<T> {
     a: T,
 }

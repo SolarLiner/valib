@@ -1,23 +1,30 @@
 //! Small [`DSPProcess`] building blocks for reusability.
+use core::fmt;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
-use nalgebra::{Complex, ComplexField, SMatrix, SVector};
+use nalgebra::{allocator::SameShapeVectorAllocator, Complex, ComplexField, SMatrix, SVector};
 use num_traits::{Euclid, One, Zero};
 use numeric_literals::replace_float_literals;
 
-use crate::dsp::analysis::DspAnalysis;
 use crate::dsp::{
     parameter::{ParamId, ParamName},
     DSPMeta, DSPProcess,
 };
 use crate::Scalar;
+use crate::{dsp::analysis::DspAnalysis, util::lerp};
 
 use super::parameter::{Dynamic, HasParameters, SmoothedParam};
 
 /// "Bypass" struct, which simply forwards the input to the output.
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone)]
 pub struct Bypass<S>(PhantomData<S>);
+
+impl<T> Default for Bypass<T> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
 
 impl<T: Scalar> DSPMeta for Bypass<T> {
     type Sample = T;
@@ -294,13 +301,13 @@ macro_rules! series_tuple {
         impl<__Sample: $crate::Scalar, $($p: $crate::dsp::DSPProcess<N, N, Sample = __Sample>),*, const N: usize> DSPProcess<N, N> for $crate::dsp::blocks::Series<($($p),*)> {
             #[allow(non_snake_case)]
             #[inline(always)]
-            fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
+            fn process(&mut self, mut x: [Self::Sample; N]) -> [Self::Sample; N] {
                 let Self(($($p),*)) = self;
                 let mut i = 0;
                 $(
                 {
                     profiling::scope!("Series inner", &format!("{i}"));
-                    let x = $p.process(x);
+                    x = $p.process(x);
                     i += 1;
                 }
                 )*
@@ -892,6 +899,102 @@ impl<FF: DSPMeta + HasParameters, const N: usize> HasParameters for Feedback<FF,
             FeedbackParams::Feedforward(p) => self.feedforward.set_parameter(p, value),
             FeedbackParams::Feedback(_) => unreachable!(),
             FeedbackParams::Mix(p) => self.mix[p.into_id() as usize].param = value,
+        }
+    }
+}
+
+pub struct SwitchAB<A, B> {
+    pub a: A,
+    pub b: B,
+    switch: SmoothedParam,
+}
+
+impl<A, B> SwitchAB<A, B> {
+    pub fn new(samplerate: f32, a: A, b: B, b_active: bool) -> Self {
+        Self {
+            a,
+            b,
+            switch: SmoothedParam::linear(if b_active { 1.0 } else { 0.0 }, samplerate, 50.),
+        }
+    }
+
+    pub fn is_a_active(&self) -> bool {
+        self.switch.current_value() < 0.995
+    }
+
+    pub fn is_b_active(&self) -> bool {
+        self.switch.current_value() > 0.005
+    }
+
+    pub fn is_transitioning(&self) -> bool {
+        self.switch.is_changing()
+    }
+
+    pub fn switch_to_a(&mut self) {
+        self.switch.param = 0.;
+    }
+
+    pub fn switch_to_b(&mut self) {
+        self.switch.param = 1.;
+    }
+
+    pub fn should_switch_to_b(&mut self, should_switch: bool) {
+        if should_switch {
+            self.switch_to_b()
+        } else {
+            self.switch_to_a()
+        }
+    }
+}
+
+impl<A: DSPMeta, B: DSPMeta<Sample = A::Sample>> DSPMeta for SwitchAB<A, B> {
+    type Sample = A::Sample;
+
+    fn latency(&self) -> usize {
+        let la = if self.is_a_active() {
+            self.a.latency()
+        } else {
+            0
+        };
+        let lb = if self.is_b_active() {
+            self.b.latency()
+        } else {
+            0
+        };
+        la.max(lb)
+    }
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.switch.set_samplerate(samplerate);
+        self.a.set_samplerate(samplerate);
+        self.b.set_samplerate(samplerate);
+    }
+
+    fn reset(&mut self) {
+        self.switch.reset();
+        self.a.reset();
+        self.b.reset();
+    }
+}
+
+impl<
+        A: DSPProcess<I, O>,
+        B: DSPProcess<I, O, Sample = A::Sample>,
+        const I: usize,
+        const O: usize,
+    > DSPProcess<I, O> for SwitchAB<A, B>
+{
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+        let t = self.switch.next_sample_as();
+        match (self.is_a_active(), self.is_b_active()) {
+            (false, false) => unreachable!(),
+            (true, false) => self.a.process(x),
+            (false, true) => self.b.process(x),
+            (true, true) => {
+                let a = self.a.process(x);
+                let b = self.b.process(x);
+                std::array::from_fn(|i| lerp(t, a[i], b[i]))
+            }
         }
     }
 }

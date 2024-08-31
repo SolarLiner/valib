@@ -4,7 +4,7 @@ use crate::wdf::unadapted::WdfDsp;
 use crate::wdf::{Wave, Wdf};
 use crate::Scalar;
 use nalgebra::{SMatrix, SVector, SimdBool};
-use num_traits::{Float, Zero};
+use num_traits::{Float, Num, Zero};
 use numeric_literals::replace_float_literals;
 
 #[inline]
@@ -31,7 +31,9 @@ pub type DiodeModel<T> = WdfDsp<DiodeClipperModel<T>>;
 #[derive(Debug, Copy, Clone)]
 pub struct DiodeLambert<T> {
     pub isat: T,
-    pub vt: T,
+    pub nvt: T,
+    pub nf: T,
+    pub nb: T,
     r: T,
     a: T,
     b: T,
@@ -52,11 +54,19 @@ impl<T: Scalar> Wdf for DiodeLambert<T> {
     }
 
     fn reflected(&mut self) -> Self::Scalar {
-        let ris_vt = self.r * self.isat / self.vt;
+        let mu0 = self.nf.select(self.a.is_simd_positive(), self.nf);
+        let mu1 = self.nb.select(self.a.is_simd_positive(), self.nf);
+        let ris_vt = self.r * self.isat / self.nvt;
         let lam = self.a.simd_signum();
-        let lam_a_vt = self.a * lam / self.vt;
-        let inner = lambdertw(ris_vt * lam_a_vt.simd_exp()) + (-ris_vt * (-lam_a_vt).simd_exp());
-        self.b = self.a - T::from_f64(2.0) * lam * self.vt * inner;
+        let lam_a_vt = self.a * lam / self.nvt;
+        let log_ris_vt_mu0 = T::simd_ln(ris_vt / mu0);
+        let log_ris_vt_mu1 = T::simd_ln(ris_vt / mu1);
+        let e0 = T::simd_exp(log_ris_vt_mu0 + lam_a_vt / mu0);
+        let e1 = -T::simd_exp(log_ris_vt_mu1 - lam_a_vt / mu1);
+        let w0 = lambdertw(e0);
+        let w1 = lambdertw(e1);
+        let inner = mu0 * w0 + mu1 * w1;
+        self.b = self.a - T::from_f64(2.0) * lam * self.nvt * inner;
         self.b
     }
 
@@ -71,11 +81,13 @@ impl<T: Scalar> Wdf for DiodeLambert<T> {
     }
 }
 
-impl<T: Zero> DiodeLambert<T> {
-    pub fn new(isat: T, vt: T) -> Self {
+impl<T: Num + Zero> DiodeLambert<T> {
+    pub fn new(data: DiodeClipper<T>) -> Self {
         Self {
-            isat,
-            vt,
+            isat: data.isat,
+            nvt: data.n * data.vt,
+            nf: data.num_diodes_fwd,
+            nb: data.num_diodes_bwd,
             r: T::zero(),
             a: T::zero(),
             b: T::zero(),
@@ -83,14 +95,7 @@ impl<T: Zero> DiodeLambert<T> {
     }
 }
 
-impl<T: Scalar> DiodeLambert<T> {
-    #[replace_float_literals(T::from_f64(literal))]
-    pub fn germanium(num_diodes: usize) -> Self {
-        Self::new(200e-9, T::from_f64(num_diodes as _) * 23e-3)
-    }
-}
-
-pub struct DiodeRootEq<T: Scalar> {
+struct DiodeRootEq<T: Scalar> {
     pub isat: T,
     pub n: T,
     pub vt: T,
@@ -104,28 +109,28 @@ impl<T: Scalar> RootEq<T, 1> for DiodeRootEq<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn eval(&self, input: &SVector<T, 1>) -> SVector<T, 1> {
         let b = input[0];
-        let x0 = 0.5 * (self.a + b);
-        let x1 = T::simd_recip(self.n * self.vt);
-        SVector::<_, 1>::new(
-            -self.isat * (-1.0 + (-x0 * x1 / self.nb).simd_exp())
-                + self.isat * ((x0 * x1 / self.nf).simd_exp() - 1.0)
-                - 0.5 * (self.a - b) / self.r,
-        )
+        let r2 = 2. * self.r;
+        let log_r2isat = r2.simd_ln() + self.isat.simd_ln();
+        let exp_op = (self.a + b) / (2.0 * self.n * self.vt);
+        let e0 = log_r2isat + exp_op / self.nf;
+        let e1 = log_r2isat - exp_op / self.nb;
+        let x0 = e0.simd_exp() - e1.simd_exp();
+        let inner = (x0 + -self.a + b) / r2;
+        SVector::<_, 1>::new(inner)
     }
 
     #[replace_float_literals(T::from_f64(literal))]
     fn j_inv(&self, input: &SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
         let b = input[0];
-        let x0 = self.nf * self.nb * self.n * self.vt;
-        let x1 = 0.5 * (self.a + b) / (self.n * self.vt);
-        let x2 = self.r * self.isat;
-        let j_inv = SVector::<_, 1>::new(
-            2.0 * self.r * x0
-                / (self.nf * x2 * (-x1 / self.nb).simd_exp()
-                    + self.nb * x2 * (x1 / self.nf).simd_exp()
-                    + x0),
-        );
-        Some(j_inv)
+        let log_risat = self.r.simd_ln() + self.isat.simd_ln();
+        let log_m = self.nf.simd_ln();
+        let log_n = self.nb.simd_ln();
+        let exp_op = (self.a + b) / (2.0 * self.n * self.vt);
+        let e0 = log_m + log_risat - exp_op / self.nf;
+        let e1 = log_n + log_risat + exp_op / self.nb;
+        let mnnvt = self.nf * self.nb * self.n * self.vt;
+        let inner = 2.0 * self.r * mnnvt / (mnnvt + e0.simd_exp() + e1.simd_exp());
+        Some(SMatrix::<_, 1, 1>::new(inner))
     }
 }
 
@@ -170,8 +175,8 @@ impl<T: Scalar<Element: Float>> Wdf for DiodeNR<T> {
     }
 
     fn reflected(&mut self) -> Self::Scalar {
-        let mut value = SVector::<_, 1>::new((self.root_eq.a + self.root_eq.a).simd_clamp(-self.root_eq.nb, self.root_eq.nf) - self.root_eq.a);
-        newton_rhapson_tol_max_iter(&self.root_eq, &mut value, self.max_tolerance, self.max_iter);
+        let mut value = SVector::<_, 1>::new(-self.root_eq.a);
+        newton_rhapson_tol_max_iter(&self.root_eq, &mut value, T::from_f64(1e-4), 1000);
         self.b = value[0];
         self.b
     }

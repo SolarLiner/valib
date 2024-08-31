@@ -51,6 +51,16 @@ pub fn ivsource<T: Zero>(vs: T) -> Node<IdealVoltageSource<T>> {
 }
 
 #[inline]
+pub fn rcsource<T: Zero>(r: T, j: T) -> Node<ResistiveCurrentSource<T>> {
+    node(ResistiveCurrentSource::new(j, r))
+}
+
+#[inline]
+pub fn icsource<T: Zero>(j: T) -> Node<IdealCurrentSource<T>> {
+    node(IdealCurrentSource::new(j))
+}
+
+#[inline]
 pub fn short_circuit<T: Zero>() -> Node<ShortCircuit<T>> {
     node(ShortCircuit::default())
 }
@@ -87,8 +97,8 @@ pub fn inverter<W: AdaptedWdf>(inner: Node<W>) -> Node<Inverter<W>> {
 }
 
 #[inline]
-pub fn diode_lambert<T: Scalar>(isat: T, vt: T) -> Node<DiodeLambert<T>> {
-    node(DiodeLambert::new(isat, vt))
+pub fn diode_lambert<T: Scalar>(data: DiodeClipper<T>) -> Node<DiodeLambert<T>> {
+    node(DiodeLambert::new(data))
 }
 
 #[inline]

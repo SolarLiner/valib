@@ -279,6 +279,10 @@ impl<T: Scalar> Slew<T> {
             .simd_abs()
             .simd_gt(T::from_f64(1e-6))
     }
+
+    pub fn current_value(&self) -> T {
+        self.last_out
+    }
 }
 
 impl<T: Scalar> Default for Slew<T> {

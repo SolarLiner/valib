@@ -26,7 +26,6 @@ nalgebra = "0.32.3"
 [dependencies]
 atomic_refcell = { version = "0.1.13", optional = true }
 az = "1.2.1"
-bumpalo = { version = "3.16.0", optional = true }
 fundsp = { version = "0.17.1", optional = true }
 nalgebra.workspace = true
 nih_plug = { workspace = true, optional = true }
@@ -34,6 +33,7 @@ num-traits.workspace = true
 numeric-array = { version = "0.5.2", optional = true }
 numeric_literals = "0.2.0"
 paste = "1.0.15"
+petgraph = { version = "0.6.5", optional = true }
 portable-atomic = { version = "1.6.0", features = ["float"] }
 profiling = "1.0.15"
 simba = { version = "0.8.1", features = ["wide"] }
@@ -54,7 +54,7 @@ oversample = ["biquad-design"]
 fundsp = ["dep:fundsp", "dep:numeric-array", "dep:typenum"]
 nih-plug = ["dep:nih_plug"]
 test-plots = []
-wdf = ["dep:atomic_refcell", "dep:bumpalo"]
+wdf = ["dep:atomic_refcell", "dep:petgraph"]
 
 [profile.dev]
 opt-level = 1

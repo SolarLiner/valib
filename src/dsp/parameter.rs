@@ -151,6 +151,13 @@ impl SmoothedParam {
         }
     }
 
+    pub fn current_value(&self) -> f32 {
+        match self.smoothing {
+            Smoothing::Linear { slew, .. } => slew.current_value(),
+            Smoothing::Exponential { state, .. } => state,
+        }
+    }
+
     pub fn next_sample(&mut self) -> f32 {
         self.process([])[0]
     }

@@ -289,7 +289,7 @@ where
     P: DSPProcessBlock<1, 1, Sample = T>,
 {
     pub fn set_oversampling_amount(&mut self, amt: usize) {
-        assert!(amt > 1);
+        assert!(amt >= 1);
         self.oversampling.set_oversampling_amount(amt);
         self.set_samplerate(self.base_samplerate);
     }

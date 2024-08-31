@@ -1,3 +1,5 @@
+use num_traits::Zero;
+
 use crate::wdf::{AdaptedWdf, Wave, Wdf};
 use crate::Scalar;
 
@@ -48,6 +50,56 @@ impl<T: Scalar> ResistiveVoltageSource<T> {
             a: T::zero(),
             b: T::zero(),
         }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ResistiveCurrentSource<T> {
+    pub j: T,
+    pub r: T,
+    a: T,
+    b: T,
+}
+
+impl<T: Zero> ResistiveCurrentSource<T> {
+    pub fn new(j: T, r: T) -> Self {
+        Self {
+            j,
+            r,
+            a: T::zero(),
+            b: T::zero(),
+        }
+    }
+}
+
+impl<T: Scalar> Wdf for ResistiveCurrentSource<T> {
+    type Scalar = T;
+
+    fn wave(&self) -> Wave<Self::Scalar> {
+        Wave {
+            a: self.a,
+            b: self.b,
+        }
+    }
+
+    fn incident(&mut self, x: Self::Scalar) {
+        self.a = x;
+    }
+
+    fn reflected(&mut self) -> Self::Scalar {
+        self.b = T::from_f64(2.) * self.r * self.j;
+        self.b
+    }
+
+    fn reset(&mut self) {
+        self.a.set_zero();
+        self.b.set_zero();
+    }
+}
+
+impl<T: Scalar> AdaptedWdf for ResistiveCurrentSource<T> {
+    fn impedance(&self) -> Self::Scalar {
+        self.r
     }
 }
 

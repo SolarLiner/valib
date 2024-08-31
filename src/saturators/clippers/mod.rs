@@ -61,9 +61,6 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
         let vout = input[0];
         let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
-        if vout.simd_gt(16.0).any() {
-            println!();
-        }
         let expn = T::simd_exp(expin / self.num_diodes_fwd).simd_min(1e35);
         let expm = T::simd_exp(-expin / self.num_diodes_bwd).simd_min(1e35);
         let res = v * self.isat * (expn / self.num_diodes_fwd + expm / self.num_diodes_bwd) + 2.;
@@ -124,7 +121,7 @@ impl<T: Scalar> DSPMeta for DiodeClipper<T> {
     type Sample = T;
 }
 
-impl<T: Scalar + fmt::Display> DSPProcess<1, 1> for DiodeClipper<T>
+impl<T: Scalar> DSPProcess<1, 1> for DiodeClipper<T>
 where
     T::Element: Float,
 {
