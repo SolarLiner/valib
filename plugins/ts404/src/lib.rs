@@ -101,13 +101,11 @@ impl Plugin for Ts404 {
 
         let dsp = &self.dsp;
         dsp.proxy
-            .set_parameter(DspParams::InputGain, self.params.drive.value());
+            .set_parameter(DspParams::InputMode, self.params.input_mode.value().to_index() as _);
         dsp.proxy
             .set_parameter(DspParams::Distortion, self.params.dist.value());
         dsp.proxy
             .set_parameter(DspParams::Tone, self.params.tone.value());
-        dsp.proxy
-            .set_parameter(DspParams::OutputGain, self.params.out_level.value());
         dsp.proxy.set_parameter(
             DspParams::ComponentMismatch,
             self.params.component_matching.value(),
@@ -115,14 +113,6 @@ impl Plugin for Ts404 {
         dsp.proxy.set_parameter(
             DspParams::Bypass,
             if self.params.bypass.value() { 1.0 } else { 0.0 },
-        );
-        dsp.proxy.set_parameter(
-            DspParams::BufferBypass,
-            if self.params.io_bypass.value() {
-                1.0
-            } else {
-                0.0
-            },
         );
 
         true

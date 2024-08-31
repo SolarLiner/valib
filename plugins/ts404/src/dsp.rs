@@ -1,78 +1,105 @@
-use std::sync::atomic::Ordering;
+use std::fmt;
+use std::fmt::Formatter;
 use std::sync::Arc;
 
 use nalgebra::Complex;
 use nih_plug::nih_log;
-use nih_plug::prelude::AtomicF32;
-use nih_plug::util::db_to_gain_fast;
-use num_traits::ToPrimitive;
+use nih_plug::prelude::{AtomicF32, Enum};
+use nih_plug_vizia::vizia::prelude::Data;
+use num_traits::{Float, ToPrimitive};
 use numeric_literals::replace_float_literals;
-use valib::dsp::blocks::Series;
+use valib::{dsp::blocks::{Series, SwitchAB}, math::{smooth_max, smooth_min}};
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
-use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
+use valib::dsp::{blocks::Bypass, BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::statespace::StateSpace;
+use valib::math::smooth_clamp;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::{Bjt, Saturator, Slew};
 use valib::simd::{
-    AutoF32x2, AutoF64x2, AutoSimd, SimdBool, SimdComplexField, SimdPartialOrd, SimdValue,
+    AutoF64x2, AutoSimd, SimdBool, SimdComplexField, SimdPartialOrd, SimdValue,
 };
-use valib::util::lerp;
 use valib::Scalar;
 
-use crate::util::Rms;
-use crate::TARGET_SAMPLERATE;
+use clipping::ClippingStage;
+use crate::params::MAX_AGE;
 
-#[derive(Debug, Clone)]
-pub struct Bypass<P> {
-    pub inner: P,
-    pub active: SmoothedParam,
+mod clipping;
+
+fn emitter_follower_input<T: Scalar>() -> Bjt<T> {
+    Bjt {
+        vee: T::zero(),
+        vcc: T::from_f64(9.),
+        xbias: T::from_f64(3.75041272),
+        ybias: T::zero(),
+    }
 }
 
-impl<P: DSPMeta> DSPMeta for Bypass<P> {
-    type Sample = P::Sample;
+#[derive(Debug, Copy, Clone)]
+struct OutputEmitterFollower<T> {
+    pub t: T,
+    pub xbias: T,
+    pub kbias: T,
+    pub ksat: T,
+}
 
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.active.set_samplerate(samplerate);
-        self.inner.set_samplerate(samplerate);
+impl<T: Scalar> Default for OutputEmitterFollower<T> {
+    #[replace_float_literals(T::from_f64(literal))]
+    fn default() -> Self {
+        Self {
+            t: 0.04416026,
+            xbias: -0.74491909,
+            kbias: 8.43027281,
+            ksat: 0.48964627,
+        }
     }
+}
 
-    fn latency(&self) -> usize {
-        let active = self.active.param > 0.5;
-        if active {
-            self.inner.latency()
-        } else {
-            0
+impl<T: Scalar> Saturator<T> for OutputEmitterFollower<T> {
+    fn saturate(&self, x: T) -> T {
+        smooth_max(self.t, T::zero(), smooth_min(self.t, x + self.xbias, (x + self.kbias) * self.ksat))
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Enum, Data)]
+pub enum InputLevelMatching {
+    Instrument,
+    #[name="Instrument (Hot)"]
+    InstrumentHot,
+    Line,
+    Eurorack,
+}
+
+impl fmt::Display for InputLevelMatching {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let scale: f32 = self.input_scale();
+        match self {
+            Self::Instrument => write!(f, "Instrument ({} x)", scale),
+            Self::InstrumentHot => write!(f, "Instrument, Hot ({} x)", scale),
+            Self::Line => write!(f, "Line ({} x)", scale),
+            Self::Eurorack => write!(f, "Eurorack ({} x)", scale),
+        }
+    }
+}
+
+impl InputLevelMatching {
+    #[replace_float_literals(T::from_f64(literal))]
+    fn input_scale<T: Scalar>(&self) -> T {
+        match self {
+            Self::Instrument => 0.1833,
+            Self::InstrumentHot => 0.55,
+            Self::Line => 1.1,
+            Self::Eurorack => 10.,
         }
     }
 
-    fn reset(&mut self) {
-        self.active.reset();
-        self.inner.reset();
-    }
-}
-
-impl<P, const N: usize> DSPProcess<N, N> for Bypass<P>
-where
-    P: DSPProcess<N, N>,
-{
-    fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        let active = P::Sample::from_f64(self.active.next_sample() as _);
-        let processed = self.inner.process(x);
-        std::array::from_fn(|i| {
-            let processed = active
-                .simd_gt(P::Sample::from_f64(1e-6))
-                .if_else(|| processed[i], || x[i]);
-            lerp(active, x[i], processed)
-        })
-    }
-}
-
-impl<T> Bypass<T> {
-    pub fn new(samplerate: f32, inner: T) -> Self {
-        Self {
-            inner,
-            active: SmoothedParam::linear(1., samplerate, 15.0),
+    #[replace_float_literals(T::from_f64(literal))]
+    fn output_scale<T: Scalar>(&self) -> T {
+        match self {
+            Self::Instrument => 3.,
+            Self::InstrumentHot => 1.,
+            Self::Line => 0.5,
+            Self::Eurorack => 0.25,
         }
     }
 }
@@ -105,93 +132,21 @@ impl<T: Scalar> DSPMeta for InputStage<T> {
 }
 
 #[profiling::all_functions]
-impl<T: Scalar> DSPProcess<1, 1> for InputStage<T> {
+impl<T: fmt::Debug + Scalar> DSPProcess<1, 1> for InputStage<T> {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let gain = T::from_f64(self.gain.next_sample() as _);
-        let y = self.state_space.process([x * gain]);
-        self.clip.process(y)
+        let gain = self.gain.next_sample_as();
+        let [y] = self.state_space.process([x * gain]);
+        self.clip.process([y + T::from_f64(4.5)])
     }
 }
 
 impl<T: Scalar> InputStage<T> {
     pub fn new(samplerate: f32, gain: f32) -> Self {
         Self {
-            gain: SmoothedParam::exponential(gain, samplerate, 10.0),
+            gain: SmoothedParam::exponential(gain, samplerate, 100.0),
             state_space: crate::gen::input(T::from_f64(samplerate as _).simd_recip()),
-            clip: Bjt::default(),
+            clip: emitter_follower_input(),
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ClipperStage<T: Scalar> {
-    dt: T,
-    dist: SmoothedParam,
-    state_space: StateSpace<T, 1, 3, 1>,
-    slew: Slew<T>,
-    led_rms: Rms<f32>,
-    led_display: Arc<AtomicF32>,
-}
-
-impl<T: Scalar> DSPMeta for ClipperStage<T> {
-    type Sample = T;
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.dt = T::from_f64(samplerate.recip() as _);
-        self.state_space.set_samplerate(samplerate);
-        self.slew.set_samplerate(samplerate);
-    }
-
-    fn latency(&self) -> usize {
-        self.state_space.latency() + self.slew.latency()
-    }
-
-    fn reset(&mut self) {
-        self.state_space.reset();
-        self.slew.reset();
-    }
-}
-
-#[profiling::all_functions]
-impl<T: Scalar> DSPProcess<1, 1> for ClipperStage<T>
-where
-    <T as SimdValue>::Element: ToPrimitive,
-{
-    #[replace_float_literals(Self::Sample::from_f64(literal))]
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let dist = self.dist.next_sample_as();
-        self.update_state_matrices(self.dt, dist);
-        let [y] = self.state_space.process(x);
-        let y = y.simd_asinh().simd_clamp(-4.5, 4.5);
-        let y = self.slew.process([y]);
-        let delta = (y[0] - x[0])
-            .simd_abs()
-            .simd_horizontal_sum()
-            .to_f32()
-            .unwrap_or_default();
-        let rms = self.led_rms.add_element(delta);
-        self.led_display.store(rms, Ordering::Relaxed);
-        y
-    }
-}
-
-impl<T: Scalar> ClipperStage<T> {
-    pub fn new(samplerate: f32, dist: T) -> Self {
-        let dt = T::from_f64(samplerate as _).simd_recip();
-        let rms_samples = (16e-3 * TARGET_SAMPLERATE) as usize;
-        Self {
-            dt,
-            dist: SmoothedParam::exponential(1.0, samplerate, 50.0),
-            state_space: crate::gen::clipper(dt, dist),
-            slew: Slew::new(T::from_f64(samplerate as _), T::from_f64(1e4) * dt),
-            led_rms: Rms::new(rms_samples),
-            led_display: Arc::new(AtomicF32::new(0.0)),
-        }
-    }
-
-    fn update_state_matrices(&mut self, dt: T, dist: T) {
-        self.state_space
-            .update_matrices(&crate::gen::clipper(dt, dist));
     }
 }
 
@@ -199,7 +154,6 @@ impl<T: Scalar> ClipperStage<T> {
 pub struct ToneStage<T: Scalar> {
     tone: SmoothedParam,
     state_space: StateSpace<T, 1, 4, 1>,
-    out_gain: SmoothedParam,
     dt: T,
 }
 
@@ -225,11 +179,8 @@ impl<T: Scalar> DSPProcess<1, 1> for ToneStage<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let tone = self.tone.next_sample_as();
         self.update_state_matrices(self.dt, tone);
-        let y = self.state_space.process(x);
-        let vcc = T::from_f64(4.5);
-        std::array::from_fn(|i| {
-            y[i].simd_clamp(-vcc, vcc) * self.out_gain.next_sample_as::<T>() * T::from_f64(0.25)
-        })
+        let [y] = self.state_space.process(x);
+        [smooth_clamp(T::from_f64(0.1), y, T::zero(), T::from_f64(9.))]
     }
 }
 
@@ -240,7 +191,6 @@ impl<T: Scalar> ToneStage<T> {
             dt,
             tone: SmoothedParam::linear(0.0, samplerate, 15.0),
             state_space: crate::gen::tone(dt, tone),
-            out_gain: SmoothedParam::exponential(1., samplerate, 15.0),
         }
     }
 
@@ -252,16 +202,18 @@ impl<T: Scalar> ToneStage<T> {
 
 #[derive(Debug, Clone)]
 pub struct OutputStage<T: Scalar> {
-    inner: Bypass<StateSpace<T, 1, 2, 1>>,
-    clip: Bjt<T>,
+    inner: StateSpace<T, 1, 2, 1>,
+    clip: OutputEmitterFollower<T>,
+    out_gain: SmoothedParam,
 }
 
 impl<T: Scalar> OutputStage<T> {
     pub fn new(samplerate: f32) -> Self {
         let dt = T::from_f64(samplerate as _).simd_recip();
         Self {
-            inner: Bypass::new(samplerate, crate::gen::output(dt)),
-            clip: Bjt::default(),
+            inner: crate::gen::output(dt),
+            clip: OutputEmitterFollower::default(),
+            out_gain: SmoothedParam::exponential(1., samplerate, 100.0),
         }
     }
 }
@@ -270,59 +222,60 @@ impl<T: Scalar> DSPMeta for OutputStage<T> {
     type Sample = T;
 
     fn set_samplerate(&mut self, samplerate: f32) {
-        self.inner.set_samplerate(samplerate);
-        self.clip.set_samplerate(samplerate);
+        self.inner.update_matrices(&crate::gen::output(T::from_f64(
+            (samplerate as f64).recip(),
+        )));
     }
 
     fn latency(&self) -> usize {
-        self.inner.latency() + self.clip.latency()
+        self.inner.latency()
     }
 
     fn reset(&mut self) {
         self.inner.reset();
-        self.clip.reset();
     }
 }
 
 #[profiling::all_functions]
-impl<T: Scalar> DSPProcess<1, 1> for OutputStage<T> {
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let y = self.inner.process(x);
-        self.clip.process(y)
+impl<T: fmt::Debug + Scalar> DSPProcess<1, 1> for OutputStage<T> {
+    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        let [y] = self.inner.process([self.clip.saturate(x)]);
+        let out_gain = self.out_gain.next_sample_as::<T>();
+        let out = y * out_gain;
+        [out]
     }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, ParamName)]
 pub enum DspParams {
     Bypass,
-    InputGain,
+    InputMode,
     Distortion,
     Tone,
-    OutputGain,
     ComponentMismatch,
-    BufferBypass,
 }
 
-type DspInner<T> = Bypass<
+type DspInner<T> = SwitchAB<
+    Bypass<T>,
     Series<(
-        Bypass<InputStage<T>>,
-        ClipperStage<T>,
+        InputStage<T>,
+        ClippingStage<T>,
         ToneStage<T>,
-        Bypass<OutputStage<T>>,
+        OutputStage<T>,
     )>,
 >;
 
-pub struct Dsp<T: Scalar> {
+pub struct Dsp<T: Scalar<Element: Float>> {
     inner: Oversampled<T, BlockAdapter<DspInner<T>>>,
-    dt: T,
+    samplerate: T,
 }
 
-impl<T: Scalar> DSPMeta for Dsp<T> {
+impl<T: Scalar<Element: Float>> DSPMeta for Dsp<T> {
     type Sample = T;
 }
 
 #[profiling::all_functions]
-impl<T: Scalar> DSPProcessBlock<1, 1> for Dsp<T>
+impl<T: Scalar<Element: Float>> DSPProcessBlock<1, 1> for Dsp<T>
 where
     <T as SimdValue>::Element: ToPrimitive,
 {
@@ -335,98 +288,92 @@ where
     }
 }
 
-impl<T: Scalar> HasParameters for Dsp<T> {
+impl<T: Scalar<Element: Float>> HasParameters for Dsp<T> {
     type Name = DspParams;
 
     fn set_parameter(&mut self, param: Self::Name, value: f32) {
         nih_log!("Set parameter {param:?} {value}");
-        let Bypass {
-            active,
-            inner:
-                Series((
-                    Bypass {
-                        active: input_active,
-                        inner: input,
-                    },
-                    clipper,
-                    tone,
-                    Bypass {
-                        active: output_active,
-                        ..
-                    },
-                )),
+        let SwitchAB {
+            b: Series((input, clipping, tone, output)),
+            ..
         } = &mut self.inner.inner.0;
+        let mut bypass = None;
         match param {
             DspParams::Bypass => {
-                active.param = 1. - value;
+                let b_active = value < 0.5;
+                bypass = Some(b_active);
             }
-            DspParams::InputGain => {
-                input.gain.param = value;
+            DspParams::InputMode => {
+                let level_matching = InputLevelMatching::from_index(value as _);
+                input.gain.param = level_matching.input_scale();
+                output.out_gain.param = level_matching.output_scale();
             }
             DspParams::Distortion => {
-                clipper.dist.param = value;
+                clipping.set_dist(T::from_f64(value as _));
             }
             DspParams::Tone => {
                 tone.tone.param = value;
             }
-            DspParams::OutputGain => {
-                tone.out_gain.param = value;
-            }
             DspParams::ComponentMismatch => {
-                clipper.slew.max_diff =
-                    component_matching_slew_rate(self.dt.simd_recip(), T::from_f64(value as _));
+                clipping.set_age(T::from_f64(value as _));
             }
-            DspParams::BufferBypass => {
-                input_active.param = 1. - value;
-                output_active.param = 1. - value;
-            }
+        }
+        if let Some(b_active) = bypass {
+            self.inner.inner.0.should_switch_to_b(b_active);
         }
     }
 }
 
-impl<T: Scalar> Dsp<T>
+impl<T: Scalar<Element: Float>> Dsp<T>
 where
     Complex<T>: SimdComplexField,
     <T as SimdValue>::Element: ToPrimitive,
 {
-    pub fn new(base_samplerate: f32, target_samplerate: f32) -> RemoteControlled<Self> {
-        let oversample = target_samplerate / base_samplerate;
-        let oversample = oversample.ceil() as usize;
-        let samplerate = base_samplerate * oversample as f32;
+    pub fn new(base_samplerate: f32, _target_samplerate: f32) -> RemoteControlled<Self> {
+        //let oversample = target_samplerate / base_samplerate;
+        //let oversample = oversample.ceil() as usize;
+        let oversample = 1;
+        nih_log!("Requested oversample: {oversample}x");
+        let oversample = Oversample::new(oversample, MAX_BLOCK_SIZE);
+        let samplerate = base_samplerate * oversample.oversampling_amount() as f32;
+        nih_log!(
+            "Inner samplerate: {samplerate} Hz\n\t\tEffective oversample: {}",
+            oversample.oversampling_amount()
+        );
 
         let inner = Series((
-            Bypass::new(samplerate, InputStage::new(samplerate, 1.0)),
-            ClipperStage::new(samplerate, T::zero()),
+            InputStage::new(samplerate, 1.0),
+            ClippingStage::new(T::from_f64(samplerate as _)),
             ToneStage::new(samplerate, T::zero()),
-            Bypass::new(samplerate, OutputStage::new(samplerate)),
+            OutputStage::new(samplerate),
         ));
-        let inner = DspInner::new(samplerate, inner);
-        let inner = Oversample::new(oversample, MAX_BLOCK_SIZE)
-            .with_dsp(base_samplerate, BlockAdapter(inner));
+        let inner = DspInner::new(samplerate, Bypass::default(), inner, true);
+        let inner = oversample.with_dsp(base_samplerate, BlockAdapter(inner));
         RemoteControlled::new(
             base_samplerate,
             1e3,
             Dsp {
                 inner,
-                dt: T::from_f64(samplerate as _).simd_recip(),
+                samplerate: T::from_f64(samplerate as _),
             },
         )
     }
 
     pub fn get_led_display(&self) -> Arc<AtomicF32> {
-        // Funny nested access because of semi-structured DSP blocks
-        self.inner.inner.0.inner.0 .1.led_display.clone()
+        let SwitchAB {
+            b: Series((_, clipping, ..)),
+            ..
+        } = &self.inner.inner.0;
+        clipping.led_display.clone()
     }
 
     pub fn set_led_display(&mut self, value: &Arc<AtomicF32>) {
-        self.inner.inner.0.inner.0 .1.led_display.clone_from(value);
+        let SwitchAB {
+            b: Series((_, clipping, ..)),
+            ..
+        } = &mut self.inner.inner.0;
+        clipping.led_display = value.clone();
     }
 }
 
-pub const MAX_BLOCK_SIZE: usize = 512;
-
-fn component_matching_slew_rate<T: Scalar>(samplerate: T, normalized: T) -> T {
-    let min = T::from_f64(db_to_gain_fast(30.0) as _);
-    let max = T::from_f64(db_to_gain_fast(100.0) as _);
-    lerp(normalized, min, max) / samplerate
-}
+pub const MAX_BLOCK_SIZE: usize = 64;

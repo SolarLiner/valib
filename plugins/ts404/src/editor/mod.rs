@@ -40,10 +40,9 @@ pub(crate) fn create(
                             });
                         });
                         labelled_node_float(cx, false, params, |params| &params.tone);
-                        labelled_node_float(cx, false, params, |params| &params.out_level);
                     });
                     HStack::new(cx, |cx| {
-                        labelled_node_float(cx, false, params, |params| &params.drive);
+                        labelled_node_float(cx, false, params, |params| &params.input_mode);
                         labelled_node_float(cx, false, params, |params| &params.component_matching);
                     })
                     .class("small");
