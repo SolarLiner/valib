@@ -361,6 +361,8 @@ impl<T: Scalar> Saturator<T> for Slew<T> {
 pub struct Bjt<T> {
     pub vcc: T,
     pub vee: T,
+    pub xbias: T,
+    pub ybias: T,
 }
 
 impl<T: Scalar> Default for Bjt<T> {
@@ -368,6 +370,8 @@ impl<T: Scalar> Default for Bjt<T> {
         Self {
             vcc: T::from_f64(4.5),
             vee: T::from_f64(-4.5),
+            xbias: T::zero(),
+            ybias: T::zero(),
         }
     }
 }
@@ -376,7 +380,7 @@ impl<T: Scalar> Default for Bjt<T> {
 impl<T: Scalar> Saturator<T> for Bjt<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn saturate(&self, x: T) -> T {
-        smooth_clamp(0.1, x - 0.770, self.vee, self.vcc) + 0.770
+        smooth_clamp(0.1, x + self.xbias, self.vee, self.vcc) + self.ybias
     }
 }
 
