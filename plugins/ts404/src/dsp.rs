@@ -72,13 +72,7 @@ pub enum InputLevelMatching {
 
 impl fmt::Display for InputLevelMatching {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let scale: f32 = self.input_scale();
-        match self {
-            Self::Instrument => write!(f, "Instrument ({} x)", scale),
-            Self::InstrumentHot => write!(f, "Instrument, Hot ({} x)", scale),
-            Self::Line => write!(f, "Line ({} x)", scale),
-            Self::Eurorack => write!(f, "Eurorack ({} x)", scale),
-        }
+        write!(f, "{}", Self::variants()[self.to_index()])
     }
 }
 

@@ -1,10 +1,11 @@
 use std::f32::consts::{FRAC_PI_2, TAU};
 
-use nih_plug::{nih_log, prelude::Param};
+use nih_plug::{nih_error, nih_log, prelude::Param};
 use nih_plug_vizia::{
     vizia::{prelude::*, vg},
     widgets::param_base::ParamWidgetBase,
 };
+use nih_plug_vizia::vizia::vg::{ImageFlags, ImageId};
 
 enum KnobEvents {
     SetValueNormalized(f32),
@@ -173,6 +174,8 @@ impl View for Dot {
 pub struct Knob {
     widget_base: ParamWidgetBase,
     dragging: bool,
+    image_bg: Option<ImageId>,
+    image_fg: Option<ImageId>,
 }
 
 impl Knob {
@@ -185,6 +188,8 @@ impl Knob {
         Self {
             widget_base: ParamWidgetBase::new(cx, params, get_param),
             dragging: false,
+            image_fg: None,
+            image_bg: None,
         }
         .build(cx, |cx| {
             KnobModel {
@@ -192,37 +197,6 @@ impl Knob {
                 text: String::new(),
             }
             .build(cx);
-            ZStack::new(cx, |cx| {
-                Arc::new(cx, bipolar, params, get_param, |w| {
-                    w.unmodulated_normalized_value()
-                })
-                .class("unmodulated");
-                Arc::new(cx, bipolar, params, get_param, |w| {
-                    w.modulated_normalized_value()
-                })
-                .class("modulated");
-                Ring::new(cx, params, get_param).z_index(2);
-                Dot {
-                    widget_base: ParamWidgetBase::new(cx, params, get_param),
-                }
-                .build(cx, |_| ())
-                .z_index(3);
-                //Textbox::new(cx, KnobModel::text)
-                //    .class("textbox")
-                //    .display(KnobModel::display_textbox.map(|display| {
-                //        if *display {
-                //            Display::Flex
-                //        } else {
-                //            Display::None
-                //        }
-                //    }))
-                //    .on_submit(|cx, data, _| {
-                //        cx.emit(KnobModelEvent::SetDisplayTextbox(false));
-                //        cx.emit(KnobEvents::EnterValuePlain(data));
-                //    })
-                //    .on_blur(|cx| cx.emit(KnobModelEvent::SetDisplayTextbox(false)));
-            })
-            .z_index(1);
         })
     }
 }
@@ -239,12 +213,10 @@ impl View for Knob {
             {
                 self.dragging = true;
                 self.widget_base.begin_set_parameter(cx);
-                cx.capture();
                 cx.set_active(true);
             }
             WindowEvent::MouseUp(MouseButton::Left) => {
                 self.dragging = false;
-                cx.release();
                 self.widget_base.end_set_parameter(cx);
             }
             &WindowEvent::MouseMove(..) => {
@@ -254,9 +226,12 @@ impl View for Knob {
                     } else {
                         5e-3
                     };
-                    let normalized_value = self.widget_base.unmodulated_normalized_value() - 
-                        speed * cx.mouse().frame_delta().1;
-                    nih_log!("[{}] Normalized value: {normalized_value}", self.widget_base.name());
+                    let normalized_value = self.widget_base.unmodulated_normalized_value()
+                        - speed * cx.mouse().frame_delta().1;
+                    nih_log!(
+                        "[{}] Normalized value: {normalized_value}",
+                        self.widget_base.name()
+                    );
                     self.widget_base.set_normalized_value(cx, normalized_value);
                 }
             }
@@ -305,5 +280,67 @@ impl View for Knob {
             }
             self.widget_base.end_set_parameter(cx);
         });
+    }
+
+    fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
+        const MAX_ANGLE_DEG: f32 = 235f32;
+        const EXTEND_X: f32 = 7. / 89.;
+        const EXTEND_Y: f32 = 6. / 89.;
+        let mut bounds = cx.bounds();
+        let width = bounds.width();
+        let height = bounds.height();
+        let add_width = EXTEND_X * width;
+        let add_height = EXTEND_Y * height;
+        bounds.x -= add_width;
+        bounds.w += 2. * add_width;
+        bounds.y -= add_height;
+        bounds.h += 2. * add_height;
+
+        let param = self.widget_base.modulated_normalized_value();
+        let knob_angle = 2. * (0.5 - param) * MAX_ANGLE_DEG.to_radians();
+
+        let fg = self.image_fg.or_else(|| {
+            canvas
+                .load_image_file(
+                    "data/images/Knob Front@2x.png",
+                    ImageFlags::GENERATE_MIPMAPS,
+                )
+                .inspect_err(|err| nih_error!("Cannot load image: {err}"))
+                .ok()
+        });
+        let bg = self.image_bg.or_else(|| {
+            canvas
+                .load_image_file("data/images/Knob BG@2x.png", ImageFlags::GENERATE_MIPMAPS)
+                .inspect_err(|err| nih_error!("Cannot load bg image: {err}"))
+                .ok()
+        });
+
+        let bg_paint = if let Some(id) = bg {
+            let w = bounds.width();
+            let h = bounds.height();
+            let (cx, cy) = bounds.center();
+            vg::Paint::image(id, cx, cy, w, h, 0., 1.)
+        } else {
+            vg::Paint::color(Color::transparent().into())
+        };
+        let fg_paint = if let Some(id) = fg {
+            let w = bounds.width();
+            let h = bounds.height();
+            let (cx, cy) = bounds.center();
+            vg::Paint::image(id, cx, cy, w, h, 0., 1.)
+        } else {
+            vg::Paint::color(Color::transparent().into())
+        };
+
+        let mut bounds_path = vg::Path::new();
+        bounds_path.rect(-bounds.w / 2., -bounds.h / 2., bounds.w, bounds.h);
+
+        canvas.save();
+        let (cx, cy) = bounds.center();
+        canvas.translate(cx, cy);
+        canvas.rotate(knob_angle);
+        canvas.fill_path(&bounds_path, &bg_paint);
+        canvas.fill_path(&bounds_path, &fg_paint);
+        canvas.restore();
     }
 }

@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
+use components::led::Led;
 use nih_plug::prelude::*;
-use nih_plug_vizia::{create_vizia_editor, ViziaState, ViziaTheming};
 use nih_plug_vizia::vizia::prelude::*;
-use nih_plug_vizia::vizia::views::VStack;
-
-use components::{knob::Knob, led::Led};
+use nih_plug_vizia::vizia::views::{Knob, VStack};
+use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
+use nih_plug_vizia::{create_vizia_editor, ViziaState, ViziaTheming};
 
 use crate::params::Ts404Params;
 
 mod components;
 
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::new(|| (200, 350))
+    ViziaState::new(|| (500, 150))
 }
 
 pub(crate) fn create(
@@ -25,6 +25,9 @@ pub(crate) fn create(
         move |cx, _gui_cx| {
             cx.add_stylesheet(include_style!("src/editor/style.css"))
                 .expect("Failed to load stylesheet");
+            cx.emit(EnvironmentEvent::SetThemeMode(AppTheme::BuiltIn(
+                ThemeMode::DarkMode,
+            )));
             AppData {
                 params: params.clone(),
                 drive_led: drive_led.clone(),
@@ -33,6 +36,7 @@ pub(crate) fn create(
             Binding::new(cx, AppData::params, |cx, params| {
                 VStack::new(cx, |cx| {
                     HStack::new(cx, |cx| {
+                        labelled_node_bool(cx, AppData::params, |p| &p.bypass);
                         ZStack::new(cx, |cx| {
                             labelled_node_float(cx, false, params, |p| &p.dist);
                             Binding::new(cx, AppData::drive_led, |cx, drive_led| {
@@ -40,14 +44,11 @@ pub(crate) fn create(
                             });
                         });
                         labelled_node_float(cx, false, params, |params| &params.tone);
-                    });
-                    HStack::new(cx, |cx| {
                         labelled_node_float(cx, false, params, |params| &params.input_mode);
                         labelled_node_float(cx, false, params, |params| &params.component_matching);
                     })
                     .class("small");
                 })
-                .max_height(Pixels(150.))
                 .id("ui");
             });
         },
@@ -62,6 +63,23 @@ struct AppData {
 
 impl Model for AppData {}
 
+fn labelled_node_bool(
+    cx: &mut Context,
+    params: impl Lens<Target = Arc<Ts404Params>>,
+    get_param: impl 'static + Copy + Fn(&Arc<Ts404Params>) -> &BoolParam,
+) -> Handle<'_, impl View> {
+    labelled_node_generic(cx, params, get_param, move |cx| {
+        let active = params.map_ref(get_param).map(|p| p.value());
+        let param_base = ParamWidgetBase::new(cx, params, get_param);
+        Switch::new(cx, active).on_toggle(move |cx| {
+            let next = if active.get(cx) { 0.0 } else { 1.0 };
+            param_base.begin_set_parameter(cx);
+            param_base.set_normalized_value(cx, next);
+            param_base.end_set_parameter(cx);
+        });
+    })
+}
+
 fn labelled_node_float<P: 'static + Param>(
     cx: &mut Context,
     bipolar: bool,
@@ -71,12 +89,76 @@ fn labelled_node_float<P: 'static + Param>(
 where
     P::Plain: Data + ToString,
 {
-    labelled_node_float_generic(cx, params, get_param, move |cx| {
-        Knob::new(cx, bipolar, params, get_param);
+    labelled_node_generic(cx, params, get_param, move |cx| {
+        let default_value = params
+            .map_ref(get_param)
+            .map(|param| param.default_normalized_value());
+        let normalized_value = params
+            .map_ref(get_param)
+            .map(|param| param.modulated_normalized_value());
+        let param_base = ParamWidgetBase::new(cx, params, get_param);
+        Knob::new(cx, default_value, normalized_value, bipolar)
+            .on_changing(move |cx, value| {
+                param_base.begin_set_parameter(cx);
+                param_base.set_normalized_value(cx, value);
+                param_base.end_set_parameter(cx);
+            })
+            .width(Pixels(60.))
+            .height(Pixels(60.));
     })
 }
 
-fn labelled_node_float_generic<P: 'static + Param>(
+fn labelled_node_enum<E: 'static + PartialEq + ToString + Data + Enum>(
+    cx: &mut Context,
+    params: impl Lens<Target = Arc<Ts404Params>>,
+    get_param: impl 'static + Copy + Fn(&Arc<Ts404Params>) -> &EnumParam<E>,
+) -> Handle<'_, impl View> {
+    #[derive(Lens)]
+    struct EnumData {
+        names: Vec<String>,
+    }
+    impl Model for EnumData {}
+
+    labelled_node_generic(cx, params, get_param, move |cx| {
+        let param = params.map_ref(get_param);
+        let name = param.map(|param| param.value().to_string());
+        let num_values = E::variants().len();
+        EnumData {
+            names: E::variants().into_iter().map(|s| s.to_string()).collect(),
+        }
+        .build(cx);
+
+        Dropdown::new(
+            cx,
+            move |cx| Label::new(cx, name),
+            move |cx| {
+                List::new(cx, EnumData::names, move |cx, ix, item| {
+                    let param_base = ParamWidgetBase::new(cx, params, get_param);
+                    Label::new(cx, item)
+                        .cursor(CursorIcon::Hand)
+                        .bind(name, move |handle, selected| {
+                            if item.get(&handle) == selected.get(&handle) {
+                                handle.checked(true);
+                            }
+                        })
+                        .on_press(move |cx| {
+                            let value = ix as f32 / num_values as f32;
+                            param_base.begin_set_parameter(cx);
+                            param_base.set_normalized_value(cx, value);
+                            param_base.end_set_parameter(cx);
+                            cx.emit(PopupEvent::Close);
+                        });
+                });
+            },
+        )
+        .width(Pixels(150.))
+        .min_space(Pixels(15.))
+        .top(Stretch(2.))
+        .bottom(Stretch(0.667));
+    })
+}
+
+fn labelled_node_generic<P: 'static + Param>(
     cx: &mut Context,
     params: impl Lens<Target = Arc<Ts404Params>>,
     get_param: impl 'static + Copy + Fn(&Arc<Ts404Params>) -> &P,
