@@ -49,7 +49,7 @@ impl SvfMixerParams {
             .bind_to_parameter(remote, DspParam::Drive),
             cutoff: FloatParam::new(
                 "Frequency",
-                300.,
+                3000.,
                 FloatRange::Skewed {
                     min: 20.,
                     max: 20e3,
@@ -65,7 +65,7 @@ impl SvfMixerParams {
             },
             lp_gain: FloatParam::new(
                 "LP Gain",
-                0.,
+                1.,
                 FloatRange::SymmetricalSkewed {
                     min: -1.,
                     max: 1.,

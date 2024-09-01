@@ -1,4 +1,4 @@
-use num_traits::{AsPrimitive, FromPrimitive, Num, One, Zero};
+use num_traits::{AsPrimitive, Float, FromPrimitive, Num, One, Zero};
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdPartialOrd, SimdValue};
 
@@ -32,6 +32,18 @@ where
         ret.replace(i, values[ix].extract(i));
     }
     ret
+}
+
+pub fn simd_is_finite<
+    Simd: SimdValue<Element: Float, SimdBool: Default + SimdValue<Element = bool>>,
+>(
+    value: Simd,
+) -> Simd::SimdBool {
+    let mut mask = Simd::SimdBool::default();
+    for i in 0..Simd::lanes() {
+        mask.replace(i, value.extract(i).is_finite())
+    }
+    mask
 }
 
 #[replace_float_literals(T::from_f64(literal))]

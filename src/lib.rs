@@ -1,6 +1,9 @@
 #![cfg_attr(feature = "biquad-design", feature(iter_array_chunks))]
 #![cfg_attr(feature = "fundsp", feature(generic_const_exprs))]
+#![cfg_attr(feature = "wdf", feature(downcast_unchecked))]
 #![doc = include_str!("./README.md")]
+extern crate core;
+
 use az::CastFrom;
 use num_traits::Zero;
 use simba::simd::{AutoSimd, SimdRealField, SimdValue};
@@ -9,6 +12,7 @@ use simba::simd::{AutoSimd, SimdRealField, SimdValue};
 pub use contrib::fundsp;
 pub use simba::simd;
 
+pub mod benchmarking;
 pub mod contrib;
 pub mod dsp;
 pub mod filters;
@@ -20,7 +24,8 @@ pub mod oversample;
 pub mod saturators;
 pub mod util;
 pub mod voice;
-pub mod benchmarking;
+#[cfg(feature = "wdf")]
+pub mod wdf;
 
 pub trait Scalar: Copy + SimdRealField {
     fn from_f64(value: f64) -> Self;

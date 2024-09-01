@@ -1,16 +1,15 @@
-use nalgebra::{SMatrix, SVector};
 use num_traits::One;
 use numeric_literals::replace_float_literals;
-use std::marker::PhantomData;
 use std::ops;
 
 use clippers::DiodeClipperModel;
 
 use crate::dsp::{DSPMeta, DSPProcess};
-use crate::math::{newton_rhapson_steps, smooth_clamp, RootEq};
+use crate::math::nr::RootEq;
 use crate::Scalar;
 
 pub mod adaa;
+pub mod bjt;
 pub mod clippers;
 
 #[allow(unused_variables)]
@@ -110,10 +109,10 @@ impl<S: Scalar, const N: usize> MultiSaturator<S, N> for Linear {
     }
 
     #[inline(always)]
-    fn update_state_multi(&mut self, x: [S; N], y: [S; N]) {}
+    fn update_state_multi(&mut self, _x: [S; N], _y: [S; N]) {}
 
     #[inline(always)]
-    fn sat_jacobian(&self, x: [S; N]) -> [S; N] {
+    fn sat_jacobian(&self, _x: [S; N]) -> [S; N] {
         [S::one(); N]
     }
 }
@@ -186,7 +185,7 @@ impl<T: Scalar, const N: usize> MultiSaturator<T, N> for Clipper<T> {
         x.map(|x| self.saturate(x))
     }
 
-    fn update_state_multi(&mut self, x: [T; N], y: [T; N]) {}
+    fn update_state_multi(&mut self, _x: [T; N], _y: [T; N]) {}
 
     fn sat_jacobian(&self, x: [T; N]) -> [T; N] {
         x.map(|x| self.sat_diff(x))
@@ -281,6 +280,10 @@ impl<T: Scalar> Slew<T> {
             .simd_abs()
             .simd_gt(T::from_f64(1e-6))
     }
+
+    pub fn current_value(&self) -> T {
+        self.last_out
+    }
 }
 
 impl<T: Scalar> Default for Slew<T> {
@@ -352,40 +355,6 @@ impl<T: Scalar> Saturator<T> for Slew<T> {
 
     fn sat_diff(&self, x: T) -> T {
         self.slew_diff(x)
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct Bjt<T> {
-    pub vcc: T,
-    pub vee: T,
-}
-
-impl<T: Scalar> Default for Bjt<T> {
-    fn default() -> Self {
-        Self {
-            vcc: T::from_f64(4.5),
-            vee: T::from_f64(-4.5),
-        }
-    }
-}
-
-#[profiling::all_functions]
-impl<T: Scalar> Saturator<T> for Bjt<T> {
-    #[replace_float_literals(T::from_f64(literal))]
-    fn saturate(&self, x: T) -> T {
-        smooth_clamp(0.1, x - 0.770, self.vee, self.vcc) + 0.770
-    }
-}
-
-impl<T: Scalar> DSPMeta for Bjt<T> {
-    type Sample = T;
-}
-
-#[profiling::all_functions]
-impl<T: Scalar> DSPProcess<1, 1> for Bjt<T> {
-    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        [self.saturate(x)]
     }
 }
 

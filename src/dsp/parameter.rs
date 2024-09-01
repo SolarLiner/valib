@@ -68,7 +68,7 @@ impl Smoothing {
 
     fn is_changing(&self, value: f32) -> bool {
         match self {
-            Self::Exponential { lambda, state, .. } => (value - state).abs() < 1e-6,
+            Self::Exponential { state, .. } => (value - state).abs() < 1e-6,
             Self::Linear { slew, .. } => slew.is_changing(value),
         }
     }
@@ -148,6 +148,13 @@ impl SmoothedParam {
                 fc: tau,
                 lambda: tau / samplerate,
             },
+        }
+    }
+
+    pub fn current_value(&self) -> f32 {
+        match self.smoothing {
+            Smoothing::Linear { slew, .. } => slew.current_value(),
+            Smoothing::Exponential { state, .. } => state,
         }
     }
 

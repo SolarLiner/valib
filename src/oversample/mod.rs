@@ -172,7 +172,11 @@ impl<T: Scalar> Oversample<T> {
         }
     }
 
-    pub(crate) fn set_oversampling_amount(&mut self, amt: usize) {
+    pub fn oversampling_amount(&self) -> usize {
+        usize::pow(2, self.num_stages_active as _)
+    }
+
+    pub fn set_oversampling_amount(&mut self, amt: usize) {
         assert!(amt <= self.max_factor);
         self.num_stages_active = amt.next_power_of_two().ilog2() as _;
     }
@@ -219,6 +223,7 @@ impl<T: Scalar> Oversample<T> {
         }
     }
 
+    #[profiling::function]
     fn upsample(&mut self, input: &[T]) -> &mut [T] {
         assert!(input.len() <= self.max_block_size());
         if self.num_stages_active == 0 {
@@ -284,9 +289,13 @@ where
     P: DSPProcessBlock<1, 1, Sample = T>,
 {
     pub fn set_oversampling_amount(&mut self, amt: usize) {
-        assert!(amt > 1);
+        assert!(amt >= 1);
         self.oversampling.set_oversampling_amount(amt);
         self.set_samplerate(self.base_samplerate);
+    }
+
+    pub fn inner_samplerate(&self) -> f32 {
+        self.base_samplerate * self.oversampling.oversampling_amount() as f32
     }
 }
 
