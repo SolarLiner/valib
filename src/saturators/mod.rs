@@ -5,10 +5,11 @@ use std::ops;
 use clippers::DiodeClipperModel;
 
 use crate::dsp::{DSPMeta, DSPProcess};
-use crate::math::{smooth_clamp, RootEq};
+use crate::math::RootEq;
 use crate::Scalar;
 
 pub mod adaa;
+pub mod bjt;
 pub mod clippers;
 
 #[allow(unused_variables)]
@@ -354,44 +355,6 @@ impl<T: Scalar> Saturator<T> for Slew<T> {
 
     fn sat_diff(&self, x: T) -> T {
         self.slew_diff(x)
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct Bjt<T> {
-    pub vcc: T,
-    pub vee: T,
-    pub xbias: T,
-    pub ybias: T,
-}
-
-impl<T: Scalar> Default for Bjt<T> {
-    fn default() -> Self {
-        Self {
-            vcc: T::from_f64(4.5),
-            vee: T::from_f64(-4.5),
-            xbias: T::zero(),
-            ybias: T::zero(),
-        }
-    }
-}
-
-#[profiling::all_functions]
-impl<T: Scalar> Saturator<T> for Bjt<T> {
-    #[replace_float_literals(T::from_f64(literal))]
-    fn saturate(&self, x: T) -> T {
-        smooth_clamp(0.1, x + self.xbias, self.vee, self.vcc) + self.ybias
-    }
-}
-
-impl<T: Scalar> DSPMeta for Bjt<T> {
-    type Sample = T;
-}
-
-#[profiling::all_functions]
-impl<T: Scalar> DSPProcess<1, 1> for Bjt<T> {
-    fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        [self.saturate(x)]
     }
 }
 
