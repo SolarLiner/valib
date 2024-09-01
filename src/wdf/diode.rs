@@ -212,10 +212,7 @@ mod tests {
         let r = f32::recip(TAU * C * CUTOFF);
         let c = capacitor(FS, C);
         let rvs = rvsource(r, 0.);
-        let diode = {
-            let data = DiodeClipper::new_germanium(1, 1, 0.);
-            diode_lambert(data.isat, data.vt)
-        };
+        let diode = diode_lambert(DiodeClipper::new_germanium(1, 1, 0.));
         let mut module = module(diode, parallel(rvs.clone(), c.clone()));
 
         let input = (0..256)

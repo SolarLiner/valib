@@ -105,7 +105,8 @@ pub fn newton_rhapson_tol_max_iter<T: Scalar, const N: usize>(
     value: &mut SVector<T, N>,
     tol: T,
     max_iter: usize,
-) -> usize where
+) -> usize
+where
     T::Element: Float,
 {
     for i in 0..max_iter {
@@ -203,7 +204,6 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_detect_nan() {
         struct Equ;
 
