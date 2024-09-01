@@ -1,16 +1,14 @@
-use std::fmt;
-
 use nalgebra::{SMatrix, SVector};
 use num_traits::Float;
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdBool;
 
-use crate::dsp::DSPMeta;
-use crate::saturators::MultiSaturator;
-use crate::{dsp::DSPProcess, math::newton_rhapson_tol_max_iter};
-use crate::{math::RootEq, saturators::Saturator, Scalar};
-
 use super::adaa::Antiderivative;
+use crate::dsp::DSPMeta;
+use crate::dsp::DSPProcess;
+use crate::math::nr::{newton_rhapson_tol_max_iter, RootEq};
+use crate::saturators::MultiSaturator;
+use crate::{saturators::Saturator, Scalar};
 
 mod diode_clipper_model_data;
 
@@ -127,7 +125,10 @@ where
 {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         self.vin = x[0];
-        let mut value = SVector::<_, 1>::new(self.vin.simd_clamp(-self.num_diodes_bwd, self.num_diodes_fwd));
+        let mut value = SVector::<_, 1>::new(
+            self.vin
+                .simd_clamp(-self.num_diodes_bwd, self.num_diodes_fwd),
+        );
         newton_rhapson_tol_max_iter(self, &mut value, self.sim_tol, self.max_iter);
         self.last_vout = value[0];
         [value[0]]

@@ -1,4 +1,4 @@
-use crate::math::{newton_rhapson_tol_max_iter, RootEq};
+use crate::math::nr::{newton_rhapson_tol_max_iter, RootEq};
 use crate::saturators::clippers::{DiodeClipper, DiodeClipperModel};
 use crate::wdf::unadapted::WdfDsp;
 use crate::wdf::{Wave, Wdf};

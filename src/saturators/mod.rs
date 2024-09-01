@@ -5,7 +5,7 @@ use std::ops;
 use clippers::DiodeClipperModel;
 
 use crate::dsp::{DSPMeta, DSPProcess};
-use crate::math::RootEq;
+use crate::math::nr::RootEq;
 use crate::Scalar;
 
 pub mod adaa;
