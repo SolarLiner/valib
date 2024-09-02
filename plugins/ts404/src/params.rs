@@ -1,10 +1,8 @@
 use crate::dsp::{DspParams, InputLevelMatching};
 use nih_plug::formatters;
 use nih_plug::params::{BoolParam, EnumParam, FloatParam, Params};
-use nih_plug::prelude::{AtomicF32, FloatRange};
-use nih_plug::util::{gain_to_db, MINUS_INFINITY_DB, MINUS_INFINITY_GAIN};
+use nih_plug::prelude::FloatRange;
 use nih_plug_vizia::ViziaState;
-use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use valib::contrib::nih_plug::BindToParameter;
 use valib::dsp::parameter::RemoteControl;

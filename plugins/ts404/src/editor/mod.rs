@@ -1,11 +1,11 @@
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use components::led::Led;
 use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::prelude::*;
 use nih_plug_vizia::vizia::views::{Knob, VStack};
 use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
 use nih_plug_vizia::{create_vizia_editor, ViziaState, ViziaTheming};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use crate::params::Ts404Params;
 
@@ -49,7 +49,8 @@ pub(crate) fn create(
                     })
                     .class("small");
                     Binding::new(cx, AppData::drive_led, |cx, drive| {
-                        let display = drive.map(|x|  format!("LED brightness: {}", x.load(Ordering::Relaxed)));
+                        let display =
+                            drive.map(|x| format!("LED brightness: {}", x.load(Ordering::Relaxed)));
                         Label::new(cx, display);
                     });
                 })
@@ -128,7 +129,7 @@ fn labelled_node_enum<E: 'static + PartialEq + ToString + Data + Enum>(
         let name = param.map(|param| param.value().to_string());
         let num_values = E::variants().len();
         EnumData {
-            names: E::variants().into_iter().map(|s| s.to_string()).collect(),
+            names: E::variants().iter().map(|s| s.to_string()).collect(),
         }
         .build(cx);
 

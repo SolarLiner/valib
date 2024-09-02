@@ -1,11 +1,11 @@
 use std::f32::consts::{FRAC_PI_2, TAU};
 
 use nih_plug::{nih_error, nih_log, prelude::Param};
+use nih_plug_vizia::vizia::vg::{ImageFlags, ImageId};
 use nih_plug_vizia::{
     vizia::{prelude::*, vg},
     widgets::param_base::ParamWidgetBase,
 };
-use nih_plug_vizia::vizia::vg::{ImageFlags, ImageId};
 
 enum KnobEvents {
     SetValueNormalized(f32),

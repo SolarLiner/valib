@@ -1,8 +1,7 @@
-use std::sync::mpsc::{channel, Sender};
 use std::sync::Arc;
 
 use nih_plug::prelude::*;
-use valib::contrib::nih_plug::{process_buffer_simd64, BindToParameter};
+use valib::contrib::nih_plug::process_buffer_simd64;
 use valib::dsp::parameter::RemoteControlled;
 use valib::dsp::DSPMeta;
 use valib::simd::{AutoF32x2, AutoF64x2};
@@ -100,8 +99,10 @@ impl Plugin for Ts404 {
         self.dsp.inner.set_led_display(&drive_led);
 
         let dsp = &self.dsp;
-        dsp.proxy
-            .set_parameter(DspParams::InputMode, self.params.input_mode.value().to_index() as _);
+        dsp.proxy.set_parameter(
+            DspParams::InputMode,
+            self.params.input_mode.value().to_index() as _,
+        );
         dsp.proxy
             .set_parameter(DspParams::Distortion, self.params.dist.value());
         dsp.proxy

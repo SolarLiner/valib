@@ -1,15 +1,13 @@
-use crate::params::MAX_AGE;
 use crate::{util::Rms, TARGET_SAMPLERATE};
 use nih_plug::prelude::AtomicF32;
 use nih_plug::util::db_to_gain_fast;
 use num_traits::{Float, ToPrimitive};
-use std::sync::{atomic::Ordering, Arc};
 use numeric_literals::replace_float_literals;
-use valib::math::{smooth_clamp, smooth_max, smooth_min};
+use std::sync::{atomic::Ordering, Arc};
+use valib::math::smooth_clamp;
 use valib::saturators::clippers::DiodeClipper;
 use valib::saturators::{Saturator, Slew};
 use valib::simd::{SimdComplexField, SimdValue};
-use valib::util::lerp;
 use valib::wdf::dsl::*;
 use valib::{
     dsp::{DSPMeta, DSPProcess},
@@ -40,7 +38,7 @@ impl<T: Scalar> CrossoverDistortion<T> {
 
     #[replace_float_literals(T::from_f64(literal))]
     fn drift_from_age(age: T) -> T {
-        2.96e-3 * age.simd_powf(1./3.)
+        2.96e-3 * age.simd_powf(1. / 3.)
     }
 }
 
@@ -240,8 +238,7 @@ impl<T: Scalar<Element: Float>> ClippingStage<T> {
 
     pub fn set_age(&mut self, age: T) {
         self.crossover.set_age(age);
-        self.out_slew.max_diff =
-            component_matching_slew_rate(self.samplerate, age);
+        self.out_slew.max_diff = component_matching_slew_rate(self.samplerate, age);
     }
 
     pub fn set_dist(&mut self, amt: T) {
@@ -307,6 +304,7 @@ mod tests {
     use super::*;
     use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
     use valib::dsp::{BlockAdapter, DSPProcessBlock};
+    use valib::util::lerp;
 
     #[test]
     fn crossover_dc_sweep() {

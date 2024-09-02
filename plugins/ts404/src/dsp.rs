@@ -8,7 +8,6 @@ use nih_plug::prelude::{AtomicF32, Enum};
 use nih_plug_vizia::vizia::prelude::Data;
 use num_traits::{Float, ToPrimitive};
 use numeric_literals::replace_float_literals;
-use valib::{dsp::blocks::{Series, SwitchAB}, math::{smooth_max, smooth_min}};
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
 use valib::dsp::{blocks::Bypass, BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
@@ -16,10 +15,12 @@ use valib::filters::statespace::StateSpace;
 use valib::math::smooth_clamp;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::{bjt, Saturator};
-use valib::simd::{
-    AutoF64x2, AutoSimd, SimdBool, SimdComplexField, SimdPartialOrd, SimdValue,
-};
+use valib::simd::{SimdComplexField, SimdValue};
 use valib::Scalar;
+use valib::{
+    dsp::blocks::{Series, SwitchAB},
+    math::{smooth_max, smooth_min},
+};
 
 use clipping::ClippingStage;
 
@@ -56,14 +57,18 @@ impl<T: Scalar> Default for OutputEmitterFollower<T> {
 
 impl<T: Scalar> Saturator<T> for OutputEmitterFollower<T> {
     fn saturate(&self, x: T) -> T {
-        smooth_max(self.t, T::zero(), smooth_min(self.t, x + self.xbias, (x + self.kbias) * self.ksat))
+        smooth_max(
+            self.t,
+            T::zero(),
+            smooth_min(self.t, x + self.xbias, (x + self.kbias) * self.ksat),
+        )
     }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Enum, Data)]
 pub enum InputLevelMatching {
     Instrument,
-    #[name="Instrument (Hot)"]
+    #[name = "Instrument (Hot)"]
     InstrumentHot,
     Line,
     Eurorack,
@@ -173,7 +178,12 @@ impl<T: Scalar> DSPProcess<1, 1> for ToneStage<T> {
         let tone = self.tone.next_sample_as();
         self.update_state_matrices(self.dt, tone);
         let [y] = self.state_space.process(x);
-        [smooth_clamp(T::from_f64(0.1), y, T::zero(), T::from_f64(9.))]
+        [smooth_clamp(
+            T::from_f64(0.1),
+            y,
+            T::zero(),
+            T::from_f64(9.),
+        )]
     }
 }
 
@@ -340,13 +350,7 @@ where
         ));
         let inner = DspInner::new(samplerate, Bypass::default(), inner, true);
         let inner = oversample.with_dsp(base_samplerate, BlockAdapter(inner));
-        RemoteControlled::new(
-            base_samplerate,
-            1e3,
-            Dsp {
-                inner,
-            },
-        )
+        RemoteControlled::new(base_samplerate, 1e3, Dsp { inner })
     }
 
     pub fn get_led_display(&self) -> Arc<AtomicF32> {

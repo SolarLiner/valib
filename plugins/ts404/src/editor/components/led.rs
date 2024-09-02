@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use nih_plug::prelude::AtomicF32;
 use nih_plug_vizia::vizia::prelude::*;
