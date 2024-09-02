@@ -123,7 +123,21 @@ impl<T: Scalar<Element: Float>> Stage3<T> {
     pub fn new(samplerate: T) -> Self {
         let iin = rcsource(T::from_f64(51e3), T::from_f64(0.));
         let module = module(
-            diode_nr(DiodeClipper::new_silicon(1, 1, T::zero())),
+            node({
+                let data = DiodeClipper::new_silicon(1, 1, T::zero());
+                let mut wdf = DiodeNR::from_data(data);
+                #[cfg(debug_assertions)]
+                {
+                    wdf.max_iter = 10;
+                    wdf.max_tolerance = T::from_f64(1e-4);
+                }
+                #[cfg(not(debug_assertions))]
+                {
+                    wdf.max_iter = 100;
+                    wdf.max_tolerance = T::from_f64(1e-6);
+                }
+                wdf
+            }),
             parallel(iin.clone(), capacitor(samplerate, T::from_f64(51e-12))),
         );
         Self { module, iin }

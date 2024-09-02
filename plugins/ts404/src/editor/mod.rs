@@ -1,5 +1,5 @@
 use std::sync::Arc;
-
+use std::sync::atomic::Ordering;
 use components::led::Led;
 use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::prelude::*;
@@ -48,6 +48,10 @@ pub(crate) fn create(
                         labelled_node_float(cx, false, params, |params| &params.component_matching);
                     })
                     .class("small");
+                    Binding::new(cx, AppData::drive_led, |cx, drive| {
+                        let display = drive.map(|x|  format!("LED brightness: {}", x.load(Ordering::Relaxed)));
+                        Label::new(cx, display);
+                    });
                 })
                 .id("ui");
             });

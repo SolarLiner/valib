@@ -18,7 +18,7 @@ mod gen;
 mod params;
 mod util;
 
-const TARGET_SAMPLERATE: f32 = 96000.;
+const TARGET_SAMPLERATE: f32 = 192000.;
 
 type Sample = AutoF64x2;
 type Sample32 = AutoF32x2;

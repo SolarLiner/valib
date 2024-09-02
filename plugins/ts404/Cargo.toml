@@ -37,8 +37,10 @@ opt-level = 1
 opt-level = 0
 
 [profile.release]
-lto = "thin"
+codegen-units = 1
+lto = "fat"
 strip = "symbols"
+opt-level = 3
 
 [profile.profiling]
 inherits = "release"

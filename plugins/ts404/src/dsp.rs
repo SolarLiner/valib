@@ -15,19 +15,18 @@ use valib::dsp::{blocks::Bypass, BlockAdapter, DSPMeta, DSPProcess, DSPProcessBl
 use valib::filters::statespace::StateSpace;
 use valib::math::smooth_clamp;
 use valib::oversample::{Oversample, Oversampled};
-use valib::saturators::{Bjt, Saturator, Slew};
+use valib::saturators::{bjt, Saturator};
 use valib::simd::{
     AutoF64x2, AutoSimd, SimdBool, SimdComplexField, SimdPartialOrd, SimdValue,
 };
 use valib::Scalar;
 
 use clipping::ClippingStage;
-use crate::params::MAX_AGE;
 
 mod clipping;
 
-fn emitter_follower_input<T: Scalar>() -> Bjt<T> {
-    Bjt {
+fn emitter_follower_input<T: Scalar>() -> bjt::CommonCollector<T> {
+    bjt::CommonCollector {
         vee: T::zero(),
         vcc: T::from_f64(9.),
         xbias: T::from_f64(3.75041272),
@@ -102,7 +101,7 @@ impl InputLevelMatching {
 pub struct InputStage<T: Scalar> {
     pub gain: SmoothedParam,
     state_space: StateSpace<T, 1, 1, 1>,
-    clip: Bjt<T>,
+    clip: bjt::CommonCollector<T>,
 }
 
 impl<T: Scalar> DSPMeta for InputStage<T> {
@@ -261,7 +260,6 @@ type DspInner<T> = SwitchAB<
 
 pub struct Dsp<T: Scalar<Element: Float>> {
     inner: Oversampled<T, BlockAdapter<DspInner<T>>>,
-    samplerate: T,
 }
 
 impl<T: Scalar<Element: Float>> DSPMeta for Dsp<T> {
@@ -323,10 +321,9 @@ where
     Complex<T>: SimdComplexField,
     <T as SimdValue>::Element: ToPrimitive,
 {
-    pub fn new(base_samplerate: f32, _target_samplerate: f32) -> RemoteControlled<Self> {
-        //let oversample = target_samplerate / base_samplerate;
-        //let oversample = oversample.ceil() as usize;
-        let oversample = 1;
+    pub fn new(base_samplerate: f32, target_samplerate: f32) -> RemoteControlled<Self> {
+        let oversample = target_samplerate / base_samplerate;
+        let oversample = oversample.ceil() as usize;
         nih_log!("Requested oversample: {oversample}x");
         let oversample = Oversample::new(oversample, MAX_BLOCK_SIZE);
         let samplerate = base_samplerate * oversample.oversampling_amount() as f32;
@@ -348,7 +345,6 @@ where
             1e3,
             Dsp {
                 inner,
-                samplerate: T::from_f64(samplerate as _),
             },
         )
     }
