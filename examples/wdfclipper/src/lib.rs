@@ -13,9 +13,9 @@ use crate::dsp::{create_dsp, DspParams};
 mod dsp;
 
 #[cfg(debug_assertions)]
-const OVERSAMPLE: usize = 1;
+const OVERSAMPLE: usize = 2;
 #[cfg(not(debug_assertions))]
-const OVERSAMPLE: usize = 1;
+const OVERSAMPLE: usize = 4;
 
 const MAX_BLOCK_SIZE: usize = 512;
 
@@ -63,9 +63,12 @@ impl ClipperParams {
             .with_value_to_string(formatters::v2s_f32_hz_then_khz(1))
             .with_string_to_value(formatters::s2v_f32_hz_then_khz())
             .bind_to_parameter(remote, DspParams::Cutoff),
-            nf: IntParam::new("# Forward", 1, IntRange::Linear { min: 1, max: 5 }).bind_to_parameter(remote, DspParams::NumForward),
-            nb: IntParam::new("# Backward", 1, IntRange::Linear { min: 1, max: 5 }).bind_to_parameter(remote, DspParams::NumBackward),
-            diode_type: EnumParam::new("Diode Type", dsp::DiodeType::Germanium).bind_to_parameter(remote, DspParams::DiodeType),
+            nf: IntParam::new("# Forward", 1, IntRange::Linear { min: 1, max: 5 })
+                .bind_to_parameter(remote, DspParams::NumForward),
+            nb: IntParam::new("# Backward", 1, IntRange::Linear { min: 1, max: 5 })
+                .bind_to_parameter(remote, DspParams::NumBackward),
+            diode_type: EnumParam::new("Diode Type", dsp::DiodeType::Germanium)
+                .bind_to_parameter(remote, DspParams::DiodeType),
             force_reset: BoolParam::new("Force reset", false)
                 .bind_to_parameter(remote, DspParams::ForceReset),
         })

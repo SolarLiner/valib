@@ -93,6 +93,23 @@ impl<T: Num + Zero> DiodeLambert<T> {
             b: T::zero(),
         }
     }
+
+    pub fn set_configuration(&mut self, data: DiodeClipper<T>) {
+        self.isat = data.isat;
+        self.nvt = data.n * data.vt;
+        self.nf = data.num_diodes_fwd;
+        self.nb = data.num_diodes_bwd;
+    }
+}
+
+impl<T: Scalar> DiodeLambert<T> {
+    pub fn set_num_forward(&mut self, nf: usize) {
+        self.nf = T::from_f64(nf as _);
+    }
+
+    pub fn set_num_backward(&mut self, nf: usize) {
+        self.nb = T::from_f64(nf as _);
+    }
 }
 
 struct DiodeRootEq<T: Scalar> {
@@ -157,6 +174,22 @@ impl<T: Scalar> DiodeNR<T> {
             max_iter: 50,
             b: T::zero(),
         }
+    }
+
+    pub fn set_configuration(&mut self, data: DiodeClipper<T>) {
+        self.root_eq.isat = data.isat;
+        self.root_eq.n = data.n;
+        self.root_eq.vt = data.vt;
+        self.root_eq.nf = data.num_diodes_fwd;
+        self.root_eq.nb = data.num_diodes_bwd;
+    }
+
+    pub fn set_num_forward(&mut self, nf: usize) {
+        self.root_eq.nf = T::from_f64(nf as _);
+    }
+
+    pub fn set_num_backward(&mut self, nf: usize) {
+        self.root_eq.nb = T::from_f64(nf as _);
     }
 }
 

@@ -20,8 +20,8 @@ impl<T: Scalar> Default for CommonCollector<T> {
         Self {
             vcc: T::from_f64(4.5),
             vee: T::from_f64(-4.5),
-            xbias: T::zero(),
-            ybias: T::zero(),
+            xbias: T::from_f64(0.77),
+            ybias: T::from_f64(-0.77),
         }
     }
 }

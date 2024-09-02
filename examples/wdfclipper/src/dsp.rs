@@ -137,22 +137,19 @@ impl HasParameters for DspInner {
                 self.cutoff.param = value;
             }
             DspParams::NumForward => {
-                node_mut(&self.model.root).root_eq.nf = Sample64::from_f64(value as _);
+                node_mut(&self.model.root).set_num_forward(value as usize);
             }
             DspParams::NumBackward => {
-                node_mut(&self.model.root).root_eq.nb = Sample64::from_f64(value as _);
+                node_mut(&self.model.root).set_num_backward(value as usize);
             }
             DspParams::DiodeType => {
                 let mut root_node = node_mut(&self.model.root);
-                let DiodeNR { root_eq, .. } = &mut *root_node;
                 let data = match DiodeType::from_id(value as _) {
                     DiodeType::Silicon => DiodeClipper::new_silicon(1, 1, Sample64::zero()),
                     DiodeType::Germanium => DiodeClipper::new_germanium(1, 1, Sample64::zero()),
                     DiodeType::Led => DiodeClipper::new_led(1, 1, Sample64::zero()),
                 };
-                root_eq.isat = data.isat;
-                root_eq.n = data.n;
-                root_eq.vt = data.vt;
+                root_node.set_configuration(data);
             }
             DspParams::ForceReset => {
                 self.reset();

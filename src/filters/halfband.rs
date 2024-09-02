@@ -5,7 +5,7 @@
 use num_traits::Zero;
 
 use crate::dsp::blocks::Series;
-use crate::dsp::{analysis::DspAnalysis, DSPMeta, DSPProcess};
+use crate::dsp::{DSPMeta, DSPProcess};
 use crate::Scalar;
 
 /// Specialized 2nd-order allpass filter.
@@ -14,6 +14,14 @@ struct Allpass<T> {
     a: T,
     x: [T; 3],
     y: [T; 3],
+}
+
+impl<T: Copy> Allpass<T> {
+    fn rotate_state(&mut self, x: T) {
+        let [x0, x1, _] = self.x;
+        self.x = [x, x0, x1];
+        self.y.rotate_right(1);
+    }
 }
 
 impl<T: Scalar> DSPMeta for Allpass<T> {
@@ -32,14 +40,10 @@ impl<T: Scalar> DSPMeta for Allpass<T> {
 #[profiling::all_functions]
 impl<T: Scalar> DSPProcess<1, 1> for Allpass<T> {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        let [x0, x1, x2] = self.x;
-        let [y0, y1, y2] = self.y;
+        self.rotate_state(x);
+        self.y[0] = self.x[2] + ((x - self.y[2]) * self.a);
 
-        self.x = [x, x0, x1];
-        let y = x2 + ((x - y2) * self.a);
-        self.y = [y, y0, y1];
-
-        [y]
+        [self.y[0]]
     }
 }
 

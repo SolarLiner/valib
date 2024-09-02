@@ -13,9 +13,9 @@ use crate::dsp::{create_dsp, DiodeType, DspParams};
 mod dsp;
 
 #[cfg(debug_assertions)]
-const OVERSAMPLE: usize = 1;
+const OVERSAMPLE: usize = 4;
 #[cfg(not(debug_assertions))]
-const OVERSAMPLE: usize = 1;
+const OVERSAMPLE: usize = 16;
 
 const MAX_BLOCK_SIZE: usize = 512;
 
