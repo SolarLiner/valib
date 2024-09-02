@@ -4,10 +4,11 @@ use nih_plug::prelude::AtomicF32;
 use nih_plug::util::db_to_gain_fast;
 use num_traits::{Float, ToPrimitive};
 use std::sync::{atomic::Ordering, Arc};
-use valib::math::smooth_clamp;
+use numeric_literals::replace_float_literals;
+use valib::math::{smooth_clamp, smooth_max, smooth_min};
 use valib::saturators::clippers::DiodeClipper;
-use valib::saturators::Slew;
-use valib::simd::SimdComplexField;
+use valib::saturators::{Saturator, Slew};
+use valib::simd::{SimdComplexField, SimdValue};
 use valib::util::lerp;
 use valib::wdf::dsl::*;
 use valib::{
@@ -15,6 +16,41 @@ use valib::{
     wdf::*,
     Scalar,
 };
+
+struct CrossoverDistortion<T> {
+    pub t: T,
+    pub drift: T,
+}
+
+impl<T: Scalar> CrossoverDistortion<T> {
+    pub fn new(drift: T) -> Self {
+        Self {
+            t: T::from_f64(1e-1),
+            drift,
+        }
+    }
+
+    pub fn from_age(age: T) -> Self {
+        Self::new(Self::drift_from_age(age))
+    }
+
+    pub fn set_age(&mut self, age: T) {
+        self.drift = Self::drift_from_age(age);
+    }
+
+    #[replace_float_literals(T::from_f64(literal))]
+    fn drift_from_age(age: T) -> T {
+        2.96e-3 * age.simd_powf(1./3.)
+    }
+}
+
+impl<T: Scalar> Saturator<T> for CrossoverDistortion<T> {
+    fn saturate(&self, x: T) -> T {
+        let l0 = x + self.drift;
+        let l1 = x - self.drift;
+        l0.simd_min(T::zero().simd_max(l1))
+    }
+}
 
 type Stage1Module<T> = WdfModule<
     ResistiveVoltageSource<T>,
@@ -181,6 +217,7 @@ pub struct ClippingStage<T: Scalar<Element: Float>> {
     pub(crate) led_rms: Rms<f32>,
     pub(crate) led_display: Arc<AtomicF32>,
     samplerate: T,
+    crossover: CrossoverDistortion<T>,
 }
 
 impl<T: Scalar<Element: Float>> ClippingStage<T> {
@@ -196,11 +233,13 @@ impl<T: Scalar<Element: Float>> ClippingStage<T> {
             stage3: Stage3::new(samplerate),
             led_rms: Rms::new(rms_samples),
             led_display: Arc::new(AtomicF32::new(0.0)),
+            crossover: CrossoverDistortion::new(T::zero()),
             samplerate,
         }
     }
 
     pub fn set_age(&mut self, age: T) {
+        self.crossover.set_age(age);
         self.out_slew.max_diff =
             component_matching_slew_rate(self.samplerate, age);
     }
@@ -244,11 +283,13 @@ impl<T: Scalar<Element: ToPrimitive + Float>> DSPProcess<1, 1> for ClippingStage
             .to_f32()
             .unwrap_or_default()
             * 0.5;
+        let led_value = led_value.select(led_value.is_finite(), 0.);
         let led_value = self.led_rms.add_element(led_value);
         self.led_display.store(led_value, Ordering::Relaxed);
+        let vout = self.crossover.saturate(vplus + vf - T::from_f64(4.5)) + T::from_f64(4.5);
         self.out_slew.process([smooth_clamp(
             T::from_f64(0.1),
-            vplus + vf,
+            vout,
             T::zero(),
             T::from_f64(9.),
         )])
@@ -266,6 +307,17 @@ mod tests {
     use super::*;
     use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
     use valib::dsp::{BlockAdapter, DSPProcessBlock};
+
+    #[test]
+    fn crossover_dc_sweep() {
+        const N: usize = 100;
+        let crossover = CrossoverDistortion::new(1.);
+        let output: [f32; N] = std::array::from_fn(|i| {
+            let x = lerp(i as f32 / N as f32, -5., 5.);
+            crossover.saturate(x)
+        });
+        insta::assert_csv_snapshot!(&output as &[_], { "[]" => insta::rounded_redaction(4) });
+    }
 
     #[test]
     fn drive_test() {
