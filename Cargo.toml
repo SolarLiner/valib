@@ -5,7 +5,7 @@ edition = "2021"
 license = "MIT"
 
 [workspace]
-members = ["examples/*", "plugins/*", "valib_derive", "xtask"]
+members = ["examples/*", "valib_derive", "xtask"]
 
 [workspace.package]
 version = "0.1.0"

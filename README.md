@@ -5,7 +5,7 @@
 ![GitHub License](https://img.shields.io/github/license/solarliner/valib)
 [![Link to docs](https://img.shields.io/badge/docs-url-blue)](https://solarliner.dev/valib/valib/)
 
-Plugins: [Abrasive](plugins/abrasive)  
+Plugins: [Abrasive](plugins/abrasive) (currently broken)  
 Examples: [Diode Clipper](examples/diodeclipper) | [SVF Mixer](examples/svfmixer) | [Dirty Biquad](examples/dirty-biquad)
 
 Library of reusable blocks for musical DSP.
