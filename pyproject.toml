@@ -6,15 +6,16 @@ authors = ["Nathan Graule <solarliner@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "<3.12,>=3.8"
+python = "^3.10"
+numpy = "^1.24.1"
+scipy = "^1.10.0"
+sympy = "^1.11.1"
+lcapy = "^1.24"
 
 
 [tool.poetry.group.dev.dependencies]
-sympy = "^1.11.1"
 jupyter = "^1.0.0"
 jupyterlab = "^3.5.2"
-numpy = "^1.24.1"
-scipy = "^1.10.0"
 matplotlib = "^3.6.2"
 tqdm = "^4.64.1"
 

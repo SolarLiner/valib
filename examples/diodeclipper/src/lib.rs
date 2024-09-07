@@ -4,7 +4,8 @@ use nih_plug::prelude::*;
 use nih_plug::util::db_to_gain;
 
 use dsp::Dsp;
-use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, NihParamsController};
+use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, BindToParameter};
+use valib::dsp::parameter::{RemoteControl, RemoteControlled};
 use valib::dsp::DSPMeta;
 
 use crate::dsp::{create_dsp, DiodeType, DspParams};
@@ -18,16 +19,26 @@ const OVERSAMPLE: usize = 16;
 
 const MAX_BLOCK_SIZE: usize = 512;
 
-struct ClipperPlugin {
-    dsp: Dsp,
-    params: Arc<NihParamsController<Dsp>>,
+#[derive(Debug, Params)]
+struct ClipperParams {
+    #[id = "drive"]
+    drive: FloatParam,
+    #[id = "model"]
+    model_switch: BoolParam,
+    #[id = "type"]
+    diode_type: EnumParam<DiodeType>,
+    #[id = "nfwd"]
+    num_forward: IntParam,
+    #[id = "nbwd"]
+    num_backward: IntParam,
+    #[id = "reset"]
+    force_reset: BoolParam,
 }
 
-impl Default for ClipperPlugin {
-    fn default() -> Self {
-        let dsp = create_dsp(44100.0, OVERSAMPLE, MAX_BLOCK_SIZE);
-        let params = NihParamsController::new(&dsp, |k, _| match k {
-            DspParams::Drive => FloatParam::new(
+impl ClipperParams {
+    fn new(remote: &RemoteControl<DspParams>) -> Arc<Self> {
+        Arc::new(Self {
+            drive: FloatParam::new(
                 "Drive",
                 0.0,
                 FloatRange::Skewed {
@@ -39,8 +50,8 @@ impl Default for ClipperPlugin {
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .into(),
-            DspParams::ModelSwitch => BoolParam::new("Model", false)
+            .bind_to_parameter(remote, DspParams::Drive),
+            model_switch: BoolParam::new("Model", false)
                 .with_value_to_string(Arc::new(|x| {
                     match x {
                         false => "Newton-Rhapson",
@@ -48,22 +59,29 @@ impl Default for ClipperPlugin {
                     }
                     .to_string()
                 }))
-                .into(),
-            DspParams::DiodeType => {
-                enum_int_param::<DiodeType>("Diode type", DiodeType::Silicon).into()
-            }
-            DspParams::NumForward => {
-                IntParam::new("# Forward", 1, IntRange::Linear { min: 1, max: 5 }).into()
-            }
-            DspParams::NumBackward => {
-                IntParam::new("# Backward", 1, IntRange::Linear { min: 1, max: 5 }).into()
-            }
-            DspParams::ForceReset => BoolParam::new("Force reset", false).into(),
-        });
-        Self {
-            dsp,
-            params: Arc::new(params),
-        }
+                .bind_to_parameter(remote, DspParams::ModelSwitch),
+            diode_type: EnumParam::new("Diode type", DiodeType::Silicon)
+                .bind_to_parameter(remote, DspParams::DiodeType),
+            num_forward: IntParam::new("# Forward", 1, IntRange::Linear { min: 1, max: 5 })
+                .bind_to_parameter(remote, DspParams::NumForward),
+            num_backward: IntParam::new("# Backward", 1, IntRange::Linear { min: 1, max: 5 })
+                .bind_to_parameter(remote, DspParams::NumBackward),
+            force_reset: BoolParam::new("Force reset", false)
+                .bind_to_parameter(remote, DspParams::ForceReset),
+        })
+    }
+}
+
+struct ClipperPlugin {
+    dsp: RemoteControlled<Dsp>,
+    params: Arc<ClipperParams>,
+}
+
+impl Default for ClipperPlugin {
+    fn default() -> Self {
+        let dsp = create_dsp(44100.0, OVERSAMPLE, MAX_BLOCK_SIZE);
+        let params = ClipperParams::new(&dsp.proxy);
+        Self { dsp, params }
     }
 }
 

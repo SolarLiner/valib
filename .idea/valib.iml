@@ -15,6 +15,9 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/saturators/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/slew/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/slew/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/wdfclipper/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/valib_derive/src" isTestSource="false" />
+      <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

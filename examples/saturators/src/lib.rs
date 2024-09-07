@@ -1,31 +1,43 @@
 use std::sync::Arc;
 
-use enum_map::Enum;
 use nih_plug::prelude::*;
 use nih_plug::util::db_to_gain;
 
 use dsp::Dsp;
-use valib::contrib::nih_plug::{process_buffer_simd, NihParamsController};
+use valib::contrib::nih_plug::{process_buffer_simd, BindToParameter};
+use valib::dsp::parameter::{RemoteControl, RemoteControlled};
 use valib::dsp::DSPMeta;
 
 use crate::dsp::{create_dsp, DspInnerParams, DspParams, SaturatorType};
 
 mod dsp;
 
-const OVERSAMPLE: usize = 16;
+const MAX_OVERSAMPLE: usize = 16;
 
 const MAX_BLOCK_SIZE: usize = 512;
 
-struct SaturatorsPlugin {
-    dsp: Dsp,
-    params: Arc<NihParamsController<Dsp>>,
+#[derive(Debug, Params)]
+struct SaturatorsParams {
+    #[id = "drive"]
+    drive: FloatParam,
+    #[id = "sat"]
+    saturator: EnumParam<SaturatorType>,
+    #[id = "fb"]
+    feedback: FloatParam,
+    #[id = "alvl"]
+    adaa_level: FloatParam,
+    #[id = "aeps"]
+    adaa_epsilon: FloatParam,
+    #[id = "osamt"]
+    oversampling: IntParam,
+    #[id = "dcblk"]
+    dc_blocker: BoolParam,
 }
 
-impl Default for SaturatorsPlugin {
-    fn default() -> Self {
-        let dsp = create_dsp(44100.0, OVERSAMPLE, MAX_BLOCK_SIZE);
-        let params = NihParamsController::new(&dsp, |k, _| match k {
-            DspParams::InnerParam(DspInnerParams::Drive) => FloatParam::new(
+impl SaturatorsParams {
+    fn new(remote: &RemoteControl<DspParams>) -> Arc<Self> {
+        Arc::new(Self {
+            drive: FloatParam::new(
                 "Drive",
                 1.0,
                 FloatRange::Skewed {
@@ -37,19 +49,10 @@ impl Default for SaturatorsPlugin {
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .into(),
-            DspParams::InnerParam(DspInnerParams::Saturator) => FloatParam::new(
-                "Saturator",
-                0.0,
-                FloatRange::Linear {
-                    min: 0.0,
-                    max: SaturatorType::LENGTH as f32 - 1.0,
-                },
-            )
-            .with_step_size(1.0)
-            .with_value_to_string(Arc::new(|x| SaturatorType::from_usize(x as _).name()))
-            .into(),
-            DspParams::InnerParam(DspInnerParams::Feedback) => FloatParam::new(
+            .bind_to_parameter(remote, DspParams::InnerParam(DspInnerParams::Drive)),
+            saturator: EnumParam::new("Saturator", SaturatorType::Tanh)
+                .bind_to_parameter(remote, DspParams::InnerParam(DspInnerParams::Saturator)),
+            feedback: FloatParam::new(
                 "Feedback",
                 0.0,
                 FloatRange::SymmetricalSkewed {
@@ -62,46 +65,52 @@ impl Default for SaturatorsPlugin {
             .with_unit(" %")
             .with_value_to_string(formatters::v2s_f32_percentage(2))
             .with_string_to_value(formatters::s2v_f32_percentage())
-            .into(),
-            DspParams::InnerParam(DspInnerParams::AdaaLevel) => {
+            .bind_to_parameter(remote, DspParams::InnerParam(DspInnerParams::Feedback)),
+            adaa_level: {
                 FloatParam::new("ADAA Level", 2.0, FloatRange::Linear { min: 0.0, max: 2.0 })
                     .with_step_size(1.0)
                     .with_value_to_string(formatters::v2s_f32_rounded(0))
-                    .into()
-            }
-            DspParams::InnerParam(DspInnerParams::AdaaEpsilon) => FloatParam::new(
+                    .bind_to_parameter(remote, DspParams::InnerParam(DspInnerParams::AdaaLevel))
+            },
+            adaa_epsilon: FloatParam::new(
                 "ADAA Epsilon",
                 1e-4,
                 FloatRange::Skewed {
                     min: 1e-10,
                     max: 1.0,
-                    factor: 2.0,
+                    factor: -2.0,
                 },
             )
             .with_value_to_string(Arc::new(|f| format!("{f:.1e}")))
-            .into(),
-            DspParams::Oversampling => FloatParam::new(
+            .bind_to_parameter(remote, DspParams::InnerParam(DspInnerParams::AdaaEpsilon)),
+            oversampling: IntParam::new(
                 "Oversampling",
-                OVERSAMPLE as _,
-                FloatRange::Linear {
-                    min: 2.0,
-                    max: OVERSAMPLE as _,
+                usize::ilog2(MAX_OVERSAMPLE) as _,
+                IntRange::Linear {
+                    min: 0,
+                    max: usize::ilog2(MAX_OVERSAMPLE) as _,
                 },
             )
             .with_unit("x")
-            .with_step_size(1.0)
-            .into(),
-            DspParams::DcBlocker => {
-                FloatParam::new("Block DC", 1.0, FloatRange::Linear { min: 0.0, max: 1.0 })
-                    .with_step_size(1.0)
-                    .with_value_to_string(Arc::new(|f| format!("{}", f > 0.5)))
-                    .into()
-            }
-        });
-        Self {
-            dsp,
-            params: Arc::new(params),
-        }
+            .with_string_to_value(formatters::s2v_i32_power_of_two())
+            .with_value_to_string(formatters::v2s_i32_power_of_two())
+            .bind_to_parameter(remote, DspParams::Oversampling),
+            dc_blocker: BoolParam::new("Block DC", true)
+                .bind_to_parameter(remote, DspParams::DcBlocker),
+        })
+    }
+}
+
+struct SaturatorsPlugin {
+    dsp: RemoteControlled<Dsp>,
+    params: Arc<SaturatorsParams>,
+}
+
+impl Default for SaturatorsPlugin {
+    fn default() -> Self {
+        let dsp = create_dsp(44100.0, MAX_OVERSAMPLE, MAX_BLOCK_SIZE);
+        let params = SaturatorsParams::new(&dsp.proxy);
+        Self { dsp, params }
     }
 }
 

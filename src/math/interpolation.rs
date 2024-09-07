@@ -40,6 +40,7 @@ pub trait Interpolate<T, const N: usize> {
 
     /// Interpolate a value from an entire slice, where the t parameter is the "floating index" into the slice
     /// (meaning 3.5 is halfway between index 3 and 4 on the given slice).
+    #[profiling::function]
     fn interpolate_on_slice(&self, t: T, values: &[T]) -> T
     where
         T: Scalar + SimdInterpolatable,
@@ -63,6 +64,7 @@ pub trait Interpolate<T, const N: usize> {
 
     /// Interpolate one slice into another, where the output slice ends up containing the same "range" of values as
     /// the input slice, but also automatically performs interpolation using this instance.
+    #[profiling::function]
     fn interpolate_slice(&self, output: &mut [T], input: &[T])
     where
         T: Scalar + SimdInterpolatable,

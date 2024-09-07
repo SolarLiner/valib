@@ -7,12 +7,21 @@ use nalgebra::Complex;
 use num_traits::One;
 use numeric_literals::replace_float_literals;
 
-use crate::dsp::{DSPMeta, DSPProcess};
 use crate::{
-    dsp::analysis::DspAnalysis,
+    dsp::{
+        analysis::DspAnalysis,
+        parameter::{HasParameters, ParamId, ParamName},
+        DSPMeta, DSPProcess,
+    },
     saturators::{Linear, Saturator},
     Scalar,
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ParamName)]
+pub enum SvfParams {
+    Cutoff,
+    Resonance,
+}
 
 /// SVF topology filter, with optional non-linearities.
 #[derive(Debug, Copy, Clone)]
@@ -25,7 +34,19 @@ pub struct Svf<T, Mode = Linear> {
     d: T,
     w_step: T,
     samplerate: T,
-    sats: [Mode; 2],
+    saturator: Mode,
+}
+
+impl<T: Scalar, Mode: Saturator<T>> HasParameters for Svf<T, Mode> {
+    type Name = SvfParams;
+
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        let value = T::from_f64(value as _);
+        match param {
+            SvfParams::Cutoff => self.set_cutoff(value),
+            SvfParams::Resonance => self.set_r(value),
+        }
+    }
 }
 
 impl<T: Scalar, Mode: Saturator<T>> DSPMeta for Svf<T, Mode> {
@@ -37,13 +58,18 @@ impl<T: Scalar, Mode: Saturator<T>> DSPMeta for Svf<T, Mode> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 3> for Svf<T, S> {
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 3] {
         let [s1, s2] = self.s;
 
-        let hp = (x[0] - self.g1 * s1 - s2) * self.d;
+        let bpp = self.saturator.saturate(s1);
+        let bpl = (self.r - 1.) * s1;
+        let bp1 = 2. * (bpp + bpl);
+        let hp = (x[0] - bp1 - s2) * self.d;
+        self.saturator.update_state(s1, bpp);
 
         let v1 = self.g * hp;
         let bp = v1 + s1;
@@ -53,12 +79,7 @@ impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 3> for Svf<T, S> {
         let lp = v2 + s2;
         let s2 = lp + v2;
 
-        self.s = [
-            self.sats[0].saturate(s1 / 10.) * 10.,
-            self.sats[1].saturate(s2 / 10.) * 10.,
-        ];
-        self.sats[0].update_state(s1 / 10., self.s[0]);
-        self.sats[1].update_state(s2 / 10., self.s[1]);
+        self.s = [s1, s2];
         [lp, bp, hp]
     }
 }
@@ -90,12 +111,14 @@ impl<T: Scalar, C: Default> Svf<T, C> {
             d: T::zero(),
             samplerate,
             w_step: T::simd_pi() / samplerate,
-            sats: Default::default(),
+            saturator: C::default(),
         };
         this.update_coefficients();
         this
     }
+}
 
+impl<T: Scalar, C> Svf<T, C> {
     pub fn reset(&mut self) {
         self.s.fill(T::zero());
     }
@@ -113,6 +136,7 @@ impl<T: Scalar, C: Default> Svf<T, C> {
         self.update_coefficients();
     }
 
+    #[profiling::function]
     #[replace_float_literals(T::from_f64(literal))]
     fn update_coefficients(&mut self) {
         self.g = self.w_step * self.fc;
@@ -123,13 +147,13 @@ impl<T: Scalar, C: Default> Svf<T, C> {
 
 impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
     /// Apply these new saturators to this SVF instance, returning a new instance of it.
-    pub fn set_saturators(&mut self, s1: S, s2: S) {
-        self.sats = [s1, s2];
+    pub fn set_saturator(&mut self, sat: S) {
+        self.saturator = sat;
     }
 
     /// Replace the saturators in this Biquad instance with the provided values.
-    pub fn with_saturators(mut self, s1: S, s2: S) -> Self {
-        self.set_saturators(s1, s2);
+    pub fn with_saturator(mut self, sat: S) -> Self {
+        self.set_saturator(sat);
         self
     }
 }

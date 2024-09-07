@@ -1,15 +1,14 @@
-use std::fmt;
-
 use nalgebra::{SMatrix, SVector};
 use num_traits::Float;
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdBool;
 
-use crate::dsp::DSPMeta;
-use crate::{dsp::DSPProcess, math::newton_rhapson_tol_max_iter};
-use crate::{math::RootEq, saturators::Saturator, Scalar};
-
 use super::adaa::Antiderivative;
+use crate::dsp::DSPMeta;
+use crate::dsp::DSPProcess;
+use crate::math::nr::{newton_rhapson_tol_max_iter, RootEq};
+use crate::saturators::MultiSaturator;
+use crate::{saturators::Saturator, Scalar};
 
 mod diode_clipper_model_data;
 
@@ -39,10 +38,9 @@ impl<T: Copy> DiodeClipper<T> {
 }
 
 impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
-    #[cfg_attr(test, inline(never))]
     #[cfg_attr(not(test), inline)]
     #[replace_float_literals(T::from_f64(literal))]
-    fn eval(&self, input: &nalgebra::SVector<T, 1>) -> nalgebra::SVector<T, 1> {
+    fn eval(&self, input: &SVector<T, 1>) -> SVector<T, 1> {
         let vout = input[0];
         let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
@@ -55,23 +53,17 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
         SVector::<_, 1>::new(res)
     }
 
-    #[cfg_attr(test, inline(never))]
     #[cfg_attr(not(test), inline)]
     #[replace_float_literals(T::from_f64(literal))]
-    fn j_inv(&self, input: &nalgebra::SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
+    fn j_inv(&self, input: &SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
         let vout = input[0];
         let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
-        if vout.simd_gt(16.0).any() {
-            println!();
-        }
         let expn = T::simd_exp(expin / self.num_diodes_fwd).simd_min(1e35);
         let expm = T::simd_exp(-expin / self.num_diodes_bwd).simd_min(1e35);
         let res = v * self.isat * (expn / self.num_diodes_fwd + expm / self.num_diodes_bwd) + 2.;
         // Biasing to prevent divisions by zero, less accurate around zero
-        let ret = (1e-6)
-            .select(res.simd_abs().simd_lt(1e-6), res)
-            .simd_recip();
+        let ret = 1e-6.select(res.simd_abs().simd_lt(1e-6), res).simd_recip();
         Some(SMatrix::<_, 1, 1>::new(ret))
     }
 }
@@ -116,7 +108,7 @@ impl<T: Scalar> DiodeClipper<T> {
             vin,
             num_diodes_fwd: T::from_f64(nf as f64),
             num_diodes_bwd: T::from_f64(nb as f64),
-            sim_tol: 1e-3,
+            sim_tol: 1e-4,
             max_iter: 50,
             last_vout: vin.simd_tanh(),
         }
@@ -127,16 +119,19 @@ impl<T: Scalar> DSPMeta for DiodeClipper<T> {
     type Sample = T;
 }
 
-impl<T: Scalar + fmt::Display> DSPProcess<1, 1> for DiodeClipper<T>
+impl<T: Scalar> DSPProcess<1, 1> for DiodeClipper<T>
 where
     T::Element: Float,
 {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         self.vin = x[0];
-        let mut vout = SVector::<_, 1>::new(self.last_vout);
-        newton_rhapson_tol_max_iter(self, &mut vout, self.sim_tol, self.max_iter);
-        self.last_vout = vout[0];
-        [vout[0]]
+        let mut value = SVector::<_, 1>::new(
+            self.vin
+                .simd_clamp(-self.num_diodes_bwd, self.num_diodes_fwd),
+        );
+        newton_rhapson_tol_max_iter(self, &mut value, self.sim_tol, self.max_iter);
+        self.last_vout = value[0];
+        [value[0]]
     }
 }
 
@@ -217,15 +212,27 @@ impl<T: Scalar> Saturator<T> for DiodeClipperModel<T> {
     }
 }
 
+impl<T: Scalar, const N: usize> MultiSaturator<T, N> for DiodeClipperModel<T> {
+    fn multi_saturate(&self, x: [T; N]) -> [T; N] {
+        x.map(|x| self.saturate(x))
+    }
+
+    fn update_state_multi(&mut self, _: [T; N], _: [T; N]) {}
+
+    fn sat_jacobian(&self, x: [T; N]) -> [T; N] {
+        x.map(|x| self.sat_diff(x))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use plotters::prelude::*;
+    use simba::simd::SimdValue;
     use std::hint;
 
-    use simba::simd::SimdValue;
-
-    use crate::dsp::DSPProcess;
-
     use super::{DiodeClipper, DiodeClipperModel};
+    use crate::dsp::DSPProcess;
+    use crate::util::tests::{Plot, Series};
 
     fn dc_sweep(name: &str, mut dsp: impl DSPProcess<1, 1, Sample = f32>) {
         let results = Vec::from_iter(
@@ -234,6 +241,18 @@ mod tests {
                 .map(|v| dsp.process([v as f32])[0]),
         );
         let full_name = format!("{name}/dc_sweep");
+        let plot_title = format!("DC sweep: {name}");
+        Plot {
+            title: &plot_title,
+            bode: false,
+            series: &[Series {
+                label: name,
+                samplerate: 100.0,
+                series: &results,
+                color: &Default::default(),
+            }],
+        }
+        .create_svg(format!("plots/saturators/clippers/dc_sweep_{name}.svg"));
         insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
     }
 
@@ -246,6 +265,18 @@ mod tests {
             .map(|v| hint::black_box(dsp.process([v as f32])[0]));
         let results = Vec::from_iter(output.map(|v| v.extract(0)));
         let full_name = format!("{name}/drive_test");
+        let plot_title = format!("Drive test: {name}");
+        Plot {
+            title: &plot_title,
+            bode: false,
+            series: &[Series {
+                label: "Output",
+                samplerate: 10.,
+                series: &results,
+                color: &BLUE,
+            }],
+        }
+        .create_svg(format!("plots/saturators/clippers/drive_{name}.svg"));
         insta::assert_csv_snapshot!(&*full_name, results, { "[]" => insta::rounded_redaction(4) });
     }
 

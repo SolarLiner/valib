@@ -1,7 +1,9 @@
-#![feature(array_methods)]
 #![cfg_attr(feature = "biquad-design", feature(iter_array_chunks))]
 #![cfg_attr(feature = "fundsp", feature(generic_const_exprs))]
+#![cfg_attr(feature = "wdf", feature(downcast_unchecked))]
 #![doc = include_str!("./README.md")]
+extern crate core;
+
 use az::CastFrom;
 use num_traits::Zero;
 use simba::simd::{AutoSimd, SimdRealField, SimdValue};
@@ -10,6 +12,7 @@ use simba::simd::{AutoSimd, SimdRealField, SimdValue};
 pub use contrib::fundsp;
 pub use simba::simd;
 
+pub mod benchmarking;
 pub mod contrib;
 pub mod dsp;
 pub mod filters;
@@ -21,6 +24,8 @@ pub mod oversample;
 pub mod saturators;
 pub mod util;
 pub mod voice;
+#[cfg(feature = "wdf")]
+pub mod wdf;
 
 pub trait Scalar: Copy + SimdRealField {
     fn from_f64(value: f64) -> Self;
@@ -46,13 +51,13 @@ pub trait SimdCast<E>: SimdValue {
     fn cast(self) -> Self::Output;
 }
 
-impl<E1, E2, const N: usize> SimdCast<E2> for simba::simd::AutoSimd<[E1; N]>
+impl<E1, E2, const N: usize> SimdCast<E2> for AutoSimd<[E1; N]>
 where
     Self: SimdValue<Element = E1>,
-    simba::simd::AutoSimd<[E2; N]>: SimdValue<Element = E2>,
+    AutoSimd<[E2; N]>: SimdValue<Element = E2>,
     E2: CastFrom<E1>,
 {
-    type Output = simba::simd::AutoSimd<[E2; N]>;
+    type Output = AutoSimd<[E2; N]>;
 
     fn cast(self) -> Self::Output {
         assert_eq!(Self::Output::lanes(), N);
@@ -111,9 +116,9 @@ macro_rules! impl_simdcast_wide {
     };
 }
 
-impl_simdcast_wide!(simba::simd::WideF32x4 : [f32; 4]);
-impl_simdcast_wide!(simba::simd::WideF32x8 : [f32; 8]);
-impl_simdcast_wide!(simba::simd::WideF64x4 : [f64; 4]);
+impl_simdcast_wide!(simd::WideF32x4 : [f32; 4]);
+impl_simdcast_wide!(simd::WideF32x8 : [f32; 8]);
+impl_simdcast_wide!(simd::WideF64x4 : [f64; 4]);
 
 #[cfg(test)]
 mod tests {
@@ -130,16 +135,16 @@ mod tests {
     fn test_type_compatibility() {
         is_compatible::<f32>();
         is_compatible::<f64>();
-        is_compatible::<simba::simd::AutoF32x2>();
-        is_compatible::<simba::simd::AutoF32x4>();
-        is_compatible::<simba::simd::AutoF64x2>();
-        is_compatible::<simba::simd::AutoF64x4>();
-        is_compatible::<simba::simd::WideF32x4>();
-        is_compatible::<simba::simd::WideF64x4>();
+        is_compatible::<simd::AutoF32x2>();
+        is_compatible::<simd::AutoF32x4>();
+        is_compatible::<simd::AutoF64x2>();
+        is_compatible::<simd::AutoF64x4>();
+        is_compatible::<simd::WideF32x4>();
+        is_compatible::<simd::WideF64x4>();
 
         is_cast_compatible::<f32, usize>();
         is_cast_compatible::<f64, usize>();
-        is_cast_compatible::<simba::simd::AutoF32x4, usize>();
-        is_cast_compatible::<simba::simd::AutoF64x4, usize>();
+        is_cast_compatible::<simd::AutoF32x4, usize>();
+        is_cast_compatible::<simd::AutoF64x4, usize>();
     }
 }

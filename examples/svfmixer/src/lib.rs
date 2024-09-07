@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use nih_plug::prelude::*;
 
-use valib::contrib::nih_plug::{process_buffer_simd, NihParamsController};
-use valib::dsp::DSPMeta;
+use valib::contrib::nih_plug::{process_buffer_simd, BindToParameter};
+use valib::dsp::parameter::{RemoteControl, RemoteControlled};
+use valib::dsp::{BlockAdapter, DSPMeta};
 
 use valib::oversample::Oversample;
 
@@ -14,18 +15,26 @@ mod dsp;
 const MAX_BUFFER_SIZE: usize = 512;
 const OVERSAMPLE: usize = 2;
 
-struct SvfMixerPlugin {
-    params: Arc<NihParamsController<Dsp>>,
-    dsp: Dsp,
+#[derive(Debug, Params)]
+struct SvfMixerParams {
+    #[id = "drive"]
+    drive: FloatParam,
+    #[id = "fc"]
+    cutoff: FloatParam,
+    #[id = "res"]
+    resonance: FloatParam,
+    #[id = "lpg"]
+    lp_gain: FloatParam,
+    #[id = "bpg"]
+    bp_gain: FloatParam,
+    #[id = "hpg"]
+    hp_gain: FloatParam,
 }
 
-impl Default for SvfMixerPlugin {
-    fn default() -> Self {
-        let samplerate = 44100.0;
-        let dsp_inner = DspInner::new(samplerate);
-        let dsp = Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE).with_dsp(samplerate, dsp_inner);
-        let params_controller = NihParamsController::new(&dsp, |param, _| match param {
-            DspParam::Drive => FloatParam::new(
+impl SvfMixerParams {
+    fn new(remote: &RemoteControl<DspParam>) -> Arc<Self> {
+        Arc::new(Self {
+            drive: FloatParam::new(
                 "Drive",
                 1.0,
                 FloatRange::Skewed {
@@ -37,10 +46,10 @@ impl Default for SvfMixerPlugin {
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
             .with_unit(" dB")
-            .into(),
-            DspParam::Cutoff => FloatParam::new(
+            .bind_to_parameter(remote, DspParam::Drive),
+            cutoff: FloatParam::new(
                 "Frequency",
-                300.,
+                3000.,
                 FloatRange::Skewed {
                     min: 20.,
                     max: 20e3,
@@ -49,13 +58,14 @@ impl Default for SvfMixerPlugin {
             )
             .with_value_to_string(formatters::v2s_f32_hz_then_khz_with_note_name(2, false))
             .with_string_to_value(formatters::s2v_f32_hz_then_khz())
-            .into(),
-            DspParam::Resonance => {
-                FloatParam::new("Q", 0.5, FloatRange::Linear { min: 0., max: 1.25 }).into()
-            }
-            DspParam::LpGain => FloatParam::new(
+            .bind_to_parameter(remote, DspParam::Cutoff),
+            resonance: {
+                FloatParam::new("Q", 0.5, FloatRange::Linear { min: 0., max: 1.25 })
+                    .bind_to_parameter(remote, DspParam::Resonance)
+            },
+            lp_gain: FloatParam::new(
                 "LP Gain",
-                0.,
+                1.,
                 FloatRange::SymmetricalSkewed {
                     min: -1.,
                     max: 1.,
@@ -66,8 +76,8 @@ impl Default for SvfMixerPlugin {
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
             .with_unit(" dB")
-            .into(),
-            DspParam::BpGain => FloatParam::new(
+            .bind_to_parameter(remote, DspParam::LpGain),
+            bp_gain: FloatParam::new(
                 "BP Gain",
                 0.,
                 FloatRange::SymmetricalSkewed {
@@ -80,8 +90,8 @@ impl Default for SvfMixerPlugin {
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
             .with_unit(" dB")
-            .into(),
-            DspParam::HpGain => FloatParam::new(
+            .bind_to_parameter(remote, DspParam::BpGain),
+            hp_gain: FloatParam::new(
                 "HP Gain",
                 0.,
                 FloatRange::SymmetricalSkewed {
@@ -94,12 +104,25 @@ impl Default for SvfMixerPlugin {
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
             .with_unit(" dB")
-            .into(),
-        });
-        Self {
-            params: Arc::new(params_controller),
-            dsp,
-        }
+            .bind_to_parameter(remote, DspParam::HpGain),
+        })
+    }
+}
+
+struct SvfMixerPlugin {
+    params: Arc<SvfMixerParams>,
+    dsp: RemoteControlled<Dsp>,
+}
+
+impl Default for SvfMixerPlugin {
+    fn default() -> Self {
+        let samplerate = 44100.0;
+        let dsp_inner = DspInner::new(OVERSAMPLE as f32 * samplerate);
+        let dsp = Oversample::new(OVERSAMPLE, MAX_BUFFER_SIZE)
+            .with_dsp(samplerate, BlockAdapter(dsp_inner));
+        let dsp = RemoteControlled::new(44100.0, 1e3, dsp);
+        let params = SvfMixerParams::new(&dsp.proxy);
+        Self { dsp, params }
     }
 }
 
@@ -135,7 +158,7 @@ impl nih_plug::prelude::Plugin for SvfMixerPlugin {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        let os_samplerate = self.dsp.os_factor() as f32 * buffer_config.sample_rate;
+        let os_samplerate = self.dsp.inner.os_factor() as f32 * buffer_config.sample_rate;
         self.dsp.inner.set_samplerate(os_samplerate);
         true
     }

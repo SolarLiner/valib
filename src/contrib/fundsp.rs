@@ -28,6 +28,7 @@ where
     }
 }
 
+#[profiling::all_functions]
 impl<Node: AudioNode> DSPProcess<{ Node::Inputs::USIZE }, { Node::Outputs::USIZE }> for An<Node>
 where
     Node::Sample: crate::Scalar,
@@ -84,7 +85,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{buffer::AudioBufferBox, DSPProcessBlock};
+    use crate::dsp::{buffer::AudioBufferBox, BlockAdapter, DSPProcessBlock};
 
     use crate::dsp::blocks::Integrator;
     use fundsp::hacker32::*;
@@ -93,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_wrapper() {
-        let mut dsp = sine_hz(440.0) * sine_hz(10.0);
+        let mut dsp = BlockAdapter(sine_hz(440.0) * sine_hz(10.0));
         let input = AudioBufferBox::zeroed(512);
         let mut output = AudioBufferBox::zeroed(512);
         dsp.process_block(input.as_ref(), output.as_mut());

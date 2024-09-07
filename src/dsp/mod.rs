@@ -4,6 +4,7 @@ use nalgebra::Complex;
 use num_traits::Zero;
 
 use crate::dsp::buffer::{AudioBufferBox, AudioBufferMut, AudioBufferRef};
+use crate::dsp::parameter::HasParameters;
 use crate::Scalar;
 
 use self::analysis::DspAnalysis;
@@ -72,11 +73,32 @@ pub trait DSPProcessBlock<const I: usize, const O: usize>: DSPMeta {
     }
 }
 
-impl<P, const I: usize, const O: usize> DSPProcessBlock<I, O> for P
+#[derive(Debug, Copy, Clone)]
+pub struct BlockAdapter<P>(pub P);
+
+impl<P: HasParameters> HasParameters for BlockAdapter<P> {
+    type Name = P::Name;
+
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        self.0.set_parameter(param, value)
+    }
+}
+
+impl<P: DSPMeta> DSPMeta for BlockAdapter<P> {
+    type Sample = P::Sample;
+}
+
+impl<P: DSPProcess<I, O>, const I: usize, const O: usize> DSPProcess<I, O> for BlockAdapter<P> {
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+        self.0.process(x)
+    }
+}
+
+#[profiling::all_functions]
+impl<P, const I: usize, const O: usize> DSPProcessBlock<I, O> for BlockAdapter<P>
 where
     P: DSPProcess<I, O>,
 {
-    #[inline(never)]
     fn process_block(
         &mut self,
         inputs: AudioBufferRef<P::Sample, I>,
@@ -86,7 +108,7 @@ where
             return;
         }
         for i in 0..inputs.samples() {
-            outputs.set_frame(i, self.process(inputs.get_frame(i)))
+            outputs.set_frame(i, self.0.process(inputs.get_frame(i)))
         }
     }
 }
@@ -96,7 +118,7 @@ where
 /// This introduces as much latency as the internal buffer size is.
 /// The internal buffer size is determined by either the max accepted buffer size of the inner instance, or is set
 /// to 64 samples by default.
-pub struct PerSampleBlockAdapter<P, const I: usize, const O: usize>
+pub struct SampleAdapter<P, const I: usize, const O: usize>
 where
     P: DSPProcessBlock<I, O>,
 {
@@ -108,7 +130,7 @@ where
     pub buffer_size: usize,
 }
 
-impl<P, const I: usize, const O: usize> std::ops::Deref for PerSampleBlockAdapter<P, I, O>
+impl<P, const I: usize, const O: usize> std::ops::Deref for SampleAdapter<P, I, O>
 where
     P: DSPProcessBlock<I, O>,
 {
@@ -119,7 +141,7 @@ where
     }
 }
 
-impl<P, const I: usize, const O: usize> std::ops::DerefMut for PerSampleBlockAdapter<P, I, O>
+impl<P, const I: usize, const O: usize> std::ops::DerefMut for SampleAdapter<P, I, O>
 where
     P: DSPProcessBlock<I, O>,
 {
@@ -128,7 +150,7 @@ where
     }
 }
 
-impl<P, const I: usize, const O: usize> PerSampleBlockAdapter<P, I, O>
+impl<P, const I: usize, const O: usize> SampleAdapter<P, I, O>
 where
     P: DSPProcessBlock<I, O>,
 {
@@ -157,7 +179,7 @@ where
     }
 }
 
-impl<P, const I: usize, const O: usize> DSPMeta for PerSampleBlockAdapter<P, I, O>
+impl<P, const I: usize, const O: usize> DSPMeta for SampleAdapter<P, I, O>
 where
     P: DSPProcessBlock<I, O>,
 {
@@ -179,7 +201,8 @@ where
     }
 }
 
-impl<P, const I: usize, const O: usize> DSPProcess<I, O> for PerSampleBlockAdapter<P, I, O>
+#[profiling::all_functions]
+impl<P, const I: usize, const O: usize> DSPProcess<I, O> for SampleAdapter<P, I, O>
 where
     P: DSPProcessBlock<I, O>,
 {
@@ -203,9 +226,9 @@ where
     }
 }
 
-impl<P, const I: usize, const O: usize> DspAnalysis<I, O> for PerSampleBlockAdapter<P, I, O>
+impl<P, const I: usize, const O: usize> DspAnalysis<I, O> for SampleAdapter<P, I, O>
 where
-    P: DspAnalysis<I, O>,
+    P: DSPProcessBlock<I, O> + DspAnalysis<I, O>,
 {
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
         self.inner.h_z(z)
@@ -247,14 +270,13 @@ mod tests {
             }
         }
 
-        let mut adaptor = PerSampleBlockAdapter::new_with_max_buffer_size(Counter::<f32>::new(), 4);
+        let adaptor = SampleAdapter::new_with_max_buffer_size(Counter::<f32>::new(), 4);
         assert_eq!(3, adaptor.latency());
 
         let expected = [0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 0.0];
         let mut actual = [0.0; 8];
 
-        // Calling `process_block` but it's actually calling the impl for all `DSP` passing each sample through.
-        adaptor.process_block(
+        BlockAdapter(adaptor).process_block(
             AudioBufferRef::empty(8),
             AudioBufferMut::new([&mut actual]).unwrap(),
         );

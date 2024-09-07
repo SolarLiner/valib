@@ -6,7 +6,7 @@ use crate::{dsp::DSPProcess, Scalar};
 /// Raw Band-Limited Impulse Train output. To be fed to leaky integrators to reconstruct the oscillator shape.
 #[derive(Debug, Clone, Copy)]
 pub struct Blit<T> {
-    p: T,
+    pub p: T,
     dp: T,
     pmax: T,
     x: T,
@@ -25,6 +25,7 @@ impl<T: Scalar> DSPMeta for Blit<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<0, 1> for Blit<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
@@ -41,6 +42,13 @@ impl<T: Scalar> DSPProcess<0, 1> for Blit<T> {
         self.x = T::simd_pi() * self.p;
         self.x = self.x.simd_max(1e-5);
         [self.x.simd_sin() / self.x]
+    }
+}
+
+impl<T: Copy> Blit<T> {
+    #[inline(always)]
+    pub fn pmax(&self) -> T {
+        self.pmax
     }
 }
 
@@ -66,6 +74,16 @@ impl<T: Scalar> Blit<T> {
         self.update_coefficients();
     }
 
+    pub fn set_position(&mut self, pos: T) {
+        let delta = pos - self.p;
+        self.p += delta * self.pmax;
+    }
+
+    pub fn with_position(mut self, pos: T) -> Self {
+        self.set_position(pos);
+        self
+    }
+
     fn update_coefficients(&mut self) {
         self.pmax = T::from_f64(0.5 * self.samplerate as f64) / self.fc;
     }
@@ -87,6 +105,7 @@ impl<T: Scalar> DSPMeta for Sawtooth<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<0, 1> for Sawtooth<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 0]) -> [Self::Sample; 1] {
@@ -113,6 +132,7 @@ impl<T: Scalar> Sawtooth<T> {
         self.blit.set_frequency(freq);
     }
 
+    #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn get_dc(pmax: T) -> T {
         -0.498 / pmax
@@ -137,6 +157,7 @@ impl<T: Scalar> DSPMeta for Square<T> {
     }
 }
 
+#[profiling::all_functions]
 impl<T: Scalar> DSPProcess<0, 1> for Square<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 0]) -> [Self::Sample; 1] {
@@ -188,13 +209,13 @@ impl<T: Scalar> Square<T> {
 #[cfg(test)]
 mod tests {
     use crate::dsp::buffer::AudioBuffer;
-    use crate::dsp::DSPProcessBlock;
+    use crate::dsp::{BlockAdapter, DSPProcessBlock};
 
     use super::*;
 
     #[test]
     fn test_blit() {
-        let mut blit = Blit::new(8192.0, 10.0);
+        let mut blit = BlockAdapter(Blit::new(8192.0, 10.0));
         insta::assert_debug_snapshot!(&blit);
         let input = AudioBuffer::zeroed(8192);
         let mut actual = AudioBuffer::zeroed(8192);
@@ -204,7 +225,7 @@ mod tests {
 
     #[test]
     fn test_sawtooth() {
-        let mut saw = Sawtooth::new(8192.0, 10.0);
+        let mut saw = BlockAdapter(Sawtooth::new(8192.0, 10.0));
         insta::assert_debug_snapshot!(&saw);
         let input = AudioBuffer::zeroed(8192);
         let mut actual = AudioBuffer::zeroed(8192);
@@ -214,7 +235,7 @@ mod tests {
 
     #[test]
     fn test_square() {
-        let mut square = Square::new(8192.0, 10.0, 0.5);
+        let mut square = BlockAdapter(Square::new(8192.0, 10.0, 0.5));
         insta::assert_debug_snapshot!(&square);
         let input = AudioBuffer::zeroed(8192);
         let mut actual = AudioBuffer::zeroed(8192);
@@ -224,7 +245,7 @@ mod tests {
 
     #[test]
     fn test_square_pw() {
-        let mut square = Square::new(8192.0, 10.0, 0.1);
+        let mut square = BlockAdapter(Square::new(8192.0, 10.0, 0.1));
         insta::assert_debug_snapshot!(&square);
         let input = AudioBuffer::zeroed(8192);
         let mut actual = AudioBuffer::zeroed(8192);

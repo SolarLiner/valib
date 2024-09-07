@@ -17,9 +17,10 @@ use std::fmt;
 use nalgebra::{Complex, SVector};
 use numeric_literals::replace_float_literals;
 
+use crate::dsp::parameter::HasParameters;
 use crate::dsp::DSPMeta;
 use crate::{
-    dsp::{analysis::DspAnalysis, DSPProcess},
+    dsp::{analysis::DspAnalysis, parameter::ParamId, parameter::ParamName, DSPProcess},
     math::bilinear_prewarming_bounded,
     saturators::{Saturator, Tanh},
     Scalar,
@@ -44,6 +45,7 @@ pub trait LadderTopology<T>: Default {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Ideal;
 
+#[profiling::all_functions]
 impl<T: Scalar> LadderTopology<T> for Ideal {
     #[replace_float_literals(T::from_f64(literal))]
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
@@ -58,7 +60,8 @@ impl<T: Scalar> LadderTopology<T> for Ideal {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OTA<S>(pub [S; 4]);
 
-impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for OTA<S> {
+#[profiling::all_functions]
+impl<T: Scalar, S: Default + Saturator<T>> LadderTopology<T> for OTA<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let yd = SVector::from([y[0] - y0, y[1] - y[0], y[2] - y[1], y[3] - y[2]]);
         let sout = SVector::from_fn(|i, _| self.0[i].saturate(yd[i]));
@@ -73,7 +76,8 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for OTA<S> {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Transistor<S>(pub [S; 5]);
 
-impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
+#[profiling::all_functions]
+impl<T: Scalar, S: Default + Saturator<T>> LadderTopology<T> for Transistor<S> {
     fn next_output(&mut self, wc: T, y0: T, y: SVector<T, 4>) -> SVector<T, 4> {
         let y0sat = wc * self.0[4].saturate(y0);
         let ysat = SVector::<_, 4>::from_fn(|i, _| wc * self.0[i].saturate(y[i]));
@@ -95,6 +99,12 @@ impl<T: Scalar, S: Saturator<T>> LadderTopology<T> for Transistor<S> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ParamName)]
+pub enum LadderParams {
+    Cutoff,
+    Resonance,
+}
+
 /// Ladder filter. This [`DSPProcess`] instance implements a saturated 4-pole lowpass filter, with feedback negatively added
 /// back into the input.
 #[derive(Debug, Copy, Clone)]
@@ -107,6 +117,17 @@ pub struct Ladder<T, Topo = OTA<Tanh>> {
     k: T,
     /// Whether or not the DC gain loss due to higher resonance values is compensated.
     pub compensated: bool,
+}
+
+impl<T: Scalar, Topo: LadderTopology<T>> HasParameters for Ladder<T, Topo> {
+    type Name = LadderParams;
+
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        match param {
+            LadderParams::Cutoff => self.set_cutoff(T::from_f64(value as _)),
+            LadderParams::Resonance => self.set_resonance(T::from_f64(value as _)),
+        }
+    }
 }
 
 impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
@@ -174,9 +195,11 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
     ///
     /// * `samplerate`: Signal sampling rate (Hz)
     /// * `frequency`: Cutoff frequency (Hz)
-    #[replace_float_literals(T::from_f64(literal))]
     pub fn set_cutoff(&mut self, frequency: T) {
-        self.wc = bilinear_prewarming_bounded(self.samplerate, T::simd_two_pi() * frequency);
+        self.wc = bilinear_prewarming_bounded(
+            self.samplerate,
+            T::from_f64(2.0) * T::simd_two_pi() * frequency,
+        );
     }
 
     /// Sets the resonance amount.
@@ -206,13 +229,19 @@ impl<T: Scalar, Topo: LadderTopology<T>> DSPMeta for Ladder<T, Topo> {
     }
 }
 
+fn quad_falloff<T: Scalar>(t: T) -> T {
+    T::simd_powi(T::one() - t.simd_clamp(T::zero(), T::one()), 2)
+}
+
+#[profiling::all_functions]
 impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSPProcess<1, 1> for Ladder<T, Topo> {
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let input_gain = if self.compensated { self.k + 1.0 } else { 1.0 };
         let x = input_gain * x[0];
-        let y0 = x - self.k * self.s[3];
+        let q_correction = quad_falloff(self.wc * self.inv_2fs / T::simd_two_pi());
+        let y0 = x - self.k * self.s[3] * (q_correction);
         let g = self.wc * self.inv_2fs;
         self.s = self.topology.next_output(g, y0, self.s);
         [self.s[3]]
@@ -239,8 +268,11 @@ mod tests {
     use rstest::rstest;
     use simba::simd::SimdComplexField;
 
-    use crate::dsp::{buffer::AudioBuffer, DSPProcessBlock};
     use crate::saturators::clippers::DiodeClipperModel;
+    use crate::{
+        dsp::{buffer::AudioBuffer, BlockAdapter, DSPProcessBlock},
+        util::tests::{Plot, Series},
+    };
 
     use super::*;
 
@@ -251,9 +283,13 @@ mod tests {
         #[values(false, true)] compensated: bool,
         #[values(0.0, 0.1, 0.5, 1.0)] resonance: f64,
     ) {
-        let mut filter =
-            Ladder::<f64, Ideal>::new(1024.0, 200.0, resonance).with_topology::<Topo>(topology);
-        filter.compensated = compensated;
+        use plotters::prelude::*;
+
+        let samplerate = 4096.0;
+        let mut filter = BlockAdapter(
+            Ladder::<f64, Ideal>::new(samplerate, 100.0, resonance).with_topology::<Topo>(topology),
+        );
+        filter.0.compensated = compensated;
         let input = AudioBuffer::new([std::iter::once(0.0)
             .chain(std::iter::repeat(1.0))
             .take(1024)
@@ -266,6 +302,38 @@ mod tests {
             .replace("::", "__")
             .replace(['<', '>'], "_");
         let name = format!("test_ladder_ir_{topo}_c{compensated}_r{resonance}");
+        let plot_title = format!("Ladder {topo} c={compensated} r={resonance}");
+        let inp_f32 = input
+            .get_channel(0)
+            .iter()
+            .copied()
+            .map(|x| x as f32)
+            .collect::<Box<[_]>>();
+        let out_f32 = output
+            .get_channel(0)
+            .iter()
+            .copied()
+            .map(|x| x as f32)
+            .collect::<Box<[_]>>();
+        Plot {
+            title: &plot_title,
+            bode: false,
+            series: &[
+                Series {
+                    label: "Input",
+                    samplerate: samplerate as f32,
+                    series: &*inp_f32,
+                    color: &BLUE,
+                },
+                Series {
+                    label: "Output",
+                    samplerate: samplerate as f32,
+                    series: &*out_f32,
+                    color: &RED,
+                },
+            ],
+        }
+        .create_svg(format!("plots/ladder/{name}.svg"));
         insta::assert_csv_snapshot!(name, output.get_channel(0), { "[]" => insta::rounded_redaction(3) })
     }
 
@@ -274,13 +342,32 @@ mod tests {
         #[values(false, true)] compensated: bool,
         #[values(0.0, 0.1, 0.2, 0.5, 1.0)] resonance: f64,
     ) {
-        let mut filter = Ladder::<_, Ideal>::new(1024.0, 200.0, resonance);
+        use crate::util::tests::Series;
+        use plotters::prelude::*;
+
+        let samplerate = 1024.0;
+        let mut filter = Ladder::<_, Ideal>::new(samplerate, 200.0, resonance);
         filter.compensated = compensated;
-        let response: [_; 512] = std::array::from_fn(|i| i as f64)
-            .map(|f| filter.freq_response(1024.0, f)[0][0].simd_abs())
-            .map(|x| 20.0 * x.log10());
+        let response: [_; 511] = std::array::from_fn(|i| (i + 1) as f64)
+            .map(|f| filter.freq_response(1024.0, f)[0][0].simd_abs());
+        let response_db = response.map(|x| 20.0 * x.log10());
+        let responsef32 = response.map(|x| x as f32);
 
         let name = format!("test_ladder_hz_c{compensated}_r{resonance}");
-        insta::assert_csv_snapshot!(name, &response as &[_], { "[]" => insta::rounded_redaction(3) })
+        let plot_title = format!("Ladder filter: compensated={compensated}, resonance={resonance}");
+        Plot {
+            title: &plot_title,
+            bode: true,
+            series: &[Series {
+                label: "Frequency response",
+                samplerate,
+                series: &responsef32,
+                color: &BLUE,
+            }],
+        }
+        .create_svg(format!(
+            "plots/ladder/freq_response__c{compensated}__r{resonance}.svg"
+        ));
+        insta::assert_csv_snapshot!(name, &response_db as &[_], { "[]" => insta::rounded_redaction(3) })
     }
 }

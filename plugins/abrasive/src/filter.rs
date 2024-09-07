@@ -252,7 +252,7 @@ impl Filter {
         f.reset();
         f.set_cutoff(fc);
         f.set_r(1. - q);
-        f.set_saturators(nl, nl);
+        f.set_saturator(nl);
     }
 
     #[replace_float_literals(Sample::from_f64(literal))]
@@ -267,7 +267,7 @@ impl Filter {
         if self.last_resclip != resclip {
             let nl = resclip.as_dynamic_type();
             self.clippers = [nl, nl, nl];
-            self.svf.set_saturators(nl, nl);
+            self.svf.set_saturator(nl);
             self.last_resclip = resclip;
         }
         let f = &mut self.svf;

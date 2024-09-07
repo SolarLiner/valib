@@ -1,12 +1,10 @@
-use std::fmt;
-use std::fmt::Formatter;
-
-use enum_map::Enum;
+use nih_plug::nih_log;
+use nih_plug::prelude::Enum;
 use num_traits::Zero;
 
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
-use valib::dsp::parameter::{HasParameters, Parameter, SmoothedParam};
-use valib::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
+use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
+use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::{DiodeClipper, DiodeClipperModel};
@@ -59,24 +57,15 @@ impl<T: Scalar> DSPProcess<1, 1> for DcBlocker<T> {
 type Sample = AutoF32x2;
 type Sample64 = AutoF64x2;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Enum)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Enum, ParamName)]
 pub enum DiodeType {
     Silicon,
     Germanium,
+    #[name = "LED"]
     Led,
 }
 
-impl fmt::Display for DiodeType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Silicon => write!(f, "Silicon"),
-            Self::Germanium => write!(f, "Germanium"),
-            Self::Led => write!(f, "LED"),
-        }
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Enum)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, ParamName)]
 pub enum DspParams {
     Drive,
     ModelSwitch,
@@ -88,11 +77,11 @@ pub enum DspParams {
 
 pub struct DspInner {
     drive: SmoothedParam,
-    model_switch: Parameter,
-    num_forward: Parameter,
-    num_backward: Parameter,
-    diode_type: Parameter,
-    force_reset: Parameter,
+    model_switch: bool,
+    num_forward: u8,
+    num_backward: u8,
+    diode_type: DiodeType,
+    force_reset: bool,
     nr_model: DiodeClipperModel<Sample64>,
     nr_nr: DiodeClipper<Sample64>,
 }
@@ -100,56 +89,69 @@ pub struct DspInner {
 impl DspInner {
     fn new(samplerate: f32) -> Self {
         Self {
-            drive: Parameter::new(1.0).smoothed_exponential(samplerate, 10.0),
-            model_switch: Parameter::new(0.0),
-            num_forward: Parameter::new(1.0),
-            num_backward: Parameter::new(1.0),
-            diode_type: Parameter::new(0.0),
-            force_reset: Parameter::new(0.0),
+            drive: SmoothedParam::exponential(1.0, samplerate, 10.0),
+            model_switch: false,
+            num_forward: 1,
+            num_backward: 1,
+            diode_type: DiodeType::Silicon,
+            force_reset: false,
             nr_model: DiodeClipperModel::new_silicon(1, 1),
             nr_nr: DiodeClipper::new_silicon(1, 1, Sample64::zero()),
         }
     }
 
     fn update_from_params(&mut self) {
-        if self.num_forward.has_changed()
-            || self.num_backward.has_changed()
-            || self.diode_type.has_changed()
-        {
-            let num_fwd = self.num_forward.get_value() as _;
-            let num_bck = self.num_backward.get_value() as _;
-            self.nr_model = match self.diode_type.get_enum::<DiodeType>() {
-                DiodeType::Silicon => DiodeClipperModel::new_silicon(num_fwd, num_bck),
-                DiodeType::Germanium => DiodeClipperModel::new_germanium(num_fwd, num_bck),
-                DiodeType::Led => DiodeClipperModel::new_led(num_fwd, num_bck),
-            };
-            let last_vout = self.nr_nr.last_output();
-            self.nr_nr = match self.diode_type.get_enum::<DiodeType>() {
-                DiodeType::Silicon => {
-                    DiodeClipper::new_silicon(num_fwd as usize, num_bck as usize, last_vout)
-                }
-                DiodeType::Germanium => {
-                    DiodeClipper::new_germanium(num_fwd as usize, num_bck as usize, last_vout)
-                }
-                DiodeType::Led => {
-                    DiodeClipper::new_led(num_fwd as usize, num_bck as usize, last_vout)
-                }
-            };
-        }
+        let num_fwd = self.num_forward;
+        let num_bck = self.num_backward;
+        self.nr_model = match self.diode_type {
+            DiodeType::Silicon => DiodeClipperModel::new_silicon(num_fwd, num_bck),
+            DiodeType::Germanium => DiodeClipperModel::new_germanium(num_fwd, num_bck),
+            DiodeType::Led => DiodeClipperModel::new_led(num_fwd, num_bck),
+        };
+        let last_vout = self.nr_nr.last_output();
+        self.nr_nr = match self.diode_type {
+            DiodeType::Silicon => {
+                DiodeClipper::new_silicon(num_fwd as usize, num_bck as usize, last_vout)
+            }
+            DiodeType::Germanium => {
+                DiodeClipper::new_germanium(num_fwd as usize, num_bck as usize, last_vout)
+            }
+            DiodeType::Led => DiodeClipper::new_led(num_fwd as usize, num_bck as usize, last_vout),
+        };
     }
 }
 
 impl HasParameters for DspInner {
-    type Enum = DspParams;
+    type Name = DspParams;
 
-    fn get_parameter(&self, param: Self::Enum) -> &Parameter {
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        let mut do_update = false;
         match param {
-            DspParams::Drive => &self.drive.param,
-            DspParams::ModelSwitch => &self.model_switch,
-            DspParams::DiodeType => &self.diode_type,
-            DspParams::NumForward => &self.num_forward,
-            DspParams::NumBackward => &self.num_backward,
-            DspParams::ForceReset => &self.force_reset,
+            DspParams::Drive => {
+                self.drive.param = value;
+            }
+            DspParams::ModelSwitch => {
+                self.model_switch = value > 0.5;
+            }
+            DspParams::DiodeType => {
+                self.diode_type =
+                    DiodeType::from_id(value.clamp(0.0, DiodeType::variants().len() as _) as _);
+                do_update = true;
+            }
+            DspParams::NumForward => {
+                self.num_forward = value.clamp(1.0, 5.0) as _;
+                do_update = true;
+            }
+            DspParams::NumBackward => {
+                self.num_backward = value.clamp(1.0, 5.0) as _;
+                do_update = true;
+            }
+            DspParams::ForceReset => {
+                self.reset();
+            }
+        }
+        if do_update {
+            self.update_from_params();
         }
     }
 }
@@ -158,12 +160,13 @@ impl DSPMeta for DspInner {
     type Sample = Sample;
 
     fn set_samplerate(&mut self, samplerate: f32) {
+        self.drive.set_samplerate(samplerate);
         self.nr_model.set_samplerate(samplerate);
         self.nr_nr.set_samplerate(samplerate);
     }
 
     fn latency(&self) -> usize {
-        if self.model_switch.get_bool() {
+        if self.model_switch {
             self.nr_model.latency()
         } else {
             self.nr_nr.latency()
@@ -171,21 +174,18 @@ impl DSPMeta for DspInner {
     }
 
     fn reset(&mut self) {
+        self.drive.reset();
         self.nr_model.reset();
         self.nr_nr.reset();
+        self.force_reset = false;
     }
 }
 
 impl DSPProcess<1, 1> for DspInner {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        if self.force_reset.has_changed() {
-            self.reset()
-        }
-        self.update_from_params();
-
-        let drive = Sample64::from_f64(self.drive.next_sample() as _);
+        let drive = self.drive.next_sample_as::<Sample64>();
         let x64 = x.map(|x| x.cast() * drive);
-        if self.model_switch.get_bool() {
+        if self.model_switch {
             self.nr_model.process(x64)
         } else {
             self.nr_nr.process(x64)
@@ -196,7 +196,7 @@ impl DSPProcess<1, 1> for DspInner {
 }
 
 pub struct Dsp {
-    inner: Oversampled<Sample, DspInner>,
+    inner: Oversampled<Sample, BlockAdapter<DspInner>>,
     dc_blocker: DcBlocker<Sample>,
 }
 
@@ -236,18 +236,25 @@ impl DSPProcessBlock<1, 1> for Dsp {
 }
 
 impl HasParameters for Dsp {
-    type Enum = DspParams;
+    type Name = DspParams;
 
-    fn get_parameter(&self, param: Self::Enum) -> &Parameter {
-        self.inner.get_parameter(param)
+    fn set_parameter(&mut self, param: Self::Name, value: f32) {
+        self.inner.set_parameter(param, value);
     }
 }
 
-pub fn create_dsp(samplerate: f32, oversample: usize, max_block_size: usize) -> Dsp {
-    let inner =
-        Oversample::new(oversample, max_block_size).with_dsp(samplerate, DspInner::new(samplerate));
-    Dsp {
+pub fn create_dsp(
+    samplerate: f32,
+    oversample: usize,
+    max_block_size: usize,
+) -> RemoteControlled<Dsp> {
+    let inner = Oversample::new(oversample, max_block_size).with_dsp(
+        samplerate,
+        BlockAdapter(DspInner::new(samplerate * oversample as f32)),
+    );
+    let dsp = Dsp {
         inner,
         dc_blocker: DcBlocker::new(samplerate),
-    }
+    };
+    RemoteControlled::new(samplerate, 1e3, dsp)
 }

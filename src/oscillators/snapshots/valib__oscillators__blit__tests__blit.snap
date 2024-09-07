@@ -2,11 +2,13 @@
 source: src/oscillators/blit.rs
 expression: "&blit"
 ---
-Blit {
-    p: 0.0,
-    dp: 1.0,
-    pmax: 409.6,
-    x: 0.0,
-    fc: 10.0,
-    samplerate: 8192.0,
-}
+BlockAdapter(
+    Blit {
+        p: 0.0,
+        dp: 1.0,
+        pmax: 409.6,
+        x: 0.0,
+        fc: 10.0,
+        samplerate: 8192.0,
+    },
+)
