@@ -1,5 +1,5 @@
 [package]
-name = "valib_derive"
+name = "valib-derive"
 version.workspace = true
 rust-version.workspace = true
 authors.workspace = true

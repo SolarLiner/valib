@@ -5,23 +5,19 @@
 //! # Usage
 //!
 //! ```rust
-//! use valib::dsp::DSPProcess;
-//! use valib::filters::biquad::Biquad;
-//! use valib::saturators::Tanh;
+//! use valib_core::dsp::DSPProcess;
+//! use valib_filters::biquad::Biquad;
+//! use valib_saturators::Tanh;
 //! let mut lowpass = Biquad::<f32, Tanh>::lowpass(0.25 /* normalized frequency */, 0.707 /* Q */);
 //! let output = lowpass.process([0.0]);
 //! ```
 
 use nalgebra::Complex;
 use numeric_literals::replace_float_literals;
-
-use crate::dsp::analysis::DspAnalysis;
-use crate::dsp::{DSPMeta, DSPProcess};
-use crate::{
-    saturators,
-    saturators::{Dynamic, Saturator},
-    Scalar,
-};
+use valib_core::dsp::analysis::DspAnalysis;
+use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::Scalar;
+use valib_saturators::{Dynamic, Saturator};
 
 #[cfg(never)]
 pub mod design;
@@ -36,16 +32,20 @@ pub struct Biquad<T, S> {
     sats: [S; 2],
 }
 
-// TODO: No need to restrict this on dynamic saturators only
-impl<T> Biquad<T, Dynamic<T>> {
+impl<T, S> Biquad<T, S> {
     /// Apply these new saturators to this Biquad instance, returning a new instance of it.
-    pub fn with_saturators(mut self, a: Dynamic<T>, b: Dynamic<T>) -> Biquad<T, Dynamic<T>> {
-        self.set_saturators(a, b);
-        self
+    pub fn with_saturators<S2>(mut self, s0: S2, s1: S2) -> Biquad<T, S2> {
+        let Self { na, b, s, .. } = self;
+        Biquad {
+            na,
+            b,
+            s,
+            sats: [s0, s1],
+        }
     }
 
     /// Replace the saturators in this Biquad instance with the provided values.
-    pub fn set_saturators(&mut self, a: Dynamic<T>, b: Dynamic<T>) {
+    pub fn set_saturators(&mut self, a: S, b: S) {
         self.sats = [a, b];
     }
 }
@@ -262,14 +262,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsp::BlockAdapter;
-    use crate::{
-        dsp::{
-            buffer::{AudioBufferBox, AudioBufferRef},
-            DSPProcessBlock,
-        },
-        saturators::clippers::DiodeClipperModel,
+    use valib_core::dsp::BlockAdapter;
+    use valib_core::dsp::{
+        buffer::{AudioBufferBox, AudioBufferRef},
+        DSPProcessBlock,
     };
+    use valib_saturators::clippers::DiodeClipperModel;
 
     #[test]
     fn test_lp_diode_clipper() {

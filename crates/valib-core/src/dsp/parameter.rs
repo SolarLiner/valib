@@ -22,7 +22,6 @@ pub use valib_derive::ParamName;
 
 use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use crate::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
-use crate::saturators::Slew;
 use crate::Scalar;
 
 /// Filtered parameter value, useful with any DSP<1, 1, Sample=f32> algorithm.
@@ -50,8 +49,16 @@ impl<P: DSPProcess<1, 1, Sample = f32>> DSPProcess<0, 1> for FilteredParam<P> {
 
 #[derive(Debug, Copy, Clone)]
 enum Smoothing {
-    Exponential { state: f32, fc: f32, lambda: f32 },
-    Linear { slew: Slew<f32>, max_diff: f32 },
+    Exponential {
+        state: f32,
+        fc: f32,
+        lambda: f32,
+    },
+    Linear {
+        samplerate: f32,
+        last_out: f32,
+        max_per_sec: f32,
+    },
 }
 
 impl Smoothing {
@@ -60,8 +67,8 @@ impl Smoothing {
             Self::Exponential { fc, lambda, .. } => {
                 *lambda = *fc / new_sr;
             }
-            Self::Linear { slew, max_diff } => {
-                slew.set_max_diff(*max_diff, new_sr);
+            Self::Linear { samplerate, .. } => {
+                *samplerate = new_sr;
             }
         }
     }
@@ -69,7 +76,7 @@ impl Smoothing {
     fn is_changing(&self, value: f32) -> bool {
         match self {
             Self::Exponential { state, .. } => (value - state).abs() < 1e-6,
-            Self::Linear { slew, .. } => slew.is_changing(value),
+            Self::Linear { last_out, .. } => (value - last_out).abs() < 1e-6,
         }
     }
 }
@@ -86,7 +93,16 @@ impl DSPProcess<1, 1> for Smoothing {
                 *state += (x[0] - *state) * *lambda;
                 [*state]
             }
-            Self::Linear { slew: s, .. } => s.process(x),
+            Self::Linear {
+                samplerate,
+                last_out,
+                max_per_sec,
+            } => {
+                let max_diff = *max_per_sec / *samplerate;
+                let diff = x[0] - *last_out;
+                *last_out += diff.clamp(-max_diff, max_diff);
+                [*last_out]
+            }
         }
     }
 }
@@ -122,12 +138,12 @@ impl SmoothedParam {
     /// * `samplerate`: Samplerate at which the smoother will run.
     /// * `duration_ms`: Maximum duration of a sweep, that is the duration it would take to go from one extreme to the other.
     pub fn linear(initial_value: f32, samplerate: f32, duration_ms: f32) -> Self {
-        let max_diff = 1000.0 / duration_ms;
         Self {
             param: initial_value,
             smoothing: Smoothing::Linear {
-                slew: Slew::new(samplerate, max_diff).with_state(initial_value),
-                max_diff,
+                samplerate,
+                max_per_sec: duration_ms.recip(),
+                last_out: initial_value,
             },
         }
     }
@@ -153,7 +169,7 @@ impl SmoothedParam {
 
     pub fn current_value(&self) -> f32 {
         match self.smoothing {
-            Smoothing::Linear { slew, .. } => slew.current_value(),
+            Smoothing::Linear { last_out, .. } => *last_out,
             Smoothing::Exponential { state, .. } => state,
         }
     }

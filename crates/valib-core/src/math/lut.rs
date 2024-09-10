@@ -1,8 +1,7 @@
 use std::ops::Range;
 
-use numeric_literals::replace_float_literals;
-
 use crate::{Scalar, SimdCast};
+use numeric_literals::replace_float_literals;
 
 use super::interpolation::{Interpolate, SimdIndex, SimdInterpolatable};
 

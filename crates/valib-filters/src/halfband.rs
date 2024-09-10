@@ -4,9 +4,9 @@
 
 use num_traits::Zero;
 
-use crate::dsp::blocks::Series;
-use crate::dsp::{DSPMeta, DSPProcess};
-use crate::Scalar;
+use valib_core::dsp::blocks::Series;
+use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::Scalar;
 
 /// Specialized 2nd-order allpass filter.
 #[derive(Debug, Copy, Clone)]

@@ -1,5 +1,4 @@
 use crate::dsp::{DSPMeta, DSPProcess};
-use crate::Scalar;
 pub use adapters::*;
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 pub use diode::*;
@@ -10,6 +9,7 @@ use simba::simd::SimdComplexField;
 use std::any::Any;
 use std::sync::Arc;
 pub use unadapted::*;
+use valib_core::Scalar;
 
 pub mod adapters;
 pub mod diode;
@@ -104,9 +104,9 @@ mod tests {
     use crate::wdf::leaves::{Capacitor, ResistiveVoltageSource, Resistor};
     use crate::wdf::module::WdfModule;
     use crate::wdf::unadapted::{IdealVoltageSource, OpenCircuit};
-    use crate::Scalar;
     use plotters::prelude::{BLUE, GREEN, RED};
     use std::f32::consts::TAU;
+    use valib_core::Scalar;
 
     #[test]
     fn test_voltage_divider() {

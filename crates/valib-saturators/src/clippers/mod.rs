@@ -1,14 +1,14 @@
+use super::adaa::Antiderivative;
+use crate::MultiSaturator;
+use crate::Saturator;
 use nalgebra::{SMatrix, SVector};
 use num_traits::Float;
 use numeric_literals::replace_float_literals;
-use simba::simd::SimdBool;
-
-use super::adaa::Antiderivative;
-use crate::dsp::DSPMeta;
-use crate::dsp::DSPProcess;
-use crate::math::nr::{newton_rhapson_tol_max_iter, RootEq};
-use crate::saturators::MultiSaturator;
-use crate::{saturators::Saturator, Scalar};
+use valib_core::dsp::DSPMeta;
+use valib_core::dsp::DSPProcess;
+use valib_core::math::nr::{newton_rhapson_tol_max_iter, RootEq};
+use valib_core::simd::SimdBool;
+use valib_core::Scalar;
 
 mod diode_clipper_model_data;
 
@@ -227,12 +227,12 @@ impl<T: Scalar, const N: usize> MultiSaturator<T, N> for DiodeClipperModel<T> {
 #[cfg(test)]
 mod tests {
     use plotters::prelude::*;
-    use simba::simd::SimdValue;
     use std::hint;
+    use valib_core::simd::SimdValue;
 
     use super::{DiodeClipper, DiodeClipperModel};
-    use crate::dsp::DSPProcess;
-    use crate::util::tests::{Plot, Series};
+    use valib_core::dsp::DSPProcess;
+    use valib_core::util::tests::{Plot, Series};
 
     fn dc_sweep(name: &str, mut dsp: impl DSPProcess<1, 1, Sample = f32>) {
         let results = Vec::from_iter(

@@ -1,4 +1,4 @@
-#![doc = include_str!("./README.md")]
+#![doc = include_str!("README.md")]
 
 use nalgebra::Complex;
 use num_traits::Zero;

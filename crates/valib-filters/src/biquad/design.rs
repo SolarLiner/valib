@@ -5,10 +5,10 @@ use nalgebra::Complex;
 use num_traits::{NumOps, One, Zero};
 use simba::simd::{SimdComplexField, SimdValue};
 
-use crate::dsp::blocks::Series;
-use crate::math::polynom::Polynom;
-use crate::saturators::Linear;
-use crate::Scalar;
+use valib_core::dsp::blocks::Series;
+use valib_core::math::polynom::Polynom;
+use valib_core::Scalar;
+use valib_saturators::Linear;
 
 use super::Biquad;
 

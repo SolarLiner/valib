@@ -1,7 +1,7 @@
 use numeric_literals::replace_float_literals;
 
 use super::DiodeClipperModel;
-use crate::Scalar;
+use valib_core::Scalar;
 
 // These seemingly magic constants have been fit against the diode clipper circuit equation for
 // combinations of up to 5 diodes in series each way.

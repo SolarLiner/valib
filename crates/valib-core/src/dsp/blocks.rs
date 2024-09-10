@@ -1,9 +1,9 @@
 //! Small [`DSPProcess`] building blocks for reusability.
-use core::fmt;
+
 use std::borrow::Cow;
 use std::marker::PhantomData;
 
-use nalgebra::{allocator::SameShapeVectorAllocator, Complex, ComplexField, SMatrix, SVector};
+use nalgebra::{Complex, ComplexField, SMatrix, SVector};
 use num_traits::{Euclid, One, Zero};
 use numeric_literals::replace_float_literals;
 

@@ -15,7 +15,7 @@ use typenum::Unsigned;
 
 impl<Node: AudioNode> DSPMeta for An<Node>
 where
-    Node::Sample: crate::Scalar,
+    Node::Sample: valib_core::Scalar,
 {
     type Sample = Node::Sample;
 
@@ -31,7 +31,7 @@ where
 #[profiling::all_functions]
 impl<Node: AudioNode> DSPProcess<{ Node::Inputs::USIZE }, { Node::Outputs::USIZE }> for An<Node>
 where
-    Node::Sample: crate::Scalar,
+    Node::Sample: valib_core::Scalar,
 {
     fn process(
         &mut self,

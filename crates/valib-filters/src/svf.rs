@@ -6,16 +6,13 @@
 use nalgebra::Complex;
 use num_traits::One;
 use numeric_literals::replace_float_literals;
-
-use crate::{
-    dsp::{
-        analysis::DspAnalysis,
-        parameter::{HasParameters, ParamId, ParamName},
-        DSPMeta, DSPProcess,
-    },
-    saturators::{Linear, Saturator},
-    Scalar,
+use valib_core::dsp::{
+    analysis::DspAnalysis,
+    parameter::{HasParameters, ParamId, ParamName},
+    DSPMeta, DSPProcess,
 };
+use valib_core::Scalar;
+use valib_saturators::{Linear, Saturator};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ParamName)]
 pub enum SvfParams {

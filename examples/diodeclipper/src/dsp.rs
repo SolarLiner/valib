@@ -10,7 +10,7 @@ use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::{DiodeClipper, DiodeClipperModel};
 use valib::saturators::Linear;
 use valib::simd::{AutoF32x2, AutoF64x2, SimdComplexField};
-use valib::{Scalar, SimdCast};
+use valib_core::{Scalar, SimdCast};
 
 struct DcBlocker<T>(Biquad<T, Linear>);
 

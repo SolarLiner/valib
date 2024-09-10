@@ -1,4 +1,5 @@
-use crate::{math, Scalar};
+use crate::math;
+use crate::Scalar;
 use nalgebra::{SMatrix, SVector};
 use num_traits::{Float, Zero};
 use simba::simd::{SimdBool, SimdPartialOrd, SimdValue};

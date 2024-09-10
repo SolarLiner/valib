@@ -1,8 +1,7 @@
+use crate::{Scalar, SimdCast};
 use num_traits::{AsPrimitive, Float, FromPrimitive, Num, One, Zero};
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdPartialOrd, SimdValue};
-
-use crate::{Scalar, SimdCast};
 
 pub fn simd_index_scalar<Simd: Zero + SimdValue, Index: SimdValue<Element = usize>>(
     values: &[Simd::Element],
@@ -12,7 +11,7 @@ where
     Simd::Element: Copy,
 {
     let mut ret = Simd::zero();
-    for i in 0..Simd::lanes() {
+    for i in 0..Simd::LANES {
         let ix = index.extract(i);
         ret.replace(i, values[ix]);
     }
@@ -27,7 +26,7 @@ where
     <Index as SimdValue>::Element: AsPrimitive<usize>,
 {
     let mut ret = Simd::zero();
-    for i in 0..Index::lanes() {
+    for i in 0..Index::LANES {
         let ix = index.extract(i).as_();
         ret.replace(i, values[ix].extract(i));
     }
@@ -40,7 +39,7 @@ pub fn simd_is_finite<
     value: Simd,
 ) -> Simd::SimdBool {
     let mut mask = Simd::SimdBool::default();
-    for i in 0..Simd::lanes() {
+    for i in 0..Simd::LANES {
         mask.replace(i, value.extract(i).is_finite())
     }
     mask

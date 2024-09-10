@@ -1,12 +1,11 @@
-use std::ops::Range;
-
 use crate::dsp::DSPMeta;
 use crate::math::interpolation::{SimdIndex, SimdInterpolatable};
 use crate::{
     dsp::DSPProcess,
     math::interpolation::{Interpolate, Linear},
-    Scalar, SimdCast,
 };
+use std::ops::Range;
+use valib_core::{Scalar, SimdCast};
 
 /// Wavetable oscillator, reading samples from its internal array, with a customizable interpolation method
 /// its DSP implementation expects a phasor signal as its first input

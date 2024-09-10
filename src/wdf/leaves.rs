@@ -1,7 +1,7 @@
 use num_traits::Zero;
 
 use crate::wdf::{AdaptedWdf, Wave, Wdf};
-use crate::Scalar;
+use valib_core::Scalar;
 
 #[derive(Debug, Copy, Clone)]
 pub struct ResistiveVoltageSource<T> {

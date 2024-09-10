@@ -2,10 +2,10 @@ use crate::math::nr::{newton_rhapson_tol_max_iter, RootEq};
 use crate::saturators::clippers::{DiodeClipper, DiodeClipperModel};
 use crate::wdf::unadapted::WdfDsp;
 use crate::wdf::{Wave, Wdf};
-use crate::Scalar;
 use nalgebra::{SMatrix, SVector, SimdBool};
 use num_traits::{Float, Num, Zero};
 use numeric_literals::replace_float_literals;
+use valib_core::Scalar;
 
 #[inline]
 #[replace_float_literals(T::from_f64(literal))]

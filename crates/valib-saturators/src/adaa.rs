@@ -1,9 +1,9 @@
 use numeric_literals::replace_float_literals;
-use simba::simd::SimdBool;
+use valib_core::simd::SimdBool;
 
-use crate::dsp::{DSPMeta, DSPProcess};
-use crate::saturators::{Asinh, Blend, Clipper, Saturator, Tanh};
-use crate::Scalar;
+use crate::{Asinh, Blend, Clipper, Saturator, Tanh};
+use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::Scalar;
 
 /// Trait for functions that have antiderivatives.
 pub trait Antiderivative<T> {

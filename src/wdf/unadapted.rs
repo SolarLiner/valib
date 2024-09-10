@@ -1,8 +1,8 @@
 use crate::dsp::{DSPMeta, DSPProcess};
 use crate::wdf::{Wave, Wdf};
-use crate::Scalar;
 use num_traits::Zero;
 use simba::simd::SimdBool;
+use valib_core::Scalar;
 
 #[derive(Debug, Copy, Clone)]
 pub struct IdealVoltageSource<T> {

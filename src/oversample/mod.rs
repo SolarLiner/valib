@@ -11,7 +11,7 @@ use crate::dsp::{DSPMeta, DSPProcess};
 use crate::filters::halfband;
 use crate::filters::halfband::HalfbandFilter;
 use crate::voice::VoiceManager;
-use crate::Scalar;
+use valib_core::Scalar;
 
 const CASCADE: usize = 16;
 
@@ -397,16 +397,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use numeric_literals::replace_float_literals;
-
-    use crate::{
-        dsp::{buffer::AudioBufferBox, DSPProcessBlock as _},
-        Scalar,
-    };
+    use crate::dsp::{buffer::AudioBufferBox, DSPProcessBlock as _};
     use crate::{
         dsp::{BlockAdapter, DSPMeta},
         util::tests::{Plot, Series},
     };
+    use numeric_literals::replace_float_literals;
+    use valib_core::Scalar;
 
     use super::{Oversample, PingPongBuffer};
 

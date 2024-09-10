@@ -11,7 +11,7 @@ use valib::saturators::adaa::{Adaa, Antiderivative, Antiderivative2};
 use valib::saturators::clippers::DiodeClipperModel;
 use valib::saturators::{Asinh, Clipper, Linear, Saturator, Tanh};
 use valib::simd::{AutoF32x2, AutoF64x2, SimdComplexField};
-use valib::{Scalar, SimdCast};
+use valib_core::{Scalar, SimdCast};
 
 struct DcBlocker<T>(Biquad<T, Linear>);
 

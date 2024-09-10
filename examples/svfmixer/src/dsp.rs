@@ -8,7 +8,7 @@ use valib::filters::svf::Svf;
 use valib::oversample::Oversampled;
 use valib::saturators::{Clipper, Saturator, Slew};
 use valib::simd::{AutoSimd, SimdComplexField, SimdValue};
-use valib::Scalar;
+use valib_core::Scalar;
 
 pub(crate) type Sample = AutoSimd<[f32; 2]>;
 

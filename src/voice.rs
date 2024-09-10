@@ -1,11 +1,10 @@
-use num_traits::{One, Zero};
-
 use crate::dsp::DSPMeta;
 use crate::{
     dsp::DSPProcess,
     util::{midi_to_freq, semitone_to_ratio},
-    Scalar,
 };
+use num_traits::{One, Zero};
+use valib_core::Scalar;
 
 #[allow(unused_variables)]
 pub trait VoiceManager<const N: usize> {

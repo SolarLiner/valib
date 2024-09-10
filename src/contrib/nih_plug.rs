@@ -10,7 +10,7 @@ use nih_plug::prelude::*;
 
 use crate::dsp::parameter::{ParamName, RemoteControl};
 use crate::dsp::DSPProcessBlock;
-use crate::Scalar;
+use valib_core::Scalar;
 
 pub fn enum_int_param<E: 'static + Enum + PartialEq>(
     param_name: impl Into<String>,

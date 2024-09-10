@@ -1,7 +1,7 @@
-use numeric_literals::replace_float_literals;
-
 use crate::dsp::DSPMeta;
-use crate::{dsp::DSPProcess, Scalar};
+use crate::dsp::DSPProcess;
+use numeric_literals::replace_float_literals;
+use valib_core::Scalar;
 
 /// Raw Band-Limited Impulse Train output. To be fed to leaky integrators to reconstruct the oscillator shape.
 #[derive(Debug, Clone, Copy)]

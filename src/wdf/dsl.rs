@@ -1,8 +1,8 @@
 use crate::saturators::clippers::{DiodeClipper, DiodeClipperModel};
 use crate::wdf::*;
-use crate::Scalar;
 use atomic_refcell::AtomicRefCell;
 use std::sync::Arc;
+use valib_core::Scalar;
 
 #[inline]
 pub fn node<T>(value: T) -> Node<T> {

@@ -1,5 +1,4 @@
 use nalgebra::{Complex, Dim, OVector};
-use num_traits::Float;
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdBool, SimdComplexField};
 

@@ -1,8 +1,8 @@
-use crate::dsp::{DSPMeta, DSPProcess};
-use crate::math::smooth_clamp;
-use crate::saturators::Saturator;
-use crate::Scalar;
+use crate::Saturator;
 use numeric_literals::replace_float_literals;
+use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::math::smooth_clamp;
+use valib_core::Scalar;
 
 /// Memoryless nonlinearity for a BJT NPN Transistor in a common-collector configuration.
 /// `xbias` and `ybias` are empirical values that can be fit to DC transfer data or to recenter the
@@ -48,9 +48,9 @@ impl<T: Scalar> DSPProcess<1, 1> for CommonCollector<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::lerp;
-    use crate::util::tests::{Plot, Series};
     use plotters::prelude::BLUE;
+    use valib_core::util::lerp;
+    use valib_core::util::tests::{Plot, Series};
 
     #[test]
     fn test_common_collector() {

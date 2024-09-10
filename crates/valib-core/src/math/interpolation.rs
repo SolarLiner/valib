@@ -3,8 +3,8 @@ use num_traits::{FromPrimitive, NumAssignOps, NumOps};
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdValue;
 
-use crate::Scalar;
-use crate::{util::simd_index_simd, SimdCast};
+use crate::util::simd_index_simd;
+use crate::{Scalar, SimdCast};
 
 pub trait SimdIndex:
     Copy + NumAssignOps + NumOps + SimdPartialOrd + SimdValue<Element = usize>
@@ -50,7 +50,7 @@ pub trait Interpolate<T, const N: usize> {
         let input_index = t.simd_floor().cast();
         let taps_ix: [_; N] = std::array::from_fn(|i| {
             let mut output = input_index;
-            for j in 0..<T as SimdCast<usize>>::Output::lanes() {
+            for j in 0..<T as SimdCast<usize>>::Output::LANES {
                 output.replace(j, Self::indices(output.extract(j))[i]);
             }
             output

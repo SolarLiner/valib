@@ -1,9 +1,9 @@
 use std::{collections::VecDeque, ops};
 
-use numeric_literals::replace_float_literals;
-
 use crate::dsp::DSPMeta;
-use crate::{dsp::DSPProcess, Scalar};
+use crate::dsp::DSPProcess;
+use numeric_literals::replace_float_literals;
+use valib_core::Scalar;
 
 fn slice_add<T: Copy + ops::Add<T, Output = T>>(in1: &[T], in2: &[T], out: &mut [T]) {
     let len = in1.len().min(in2.len()).min(out.len());
@@ -140,7 +140,7 @@ impl<T: Scalar> DSPProcess<1, 1> for Fir<T> {
 pub mod kernels {
     use numeric_literals::replace_float_literals;
 
-    use crate::Scalar;
+    use valib_core::Scalar;
 
     #[replace_float_literals(T::from_f64(literal))]
     pub fn windowed_sinc_in_place<T: Scalar>(fc: T, slice: &mut [T]) {

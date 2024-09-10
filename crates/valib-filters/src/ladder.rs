@@ -5,9 +5,9 @@
 //! # Example
 //!
 //! ```rust
-//! use valib::dsp::DSPProcess;
-//! use valib::filters::ladder::{Ladder, OTA};
-//! use valib::saturators::Tanh;
+//! use valib_core::dsp::DSPProcess;
+//! use valib_filters::ladder::{Ladder, OTA};
+//! use valib_saturators::Tanh;
 //! let mut filter = Ladder::<f32, OTA<Tanh>>::new(44100.0, 300.0, 0.5);
 //! let output = filter.process([0.0]);
 //! ```
@@ -16,15 +16,13 @@ use std::fmt;
 
 use nalgebra::{Complex, SVector};
 use numeric_literals::replace_float_literals;
-
-use crate::dsp::parameter::HasParameters;
-use crate::dsp::DSPMeta;
-use crate::{
-    dsp::{analysis::DspAnalysis, parameter::ParamId, parameter::ParamName, DSPProcess},
-    math::bilinear_prewarming_bounded,
-    saturators::{Saturator, Tanh},
-    Scalar,
-};
+use valib_core::dsp::analysis::DspAnalysis;
+use valib_core::dsp::parameter::HasParameters;
+use valib_core::dsp::DSPMeta;
+use valib_core::dsp::{parameter::ParamId, parameter::ParamName, DSPProcess};
+use valib_core::math::bilinear_prewarming_bounded;
+use valib_core::Scalar;
+use valib_saturators::{Saturator, Tanh};
 
 /// Ladder topology struct. Internal state of the saturators will be held within instances of this trait.
 pub trait LadderTopology<T>: Default {
@@ -144,9 +142,9 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
     /// # Examples
     ///
     /// ```
-    /// use valib::filters::ladder::{Ideal, Ladder, OTA, Transistor};
-    /// use valib::saturators::clippers::DiodeClipperModel;
-    /// use valib::saturators::Tanh;
+    /// use valib_filters::ladder::{Ideal, Ladder, OTA, Transistor};
+    /// use valib_saturators::clippers::DiodeClipperModel;
+    /// use valib_saturators::Tanh;
     /// let ota_ladder = Ladder::<_, OTA<Tanh>>::new(48000.0, 440.0, 1.0);
     /// let ideal_ladder = Ladder::<_, Ideal>::new(48000.0, 440.0, 1.0);
     /// let transistor_ladder = Ladder::<_, Transistor<DiodeClipperModel<_>>>::new(48000.0, 440.0, 1.0);
@@ -250,7 +248,7 @@ impl<T: Scalar + fmt::Debug, Topo: LadderTopology<T>> DSPProcess<1, 1> for Ladde
 
 impl<T: Scalar, Topo: LadderTopology<T>> DspAnalysis<1, 1> for Ladder<T, Topo> {
     #[replace_float_literals(Complex::from(T::from_f64(literal)))]
-    fn h_z(&self, z: nalgebra::Complex<Self::Sample>) -> [[nalgebra::Complex<Self::Sample>; 1]; 1] {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
         let input_gain = if self.compensated {
             (Complex::from(self.k) + 1.0) * 0.707_945_784
         } else {
@@ -266,13 +264,14 @@ impl<T: Scalar, Topo: LadderTopology<T>> DspAnalysis<1, 1> for Ladder<T, Topo> {
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
-    use simba::simd::SimdComplexField;
+    use valib_core::simd::SimdComplexField;
 
-    use crate::saturators::clippers::DiodeClipperModel;
-    use crate::{
+    use valib_core::{
         dsp::{buffer::AudioBuffer, BlockAdapter, DSPProcessBlock},
         util::tests::{Plot, Series},
     };
+    use valib_saturators::clippers::DiodeClipperModel;
+    use valib_saturators::Tanh;
 
     use super::*;
 
@@ -342,8 +341,8 @@ mod tests {
         #[values(false, true)] compensated: bool,
         #[values(0.0, 0.1, 0.2, 0.5, 1.0)] resonance: f64,
     ) {
-        use crate::util::tests::Series;
         use plotters::prelude::*;
+        use valib_core::util::tests::Series;
 
         let samplerate = 1024.0;
         let mut filter = Ladder::<_, Ideal>::new(samplerate, 200.0, resonance);

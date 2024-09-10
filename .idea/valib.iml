@@ -16,7 +16,10 @@
       <sourceFolder url="file://$MODULE_DIR$/examples/slew/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/slew/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/wdfclipper/src" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/valib_derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/valib-core/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/valib-derive/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/valib-filters/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/valib-saturators/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>

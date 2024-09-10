@@ -4,9 +4,9 @@
 //!
 //! ```rust
 //! use nalgebra::SMatrix;
-//! use valib::dsp::DSPProcess;
-//! use valib::filters::statespace::StateSpace;
-//! use valib::Scalar;
+//! use valib_core::dsp::DSPProcess;
+//! use valib_filters::statespace::StateSpace;
+//! use valib_core::Scalar;
 //!
 //! /// Implements a 1-pole lowpass filter as a linear state-space model
 //! fn create_filter(fc: f32) -> StateSpace<f32, 1, 1, 1> {
@@ -25,9 +25,9 @@
 use nalgebra::{Complex, SMatrix, SVector, SimdComplexField};
 use num_traits::Zero;
 
-use crate::dsp::{analysis::DspAnalysis, DSPMeta, DSPProcess};
-use crate::saturators::{Linear, MultiSaturator};
-use crate::Scalar;
+use valib_core::dsp::{analysis::DspAnalysis, DSPMeta, DSPProcess};
+use valib_core::Scalar;
+use valib_saturators::{Linear, MultiSaturator};
 
 /// Linear discrete state-space method implementation with direct access to the state space matrices.
 #[derive(Debug, Copy, Clone)]
@@ -177,8 +177,8 @@ mod tests {
     use nalgebra::ComplexField;
     use numeric_literals::replace_float_literals;
 
-    use crate::dsp::buffer::AudioBuffer;
-    use crate::dsp::{BlockAdapter, DSPProcessBlock};
+    use valib_core::dsp::buffer::AudioBuffer;
+    use valib_core::dsp::{BlockAdapter, DSPProcessBlock};
 
     use super::*;
 
