@@ -2,18 +2,15 @@ use std::borrow::{Borrow, BorrowMut};
 use std::ops::{Deref, DerefMut};
 
 use nalgebra::Complex;
-use simba::simd::SimdComplexField;
 
-use crate::dsp::buffer::{AudioBufferMut, AudioBufferRef};
-use crate::dsp::parameter::HasParameters;
-use crate::dsp::DSPProcessBlock;
-use crate::dsp::{DSPMeta, DSPProcess};
-use crate::filters::halfband;
-use crate::filters::halfband::HalfbandFilter;
-use crate::voice::VoiceManager;
+use valib_core::dsp::buffer::{AudioBufferMut, AudioBufferRef};
+use valib_core::dsp::parameter::HasParameters;
+use valib_core::dsp::DSPProcessBlock;
+use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::simd::SimdComplexField;
 use valib_core::Scalar;
-
-const CASCADE: usize = 16;
+use valib_filters::halfband;
+use valib_filters::halfband::HalfbandFilter;
 
 #[derive(Debug, Clone)]
 struct PingPongBuffer<T> {
@@ -350,60 +347,15 @@ impl<S, P: HasParameters> HasParameters for Oversampled<S, P> {
     }
 }
 
-impl<S, P, const N: usize> VoiceManager<N> for Oversampled<S, P>
-where
-    P: VoiceManager<N>,
-{
-    fn note_on(&mut self, midi_note: u8, velocity: f32) {
-        self.inner.note_on(midi_note, velocity);
-    }
-
-    fn note_off(&mut self, midi_note: u8, velocity: f32) {
-        self.inner.note_off(midi_note, velocity);
-    }
-
-    fn choke(&mut self, midi_note: u8) {
-        self.inner.choke(midi_note);
-    }
-
-    fn panic(&mut self) {
-        self.inner.panic();
-    }
-
-    fn pitch_bend(&mut self, amount: f32) {
-        self.inner.pitch_bend(amount)
-    }
-
-    fn aftertouch(&mut self, amount: f32) {
-        self.inner.aftertouch(amount)
-    }
-
-    fn pressure(&mut self, midi_note: u8, pressure: f32) {
-        self.inner.pressure(midi_note, pressure)
-    }
-
-    fn glide(&mut self, midi_note: u8, semitones: f32) {
-        self.inner.glide(midi_note, semitones)
-    }
-
-    fn pan(&mut self, midi_note: u8, pan: f32) {
-        self.inner.pan(midi_note, pan)
-    }
-
-    fn gain(&mut self, midi_note: u8, gain: f32) {
-        self.inner.gain(midi_note, gain)
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{buffer::AudioBufferBox, DSPProcessBlock as _};
-    use crate::{
+    use numeric_literals::replace_float_literals;
+    use valib_core::dsp::{buffer::AudioBufferBox, DSPProcess, DSPProcessBlock as _};
+    use valib_core::Scalar;
+    use valib_core::{
         dsp::{BlockAdapter, DSPMeta},
         util::tests::{Plot, Series},
     };
-    use numeric_literals::replace_float_literals;
-    use valib_core::Scalar;
 
     use super::{Oversample, PingPongBuffer};
 
@@ -435,7 +387,7 @@ mod tests {
             type Sample = T;
         }
 
-        impl<T: Scalar> crate::dsp::DSPProcess<1, 1> for NaiveSquare<T> {
+        impl<T: Scalar> DSPProcess<1, 1> for NaiveSquare<T> {
             #[replace_float_literals(T::from_f64(literal))]
             fn process(&mut self, _: [Self::Sample; 1]) -> [Self::Sample; 1] {
                 let step = self.frequency / self.samplerate;

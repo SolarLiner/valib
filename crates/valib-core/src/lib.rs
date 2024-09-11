@@ -8,6 +8,7 @@ use simba::simd::{AutoSimd, Simd, SimdRealField, SimdValue};
 use crate::util::{as_nested_arrays, as_nested_arrays_mut};
 pub use simba::simd;
 
+pub mod benchmarking;
 pub mod dsp;
 pub mod math;
 pub mod util;

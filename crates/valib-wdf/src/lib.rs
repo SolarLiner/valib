@@ -1,14 +1,14 @@
-use crate::dsp::{DSPMeta, DSPProcess};
 pub use adapters::*;
 use atomic_refcell::{AtomicRef, AtomicRefCell, AtomicRefMut};
 pub use diode::*;
 pub use leaves::*;
 pub use module::*;
 use num_traits::Zero;
-use simba::simd::SimdComplexField;
 use std::any::Any;
 use std::sync::Arc;
 pub use unadapted::*;
+use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::simd::SimdComplexField;
 use valib_core::Scalar;
 
 pub mod adapters;
@@ -98,12 +98,13 @@ impl<'a, T: AdaptedWdf> AdaptedWdf for &'a mut T {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::util::tests::Plot;
-    use crate::wdf::adapters::{Inverter, Parallel, Series};
-    use crate::wdf::dsl::*;
-    use crate::wdf::leaves::{Capacitor, ResistiveVoltageSource, Resistor};
-    use crate::wdf::module::WdfModule;
-    use crate::wdf::unadapted::{IdealVoltageSource, OpenCircuit};
+    use crate::adapters::{Inverter, Parallel, Series};
+    use crate::dsl::*;
+    use crate::leaves::{Capacitor, ResistiveVoltageSource, Resistor};
+    use crate::module::WdfModule;
+    use crate::unadapted::{IdealVoltageSource, OpenCircuit};
+    use valib_core::util::tests::Plot;
+
     use plotters::prelude::{BLUE, GREEN, RED};
     use std::f32::consts::TAU;
     use valib_core::Scalar;
@@ -143,13 +144,13 @@ mod tests {
             title: "Diode Clipper",
             bode: false,
             series: &[
-                crate::util::tests::Series {
+                valib_core::util::tests::Series {
                     label: "Input",
                     samplerate: FS,
                     series: &input,
                     color: &BLUE,
                 },
-                crate::util::tests::Series {
+                valib_core::util::tests::Series {
                     label: "Output",
                     samplerate: FS,
                     series: &output,
