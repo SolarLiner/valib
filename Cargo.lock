@@ -196,15 +196,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cordic"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ed0a176c0b8c5c95fa0523177530364c5b68a8895d9745730dbfa692a7412d0"
-dependencies = [
- "fixed",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1401,7 +1392,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3a386a501cd104797982c15ae17aafe8b9261315b5d07e3ec803f2ea26be0fa"
 dependencies = [
  "approx",
- "cordic",
  "fixed",
  "num-complex",
  "num-traits",
@@ -1560,7 +1550,6 @@ dependencies = [
  "portable-atomic",
  "profiling",
  "rstest",
- "serde",
  "simba 0.9.0",
  "valib-derive",
 ]
@@ -1589,7 +1578,6 @@ dependencies = [
  "profiling",
  "rstest",
  "valib-core",
- "valib-derive",
  "valib-saturators",
 ]
 
@@ -1604,7 +1592,6 @@ dependencies = [
  "plotters",
  "profiling",
  "rstest",
- "serde",
  "valib-core",
 ]
 

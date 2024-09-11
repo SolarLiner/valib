@@ -3,6 +3,29 @@ use num_traits::{AsPrimitive, Float, FromPrimitive, Num, One, Zero};
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdPartialOrd, SimdValue};
 
+pub fn as_nested_arrays<T, const N: usize>(data: &[T]) -> (&[[T; N]], &[T]) {
+    let rem = data.len() % N;
+    let last = data.len() - rem;
+    let (complete, remaining) = data.split_at(last);
+    let outer_len = complete.len() / N;
+
+    // Safety: Static arrays of N elements have the same representation as N contiguous elements
+    let result = unsafe { std::slice::from_raw_parts(complete.as_ptr() as *const _, outer_len) };
+    (result, remaining)
+}
+
+pub fn as_nested_arrays_mut<T, const N: usize>(data: &mut [T]) -> (&mut [[T; N]], &mut [T]) {
+    let rem = data.len() % N;
+    let last = data.len() - rem;
+    let (complete, remaining) = data.split_at_mut(last);
+    let outer_len = complete.len() / N;
+
+    // Safety: Static arrays of N elements have the same representation as N contiguous elements
+    let result =
+        unsafe { std::slice::from_raw_parts_mut(complete.as_mut_ptr() as *mut _, outer_len) };
+    (result, remaining)
+}
+
 pub fn simd_index_scalar<Simd: Zero + SimdValue, Index: SimdValue<Element = usize>>(
     values: &[Simd::Element],
     index: Index,
