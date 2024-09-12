@@ -1544,6 +1544,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3354b9ac3fae1ff6755cb6db53683adb661634f67557942dea4facebec0fee4b"
 
 [[package]]
+name = "valib"
+version = "0.1.0"
+dependencies = [
+ "valib-core",
+ "valib-filters",
+ "valib-oscillators",
+ "valib-oversample",
+ "valib-saturators",
+ "valib-voice",
+ "valib-wdf",
+]
+
+[[package]]
 name = "valib-core"
 version = "0.1.0"
 dependencies = [
