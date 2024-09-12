@@ -1,0 +1,54 @@
+#ui {
+    background-color: #207242;
+    color: #fff;
+}
+
+knob {
+    border-radius: 100%;
+    width: 51px;
+    height: 51px;
+    border-width: 1px;
+    background-image: linear-gradient(to bottom, #404040 0%, #262626 100%);
+    box-shadow: 0 4px 4px rgba(0, 0, 0, 0.25);
+}
+
+knob arc {
+    width: 61px;
+    height: 61px;
+    color: #F2C94C;
+}
+
+knob dot {
+    color: #797979;
+}
+
+arc.unmodulated {
+    color: #F2C94C;
+}
+
+arc.modulated {
+    color: crimson;
+}
+
+.small knob {
+    width: 37px;
+    height: 37px;
+}
+
+.param label {
+    width: 100%;
+    font-size: 12pt;
+    color: #ffffff;
+}
+
+.param.small label {
+    font-size: 10pt;
+}
+
+led {
+    top: 68px;
+    left: 25px;
+    width: 17px;
+    height: 17px;
+    color: red;
+}

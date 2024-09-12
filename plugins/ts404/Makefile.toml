@@ -1,0 +1,41 @@
+[config]
+default_to_workspace = false
+
+[tasks.default]
+alias = "bundle"
+
+[tasks.venv]
+script_runner = "@shell"
+script = """
+poetry install --no-root
+"""
+
+[tasks.xtask-build]
+extend = "build"
+args = ["build", "-p", "xtask", "--release"]
+
+[tasks.generate]
+dependencies = ["venv"]
+script_runner = "@shell"
+script = """
+poetry run python ./gen_statespace.py
+"""
+condition = { files_modified = { input = ["./gen_statespace.py"], output = ["./src/gen.rs"] } }
+
+[tasks.build]
+args = ["build", "-p", "ts404", "${@}"]
+dependencies = ["generate"]
+
+[tasks.run]
+command = "cargo"
+args = ["run" ,"-p", "ts404", "${@}"]
+dependencies = ["generate"]
+
+[tasks.bundle]
+dependencies = ["build", "xtask-build"]
+command = "cargo"
+args = ["xtask", "bundle", "ts404", "${@}"]
+install_crate = false
+
+[tasks.bundle.macos]
+args = ["xtask", "bundle-universal", "ts404", "${@}"]
