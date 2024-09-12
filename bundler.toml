@@ -18,3 +18,6 @@ name = "Slew"
 
 [wdfclipper]
 name = "Diode Clipper (WDF)"
+
+[ts404]
+name = "TS-404"

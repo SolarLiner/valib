@@ -7,42 +7,23 @@ license = "GPL-3.0-or-later"
 homepage = "https://solarliner.dev"
 description = "An inspired but fantasy screamer guitar pedal emulation"
 
-[workspace]
-members = ["xtask"]
-
 [lib]
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
+valib = { path = "../..", features = ["oversample", "wdf", "nih-plug"] }
+
+nalgebra.workspace = true
+nih_plug = { workspace = true, features = ["standalone"] }
+nih_plug_vizia.workspace = true
+num-traits.workspace = true
+numeric_literals.workspace = true
+profiling.workspace = true
+
 enum-map = "2.7.3"
-nalgebra = "0.32.3"
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["standalone"] }
-nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
-num-traits = "0.2.17"
-numeric_literals = "0.2.0"
-profiling = { version = "1.0.15" }
-#valib = { git = "https://github.com/SolarLiner/valib.git" }
-valib = { path = "../valib", features = ["oversample", "wdf", "nih-plug"] }
 
 [dev-dependencies]
 insta = { version = "1.39.0", features = ["csv", "redactions"] }
 
 [features]
 profiling = ["profiling/profile-with-tracy"]
-
-[profile.dev]
-opt-level = 1
-
-[profile.test]
-opt-level = 0
-
-[profile.release]
-codegen-units = 1
-lto = "fat"
-strip = "symbols"
-opt-level = 3
-
-[profile.profiling]
-inherits = "release"
-debug = true
-strip = "none"
