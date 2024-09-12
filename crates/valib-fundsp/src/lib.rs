@@ -8,12 +8,12 @@
 
 use fundsp::audionode::{AudioNode, Frame};
 use fundsp::combinator::An;
-use fundsp::prelude::Size;
-use fundsp::Float;
+use num_complex::Complex;
 use numeric_array::ArrayLength;
-use std::marker::PhantomData;
-use typenum::{Const, Unsigned};
+use typenum::{Const, ToUInt, Unsigned, U};
+use valib_core::dsp::analysis::DspAnalysis;
 use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::simd::SimdComplexField;
 
 pub struct FunDSP<Node: AudioNode>(pub An<Node>);
 
@@ -30,12 +30,16 @@ impl<Node: AudioNode> DSPMeta for FunDSP<Node> {
 }
 
 #[profiling::all_functions]
-impl<Node: AudioNode<Inputs = Const<I>, Outputs = Const<O>>, const I: usize, const O: usize>
-    DSPProcess<I, O> for FunDSP<Node>
+impl<Node: AudioNode>
+    DSPProcess<{ <Node::Inputs as Unsigned>::USIZE }, { <Node::Outputs as Unsigned>::USIZE }>
+    for FunDSP<Node>
 {
-    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
+    fn process(
+        &mut self,
+        x: [Self::Sample; <Node::Inputs as Unsigned>::USIZE],
+    ) -> [Self::Sample; <Node::Outputs as Unsigned>::USIZE] {
         let input = Frame::from_slice(&x);
-        let output = self.tick(input);
+        let output = self.0.tick(input);
         std::array::from_fn(|i| output[i])
     }
 }
@@ -46,28 +50,41 @@ impl<Node: AudioNode<Inputs = Const<I>, Outputs = Const<O>>, const I: usize, con
 #[derive(Debug, Clone)]
 pub struct DspNode<P, const I: usize, const O: usize>(pub P);
 
-/// Wrap a [`DSPProcess`] impl as a [`fundsp`]  node.
-pub fn dsp_node<P: DSPProcess<I, O>, const I: usize, const O: usize>(dsp: P) -> DspNode<P, I, O> {
-    DspNode(dsp)
-}
-
-impl<P: Send + Sync + DSPProcess<I, O, Sample = f32>, const I: usize, const O: usize> AudioNode
-    for DspNode<P, I, O>
+impl<P: Send + Sync + Clone + DSPProcess<I, O, Sample = f32>, const I: usize, const O: usize>
+    AudioNode for DspNode<P, I, O>
 where
     Self: Clone,
-    P::Sample: Float,
-    Const<I>: Size<f32>,
-    Const<O>: Size<f32>,
+    Const<I>: ToUInt,
+    <Const<I> as ToUInt>::Output: ArrayLength + Send + Sync,
+    Const<O>: ToUInt,
+    <Const<O> as ToUInt>::Output: ArrayLength + Send + Sync,
 {
-    const ID: u64 = 0;
-    type Inputs = Const<I>;
-    type Outputs = Const<O>;
+    const ID: u64 = 28000;
+    type Inputs = U<I>;
+    type Outputs = U<O>;
 
     fn tick(&mut self, input: &Frame<f32, Self::Inputs>) -> Frame<f32, Self::Outputs> {
         let input = std::array::from_fn(|i| input[i]);
         let output = self.0.process(input);
         Frame::from_iter(output)
     }
+}
+
+/// Wrap a [`DSPProcess`] impl as a [`fundsp`]  node.
+pub fn dsp_node<
+    P: Send + Sync + Clone + DSPProcess<I, O, Sample = f32>,
+    const I: usize,
+    const O: usize,
+>(
+    dsp: P,
+) -> An<DspNode<P, I, O>>
+where
+    Const<I>: ToUInt,
+    <Const<I> as ToUInt>::Output: ArrayLength + Send + Sync,
+    Const<O>: ToUInt,
+    <Const<O> as ToUInt>::Output: ArrayLength + Send + Sync,
+{
+    An(DspNode(dsp))
 }
 
 #[cfg(test)]
@@ -91,7 +108,7 @@ mod tests {
 
     #[test]
     fn test_dsp_node() {
-        let mut integrator_node = dsp_node::<U1, U1, _>(Integrator::<f32>::default());
+        let mut integrator_node = dsp_node::<_, 1, 1>(Integrator::<f32>::default());
         integrator_node.filter_mono(0.0);
         integrator_node.filter_mono(1.0);
         let actual = integrator_node.filter_mono(0.0);

@@ -1978,6 +1978,7 @@ version = "0.1.0"
 dependencies = [
  "fundsp",
  "insta",
+ "num-complex",
  "numeric-array",
  "numeric_literals",
  "profiling",

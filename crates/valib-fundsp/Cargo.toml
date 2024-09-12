@@ -18,6 +18,7 @@ profiling.workspace = true
 numeric-array = "0.6.1"
 fundsp = "0.19.1"
 typenum = "1.17.0"
+num-complex.workspace = true
 
 [dev-dependencies]
 insta.workspace = true

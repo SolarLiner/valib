@@ -16,7 +16,7 @@ valib-saturators = { path = "../valib-saturators" }
 
 numeric_literals.workspace = true
 profiling.workspace = true
-num-complex = "0.4.6"
+num-complex.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true

@@ -15,6 +15,7 @@ keywords = ["virtual-analog", "audio", "plugin", "va-modeling", "dsp"]
 [workspace.dependencies]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+num-complex = "0.4.6"
 num-traits = "0.2.18"
 numeric_literals = "0.2.0"
 nalgebra = "0.32.3"
