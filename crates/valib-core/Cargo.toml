@@ -19,8 +19,11 @@ num-traits.workspace = true
 numeric_literals.workspace = true
 portable-atomic = { version = "1.7.0", features = ["float"] }
 profiling.workspace = true
+plotters = { workspace = true, optional = true }
 
 [dev-dependencies]
 rstest.workspace = true
 insta.workspace = true
-plotters.workspace = true
+
+[features]
+test-utils = ["dep:plotters"]

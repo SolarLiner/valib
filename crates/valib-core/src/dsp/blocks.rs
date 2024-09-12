@@ -642,8 +642,7 @@ where
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
         self.0
             .iter_mut()
-            .enumerate()
-            .map(|(_i, dsp)| {
+            .map(|dsp| {
                 profiling::scope!("Parallel", &format!("{_i}"));
                 dsp.process(x)
             })
@@ -898,7 +897,7 @@ impl<FF: DSPMeta + HasParameters, const N: usize> HasParameters for Feedback<FF,
         match param {
             FeedbackParams::Feedforward(p) => self.feedforward.set_parameter(p, value),
             FeedbackParams::Feedback(_) => unreachable!(),
-            FeedbackParams::Mix(p) => self.mix[p.into_id() as usize].param = value,
+            FeedbackParams::Mix(p) => self.mix[p.into_id()].param = value,
         }
     }
 }

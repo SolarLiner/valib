@@ -276,7 +276,7 @@ impl<const N: ParamId> Dynamic<N> {
 
 impl<const N: ParamId> ParamName for Dynamic<N> {
     fn count() -> usize {
-        N as usize
+        N
     }
 
     fn from_id(value: ParamId) -> Self {
@@ -350,7 +350,7 @@ impl<P: ParamName, T> ops::Index<P> for ParamMap<P, T> {
     type Output = T;
 
     fn index(&self, index: P) -> &Self::Output {
-        &self.data[index.into_id() as usize]
+        &self.data[index.into_id()]
     }
 }
 
@@ -358,19 +358,19 @@ impl<P: ParamName + Clone, T> ops::Index<&P> for ParamMap<P, T> {
     type Output = T;
 
     fn index(&self, index: &P) -> &Self::Output {
-        &self.data[index.clone().into_id() as usize]
+        &self.data[(*index).into_id()]
     }
 }
 
 impl<P: ParamName, T> ops::IndexMut<P> for ParamMap<P, T> {
     fn index_mut(&mut self, index: P) -> &mut Self::Output {
-        &mut self.data[index.into_id() as usize]
+        &mut self.data[index.into_id()]
     }
 }
 
 impl<P: ParamName + Clone, T> ops::IndexMut<&P> for ParamMap<P, T> {
     fn index_mut(&mut self, index: &P) -> &mut Self::Output {
-        &mut self.data[index.clone().into_id() as usize]
+        &mut self.data[(*index).into_id()]
     }
 }
 
@@ -430,7 +430,7 @@ impl<P: ParamName> ParamsProxy<P> {
         if has_changed {
             return Some(self.params[param].load(Ordering::SeqCst));
         }
-        return None;
+        None
     }
 }
 

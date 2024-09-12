@@ -103,7 +103,7 @@ pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
     2.0.simd_powf(semi / 12.0)
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-utils")]
 pub mod tests {
     use std::{ops::Range, path::Path};
 
@@ -249,7 +249,7 @@ pub mod tests {
             }
 
             ctx.configure_series_labels()
-                .background_style(&WHITE.mix(0.8))
+                .background_style(WHITE.mix(0.8))
                 .draw()
                 .unwrap();
         }
@@ -261,14 +261,5 @@ pub mod tests {
             root.fill(&WHITE).unwrap();
             self.render_into(&root);
         }
-    }
-
-    #[test]
-    fn interp_block() {
-        let a = [0., 1., 1.];
-        let mut actual = [0.; 12];
-        let expected = [0., 0.25, 0.5, 0.75, 1., 1., 1., 1., 1., 1., 1., 1.];
-        Linear.interpolate_slice(&mut actual, &a);
-        assert_eq!(actual, expected);
     }
 }

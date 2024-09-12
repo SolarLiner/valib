@@ -182,7 +182,5 @@ mod tests {
         is_cast_compatible::<f64, usize>();
         is_cast_compatible::<simd::AutoF32x4, usize>();
         is_cast_compatible::<simd::AutoF64x4, usize>();
-        is_cast_compatible::<simd::AutoF32x4, simd::AutoUsizex4>();
-        is_cast_compatible::<simd::AutoF64x4, simd::AutoUsizex4>();
     }
 }

@@ -17,7 +17,7 @@ use numeric_literals::replace_float_literals;
 use valib_core::dsp::analysis::DspAnalysis;
 use valib_core::dsp::{DSPMeta, DSPProcess};
 use valib_core::Scalar;
-use valib_saturators::{Dynamic, Saturator};
+use valib_saturators::Saturator;
 
 #[cfg(never)]
 pub mod design;
@@ -34,7 +34,7 @@ pub struct Biquad<T, S> {
 
 impl<T, S> Biquad<T, S> {
     /// Apply these new saturators to this Biquad instance, returning a new instance of it.
-    pub fn with_saturators<S2>(mut self, s0: S2, s1: S2) -> Biquad<T, S2> {
+    pub fn with_saturators<S2>(self, s0: S2, s1: S2) -> Biquad<T, S2> {
         let Self { na, b, s, .. } = self;
         Biquad {
             na,
