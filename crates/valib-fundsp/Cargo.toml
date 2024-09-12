@@ -1,0 +1,23 @@
+[package]
+name = "valib-fundsp"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+valib-core = { path = "../valib-core" }
+
+numeric_literals.workspace = true
+profiling.workspace = true
+
+numeric-array = "0.6.1"
+fundsp = "0.19.1"
+typenum = "1.17.0"
+
+[dev-dependencies]
+insta.workspace = true

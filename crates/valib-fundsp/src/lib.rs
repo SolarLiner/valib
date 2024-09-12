@@ -1,3 +1,4 @@
+#![feature(generic_const_exprs)]
 //! fundsp integration for statically-defined graphs.
 //!
 //! The integration provides impls for `An` objects, taking their defined input and output counts as the number of
@@ -5,38 +6,34 @@
 //!
 //! Conversly, a [`DspNode`] struct is defined for wrapping [`DSPProcess`] implementations into usable `fundsp` nodes.
 
-use crate::dsp::{DSPMeta, DSPProcess};
 use fundsp::audionode::{AudioNode, Frame};
 use fundsp::combinator::An;
+use fundsp::prelude::Size;
 use fundsp::Float;
 use numeric_array::ArrayLength;
 use std::marker::PhantomData;
-use typenum::Unsigned;
+use typenum::{Const, Unsigned};
+use valib_core::dsp::{DSPMeta, DSPProcess};
 
-impl<Node: AudioNode> DSPMeta for An<Node>
-where
-    Node::Sample: valib_core::Scalar,
-{
-    type Sample = Node::Sample;
+pub struct FunDSP<Node: AudioNode>(pub An<Node>);
+
+impl<Node: AudioNode> DSPMeta for FunDSP<Node> {
+    type Sample = f32;
 
     fn set_samplerate(&mut self, samplerate: f32) {
-        An::set_sample_rate(self, samplerate as _);
+        self.0.set_sample_rate(samplerate as _);
     }
 
     fn reset(&mut self) {
-        An::reset(self);
+        self.0.reset();
     }
 }
 
 #[profiling::all_functions]
-impl<Node: AudioNode> DSPProcess<{ Node::Inputs::USIZE }, { Node::Outputs::USIZE }> for An<Node>
-where
-    Node::Sample: valib_core::Scalar,
+impl<Node: AudioNode<Inputs = Const<I>, Outputs = Const<O>>, const I: usize, const O: usize>
+    DSPProcess<I, O> for FunDSP<Node>
 {
-    fn process(
-        &mut self,
-        x: [Self::Sample; Node::Inputs::USIZE],
-    ) -> [Self::Sample; Node::Outputs::USIZE] {
+    fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
         let input = Frame::from_slice(&x);
         let output = self.tick(input);
         std::array::from_fn(|i| output[i])
@@ -47,54 +44,44 @@ where
 ///
 /// This is the implementation struct; to us this node in `fundsp` graphs, refer to the [`dsp_node`] function.
 #[derive(Debug, Clone)]
-pub struct DspNode<In, Out, P>(PhantomData<In>, PhantomData<Out>, P);
+pub struct DspNode<P, const I: usize, const O: usize>(pub P);
 
 /// Wrap a [`DSPProcess`] impl as a [`fundsp`]  node.
-pub fn dsp_node<In: Unsigned, Out: Unsigned, P: DSPProcess<{ In::USIZE }, { Out::USIZE }>>(
-    dsp: P,
-) -> DspNode<In, Out, P> {
-    DspNode(PhantomData, PhantomData, dsp)
+pub fn dsp_node<P: DSPProcess<I, O>, const I: usize, const O: usize>(dsp: P) -> DspNode<P, I, O> {
+    DspNode(dsp)
 }
 
-impl<
-        In: Send + Sync + Unsigned,
-        Out: Send + Sync + Unsigned,
-        P: Send + Sync + DSPProcess<{ In::USIZE }, { Out::USIZE }>,
-    > AudioNode for DspNode<In, Out, P>
+impl<P: Send + Sync + DSPProcess<I, O, Sample = f32>, const I: usize, const O: usize> AudioNode
+    for DspNode<P, I, O>
 where
     Self: Clone,
     P::Sample: Float,
-    In: ArrayLength<P::Sample>,
-    Out: ArrayLength<P::Sample>,
+    Const<I>: Size<f32>,
+    Const<O>: Size<f32>,
 {
     const ID: u64 = 0;
-    type Sample = P::Sample;
-    type Inputs = In;
-    type Outputs = Out;
-    type Setting = ();
+    type Inputs = Const<I>;
+    type Outputs = Const<O>;
 
-    fn tick(
-        &mut self,
-        input: &Frame<Self::Sample, Self::Inputs>,
-    ) -> Frame<Self::Sample, Self::Outputs> {
+    fn tick(&mut self, input: &Frame<f32, Self::Inputs>) -> Frame<f32, Self::Outputs> {
         let input = std::array::from_fn(|i| input[i]);
-        let output = self.2.process(input);
+        let output = self.0.process(input);
         Frame::from_iter(output)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::{buffer::AudioBufferBox, BlockAdapter, DSPProcessBlock};
+    use valib_core::dsp::{buffer::AudioBufferBox, BlockAdapter, DSPProcessBlock};
 
-    use crate::dsp::blocks::Integrator;
     use fundsp::hacker32::*;
+    use valib_core::dsp::blocks::Integrator;
 
     use super::*;
 
     #[test]
     fn test_wrapper() {
-        let mut dsp = BlockAdapter(sine_hz(440.0) * sine_hz(10.0));
+        let mut dsp = BlockAdapter(FunDSP(sine_hz(440.0) * sine_hz(10.0)));
         let input = AudioBufferBox::zeroed(512);
         let mut output = AudioBufferBox::zeroed(512);
         dsp.process_block(input.as_ref(), output.as_mut());
