@@ -1,14 +1,15 @@
-use num_traits::real::Real;
 use valib_core::dsp::DSPMeta;
 use valib_core::simd::SimdRealField;
 use valib_core::Scalar;
 
+pub mod monophonic;
+pub mod polyphonic;
+
 pub trait Voice: DSPMeta {
-    type ID: Copy + Eq + Ord;
-    fn id(&self) -> &Self::ID;
     fn active(&self) -> bool;
     fn note_data(&self) -> &NoteData<Self::Sample>;
     fn note_data_mut(&mut self) -> &mut NoteData<Self::Sample>;
+    fn release(&mut self);
     fn reuse(&mut self);
     fn reset(&mut self);
 }
@@ -78,13 +79,27 @@ pub struct NoteData<T> {
 }
 
 #[allow(unused_variables)]
-pub trait VoiceManager<V: Voice> {
-    fn active(&self) -> usize;
+pub trait VoiceManager<V: Voice>: DSPMeta<Sample = V::Sample> {
+    type ID: Copy + Eq + Ord;
+
     fn capacity(&self) -> usize;
 
-    fn note_on(&mut self, node_data: NoteData<V::Sample>) -> V::ID;
-    fn note_off(&mut self, id: V::ID);
-    fn choke(&mut self, id: V::ID);
+    fn get_voice(&self, id: Self::ID) -> Option<&V>;
+    fn get_voice_mut(&mut self, id: Self::ID) -> Option<&mut V>;
+
+    fn is_voice_active(&self, id: Self::ID) -> bool {
+        self.get_voice(id).is_some_and(|v| v.active())
+    }
+    fn all_voices(&self) -> impl Iterator<Item = Self::ID>;
+    fn active(&self) -> usize {
+        self.all_voices()
+            .filter(|id| self.is_voice_active(*id))
+            .count()
+    }
+
+    fn note_on(&mut self, note_data: NoteData<V::Sample>) -> Self::ID;
+    fn note_off(&mut self, id: Self::ID);
+    fn choke(&mut self, id: Self::ID);
     fn panic(&mut self);
 
     // Channel modulation
@@ -92,8 +107,8 @@ pub trait VoiceManager<V: Voice> {
     fn aftertouch(&mut self, amount: f64) {}
 
     // MPE extensions
-    fn pressure(&mut self, id: V::ID, pressure: f32) {}
-    fn glide(&mut self, id: V::ID, semitones: f32) {}
-    fn pan(&mut self, id: V::ID, pan: f32) {}
-    fn gain(&mut self, id: V::ID, gain: f32) {}
+    fn pressure(&mut self, id: Self::ID, pressure: f32) {}
+    fn glide(&mut self, id: Self::ID, semitones: f32) {}
+    fn pan(&mut self, id: Self::ID, pan: f32) {}
+    fn gain(&mut self, id: Self::ID, gain: f32) {}
 }
