@@ -1,0 +1,21 @@
+[tasks.xtask-build]
+command = "cargo"
+args = ["build", "-p", "xtask", "--release"]
+
+[tasks.bundle]
+dependencies = ["xtask-build"]
+command = "cargo"
+args = ["xtask", "bundle", "${CARGO_MAKE_CRATE_NAME}", "${@}"]
+
+[tasks.bundle-universal]
+dependencies = ["xtask-build"]
+command = "cargo"
+args = ["xtask", "bundle-universal", "${CARGO_MAKE_CRATE_NAME}", "${@}"]
+
+[tasks.build]
+clear = true
+dependencies = ["pre-build"]
+run_task = [
+    { name = "bundle-universal", condition = { platforms = ["mac"] } },
+    { name = "bundle" }
+]

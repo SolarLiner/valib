@@ -1,4 +1,4 @@
-name: Tests
+name: CI
 
 on:
   push:
@@ -18,15 +18,18 @@ defaults:
     shell: bash
 
 jobs:
-  test:
+  # We'll only package the plugins with an entry in bundler.toml
+  package:
     strategy:
       matrix:
-        os: [ubuntu-22.04, macos-11, windows-latest]
-    name: Build and test all components
+        include:
+          - { name: ubuntu-22.04,       os: ubuntu-22.04,   cross-target: '' }
+          - { name: macos-universal,    os: macos-11,       cross-target: aarch64-apple-darwin }
+          - { name: windows,            os: windows-latest, cross-target: '' }
+    name: Package plugin binaries
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v2
-      # Needed for git-describe to do anything useful
       - name: Fetch all git history
         run: git fetch --force --prune --tags --unshallow
 
@@ -56,13 +59,32 @@ jobs:
 
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
-      - name: Build all targets
+        with:
+          # The macOS AArch64/universal build is done from an x86_64 macOS CI
+          # runner, so it needs to be cross compiled
+          target: ${{ matrix.cross-target }}
+      - name: Install cargo-make
         uses: actions-rs/cargo@v1
         with:
-          command: build
-          args: --workspace --all-targets --all-features
-      - name: Run the tests
+          command: install
+          args: --debug cargo-make
+      - name: Run CI
         uses: actions-rs/cargo@v1
         with:
-          command: test
-          args: --workspace --all-targets --all-features
+          command: make
+          args: --no-workspace workspace-ci-flow
+      - name: Determine build archive name
+        run: |
+          echo "ARCHIVE_NAME=valib-plugins-$(git describe --always)-${{ matrix.name }}" >> "$GITHUB_ENV"
+      - name: Move all packaged plugin into a directory
+        run: |
+          # GitHub Action strips the top level directory, great, have another one
+          mkdir -p "$ARCHIVE_NAME/$ARCHIVE_NAME"
+          mv target/bundled/* "$ARCHIVE_NAME/$ARCHIVE_NAME"
+      - name: Add an OS-specific readme file with installation instructions
+        run: cp ".github/workflows/readme-${{ runner.os }}.txt" "$ARCHIVE_NAME/$ARCHIVE_NAME/README.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ${{ env.ARCHIVE_NAME }}
+          retention-days: 14
