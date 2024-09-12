@@ -60,9 +60,9 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --workspace --all-features
+          args: --workspace --all-targets --all-features
       - name: Run the tests
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --all-features
+          args: --workspace --all-targets --all-features
