@@ -22,7 +22,7 @@ num-traits = "0.2.17"
 numeric_literals = "0.2.0"
 profiling = { version = "1.0.15" }
 #valib = { git = "https://github.com/SolarLiner/valib.git" }
-valib = { path = "../valib", features = ["nih-plug", "wdf"] }
+valib = { path = "../valib", features = ["oversample", "wdf", "nih-plug"] }
 
 [dev-dependencies]
 insta = { version = "1.39.0", features = ["csv", "redactions"] }
