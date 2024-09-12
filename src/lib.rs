@@ -3,6 +3,9 @@ extern crate core;
 
 pub use valib_core::*;
 
+#[cfg(any(feature = "fundsp", feature = "nih-plug"))]
+pub mod contrib;
+
 #[cfg(feature = "filters")]
 pub use valib_filters as filters;
 #[cfg(feature = "oscillators")]

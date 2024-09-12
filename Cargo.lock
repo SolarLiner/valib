@@ -2269,6 +2269,8 @@ version = "0.1.0"
 dependencies = [
  "valib-core",
  "valib-filters",
+ "valib-fundsp",
+ "valib-nih-plug",
  "valib-oscillators",
  "valib-oversample",
  "valib-saturators",

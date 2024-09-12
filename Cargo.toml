@@ -45,6 +45,8 @@ valib-oscillators = { path = "crates/valib-oscillators", optional = true }
 valib-oversample = { path = "crates/valib-oversample", optional = true }
 valib-voice = { path = "crates/valib-voice", optional = true }
 valib-wdf = { path = "crates/valib-wdf", optional = true }
+valib-fundsp = { path = "crates/valib-fundsp", optional = true }
+valib-nih-plug = { path = "crates/valib-nih-plug", optional = true }
 
 [features]
 saturators = ["dep:valib-saturators"]
@@ -53,6 +55,8 @@ oscillators = ["dep:valib-oscillators"]
 oversample = ["filters", "dep:valib-oversample"]
 voice = ["dep:valib-voice"]
 wdf = ["filters", "dep:valib-wdf"]
+fundsp = ["dep:valib-fundsp"]
+nih-plug = ["dep:valib-nih-plug"]
 
 [profile.dev]
 opt-level = 1
