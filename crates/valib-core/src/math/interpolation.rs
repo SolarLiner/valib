@@ -242,12 +242,9 @@ mod tests {
         let a = [0., 1., 1.];
         let mut actual = [0.; 12];
         interp.interpolate_slice(&mut actual, &a);
-        let name = format!(
-            "test_interpolate_{}",
-            std::any::type_name::<Interp>()
-                .replace(['<', '>'], "__")
-                .replace("::", "__")
-        );
+        let name = std::any::type_name::<Interp>()
+            .replace(['<', '>'], "_")
+            .replace("::", "_");
         insta::assert_csv_snapshot!(name, &actual as &[_], { "[]" => insta::rounded_redaction(6) });
     }
 }

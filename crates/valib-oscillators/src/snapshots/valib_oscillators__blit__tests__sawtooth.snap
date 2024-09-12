@@ -1,0 +1,18 @@
+---
+source: crates/valib-oscillators/src/blit.rs
+expression: "&saw"
+---
+BlockAdapter(
+    Sawtooth {
+        blit: Blit {
+            p: 0.0,
+            dp: 1.0,
+            pmax: 409.6,
+            x: 0.0,
+            fc: 10.0,
+            samplerate: 8192.0,
+        },
+        integrator_state: 0.0,
+        dc: -0.0012158203124999999,
+    },
+)

@@ -17,7 +17,7 @@ use numeric_literals::replace_float_literals;
 use valib_core::dsp::analysis::DspAnalysis;
 use valib_core::dsp::{DSPMeta, DSPProcess};
 use valib_core::Scalar;
-use valib_saturators::Saturator;
+use valib_saturators::{Linear, Saturator};
 
 #[cfg(never)]
 pub mod design;
@@ -57,9 +57,8 @@ impl<T: Copy, S> Biquad<T, S> {
     }
 }
 
-// TODO: Make those return linear biquads, where the user can then pass their saturators directly through `with_saturators`
 #[profiling::all_functions]
-impl<T: Scalar, S: Default> Biquad<T, S> {
+impl<T: Scalar> Biquad<T, Linear> {
     /// Create a new instance of a Biquad with the provided poles and zeros coefficients.
     #[profiling::skip]
     pub fn new(b: [T; 3], a: [T; 2]) -> Self {
@@ -268,6 +267,7 @@ mod tests {
         DSPProcessBlock,
     };
     use valib_saturators::clippers::DiodeClipperModel;
+    use valib_saturators::Dynamic;
 
     #[test]
     fn test_lp_diode_clipper() {

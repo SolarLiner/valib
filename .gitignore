@@ -109,7 +109,7 @@ target/
 *.tsv
 
 # Generates test plots
-/plots
+plots
 
 # Python
 __pycache__

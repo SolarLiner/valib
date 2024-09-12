@@ -1,5 +1,5 @@
 ---
-source: valib_derive/src/lib.rs
+source: crates/valib-derive/src/lib.rs
 expression: "prettyplease::unparse(&syn::parse_file(&output).unwrap())"
 ---
 impl ParamName for DspParams {

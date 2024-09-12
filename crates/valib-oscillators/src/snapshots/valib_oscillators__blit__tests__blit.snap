@@ -1,0 +1,14 @@
+---
+source: crates/valib-oscillators/src/blit.rs
+expression: "&blit"
+---
+BlockAdapter(
+    Blit {
+        p: 0.0,
+        dp: 1.0,
+        pmax: 409.6,
+        x: 0.0,
+        fc: 10.0,
+        samplerate: 8192.0,
+    },
+)
