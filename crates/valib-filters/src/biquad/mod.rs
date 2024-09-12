@@ -8,7 +8,7 @@
 //! use valib_core::dsp::DSPProcess;
 //! use valib_filters::biquad::Biquad;
 //! use valib_saturators::Tanh;
-//! let mut lowpass = Biquad::<f32, Tanh>::lowpass(0.25 /* normalized frequency */, 0.707 /* Q */);
+//! let mut lowpass = Biquad::lowpass(0.25 /* normalized frequency */, 0.707 /* Q */);
 //! let output = lowpass.process([0.0]);
 //! ```
 
@@ -51,7 +51,7 @@ impl<T, S> Biquad<T, S> {
 }
 
 impl<T: Copy, S> Biquad<T, S> {
-    pub fn update_coefficients(&mut self, other: &Self) {
+    pub fn update_coefficients<S2>(&mut self, other: &Biquad<T, S2>) {
         self.na = other.na;
         self.b = other.b;
     }

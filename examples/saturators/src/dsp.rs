@@ -5,55 +5,13 @@ use std::borrow::Cow;
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib::dsp::parameter::{HasParameters, ParamId, ParamName, RemoteControlled, SmoothedParam};
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
-use valib::filters::biquad::Biquad;
+use valib::filters::specialized::DcBlocker;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::adaa::{Adaa, Antiderivative, Antiderivative2};
 use valib::saturators::clippers::DiodeClipperModel;
-use valib::saturators::{Asinh, Clipper, Linear, Saturator, Tanh};
+use valib::saturators::{Asinh, Clipper, Saturator, Tanh};
 use valib::simd::{AutoF32x2, AutoF64x2, SimdComplexField};
-use valib_core::{Scalar, SimdCast};
-
-struct DcBlocker<T>(Biquad<T, Linear>);
-
-impl<T> DcBlocker<T> {
-    const CUTOFF_HZ: f32 = 5.0;
-    const Q: f32 = 0.707;
-    fn new(samplerate: f32) -> Self
-    where
-        T: Scalar,
-    {
-        Self(Biquad::highpass(
-            T::from_f64((Self::CUTOFF_HZ / samplerate) as f64),
-            T::from_f64(Self::Q as f64),
-        ))
-    }
-}
-
-impl<T: Scalar> DSPMeta for DcBlocker<T> {
-    type Sample = T;
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.0.set_samplerate(samplerate);
-        self.0.update_coefficients(&Biquad::highpass(
-            T::from_f64((Self::CUTOFF_HZ / samplerate) as f64),
-            T::from_f64(Self::Q as f64),
-        ));
-    }
-
-    fn latency(&self) -> usize {
-        self.0.latency()
-    }
-
-    fn reset(&mut self) {
-        self.0.reset();
-    }
-}
-
-impl<T: Scalar> DSPProcess<1, 1> for DcBlocker<T> {
-    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.0.process(x)
-    }
-}
+use valib::{Scalar, SimdCast};
 
 type Sample = AutoF32x2;
 type Sample64 = AutoF64x2;
