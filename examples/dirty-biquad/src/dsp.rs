@@ -8,7 +8,7 @@ use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess};
 use valib::filters::biquad::Biquad;
 use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::clippers::DiodeClipperModel;
-use valib::saturators::Dynamic;
+use valib::saturators::{Dynamic, Linear};
 use valib::simd::{AutoF32x2, SimdComplexField, SimdValue};
 
 use crate::{MAX_BLOCK_SIZE, OVERSAMPLE};
@@ -37,7 +37,7 @@ impl fmt::Display for FilterType {
 }
 
 impl FilterType {
-    pub fn as_biquad(&self, fc: Sample, res: Sample) -> Biquad<Sample, Dynamic<Sample>> {
+    pub fn as_biquad(&self, fc: Sample, res: Sample) -> Biquad<Sample, Linear> {
         match self {
             Self::Lowpass => Biquad::lowpass(fc, res),
             Self::Bandpass => Biquad::bandpass_peak0(fc, res),
@@ -173,7 +173,8 @@ pub fn create(samplerate: f32) -> RemoteControlled<Dsp> {
         resonance: SmoothedParam::linear(0.5, samplerate, 10.0),
         ftype: FilterType::Lowpass,
         saturator: SaturatorType::Linear,
-        biquad: Biquad::lowpass(Sample::splat(3000.0 / samplerate), Sample::splat(0.5)),
+        biquad: Biquad::lowpass(Sample::splat(3000.0 / samplerate), Sample::splat(0.5))
+            .with_saturators(Dynamic::default(), Dynamic::default()),
     };
     let dsp = Oversample::new(OVERSAMPLE, MAX_BLOCK_SIZE).with_dsp(samplerate, BlockAdapter(dsp));
     RemoteControlled::new(samplerate, 1e3, dsp)

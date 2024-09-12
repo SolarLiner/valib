@@ -1,15 +1,10 @@
-[package]
-name = "valib"
-version = "0.1.0"
-edition = "2021"
-license = "MIT"
-
 [workspace]
-members = ["examples/*", "valib_derive", "xtask"]
+resolver = "2"
+members = ["crates/*", "examples/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
-rust-version = "1.68"
+rust-version = "1.80"
 authors = ["Nathan Graule <me@solarliner.dev>"]
 edition = "2021"
 license = "GPL-3.0-or-later"
@@ -20,41 +15,48 @@ keywords = ["virtual-analog", "audio", "plugin", "va-modeling", "dsp"]
 [workspace.dependencies]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+num-complex = "0.4.6"
 num-traits = "0.2.18"
-nalgebra = "0.32.3"
-
-[dependencies]
-atomic_refcell = { version = "0.1.13", optional = true }
-az = "1.2.1"
-fundsp = { version = "0.17.1", optional = true }
-nalgebra.workspace = true
-nih_plug = { workspace = true, optional = true }
-num-traits.workspace = true
-numeric-array = { version = "0.5.2", optional = true }
 numeric_literals = "0.2.0"
-paste = "1.0.15"
-petgraph = { version = "0.6.5", optional = true }
-portable-atomic = { version = "1.6.0", features = ["float"] }
+nalgebra = "0.32.3"
 profiling = "1.0.15"
-simba = { version = "0.8.1", features = ["wide"] }
-typenum = { version = "1.17.0", optional = true }
-valib_derive = { path = "valib_derive" }
-
-[dev-dependencies]
+# Dev dependencies
 insta = { version = "1.34.0", features = ["csv", "redactions"] }
 rstest = "0.21.0"
 serde = "*"
 plotters = "0.3.6"
 
+[package]
+name = "valib"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+valib-core = { path = "crates/valib-core" }
+valib-filters = { path = "crates/valib-filters", optional = true }
+valib-saturators = { path = "crates/valib-saturators", optional = true }
+valib-oscillators = { path = "crates/valib-oscillators", optional = true }
+valib-oversample = { path = "crates/valib-oversample", optional = true }
+valib-voice = { path = "crates/valib-voice", optional = true }
+valib-wdf = { path = "crates/valib-wdf", optional = true }
+valib-fundsp = { path = "crates/valib-fundsp", optional = true }
+valib-nih-plug = { path = "crates/valib-nih-plug", optional = true }
+
 [features]
-default = ["biquad-design", "oversample"]
-biquad-design = ["math-polynom"]
-math-polynom = []
-oversample = ["biquad-design"]
-fundsp = ["dep:fundsp", "dep:numeric-array", "dep:typenum"]
-nih-plug = ["dep:nih_plug"]
-test-plots = []
-wdf = ["dep:atomic_refcell", "dep:petgraph"]
+saturators = ["dep:valib-saturators"]
+filters = ["saturators", "dep:valib-filters"]
+oscillators = ["dep:valib-oscillators"]
+oversample = ["filters", "dep:valib-oversample"]
+voice = ["dep:valib-voice"]
+wdf = ["filters", "dep:valib-wdf"]
+fundsp = ["dep:valib-fundsp"]
+nih-plug = ["dep:valib-nih-plug"]
 
 [profile.dev]
 opt-level = 1

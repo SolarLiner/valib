@@ -1,0 +1,25 @@
+[package]
+name = "valib-oscillators"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+valib-core = { path = "../valib-core" }
+valib-filters = { path = "../valib-filters" }
+valib-saturators = { path = "../valib-saturators" }
+
+num-traits.workspace = true
+numeric_literals.workspace = true
+profiling.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+insta.workspace = true
+nalgebra.workspace = true
+plotters.workspace = true

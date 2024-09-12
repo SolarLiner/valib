@@ -16,4 +16,4 @@ crate-type = ["cdylib"]
 nih_plug.workspace = true
 num-traits.workspace = true
 thread_local = "1.1.8"
-valib = { path = "../..", features = ["nih-plug", "wdf"] }
+valib = { path = "../..", features = ["oversample", "wdf", "nih-plug"] }

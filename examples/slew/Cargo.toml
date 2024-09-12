@@ -14,4 +14,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 nih_plug = { workspace = true }
-valib = { path = "../.." }
+valib = { path = "../..", features = ["saturators", "oversample"] }

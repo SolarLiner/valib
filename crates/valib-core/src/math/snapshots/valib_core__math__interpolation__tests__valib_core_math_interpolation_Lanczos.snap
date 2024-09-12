@@ -1,0 +1,16 @@
+---
+source: crates/valib-core/src/math/interpolation.rs
+expression: "&actual as &[_]"
+---
+-0.0
+-0.049628
+-0.098371
+-0.097583
+0.0
+0.220562
+0.509556
+0.792484
+1.0
+1.110629
+1.117483
+1.062674

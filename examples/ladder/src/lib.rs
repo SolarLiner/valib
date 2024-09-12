@@ -3,7 +3,7 @@ use std::sync::Arc;
 use nih_plug::prelude::*;
 
 use dsp::Dsp;
-use valib::contrib::nih_plug::{enum_int_param, process_buffer_simd, BindToParameter};
+use valib::contrib::nih_plug::{process_buffer_simd, BindToParameter};
 use valib::dsp::parameter::{RemoteControl, RemoteControlled};
 use valib::dsp::DSPMeta;
 

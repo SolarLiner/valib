@@ -1,0 +1,25 @@
+[package]
+name = "valib-saturators"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+valib-core = { path = "../valib-core" }
+
+nalgebra.workspace = true
+num-traits.workspace = true
+numeric_literals.workspace = true
+profiling.workspace = true
+
+paste = "1.0.15"
+
+[dev-dependencies]
+rstest.workspace = true
+insta.workspace = true
+plotters.workspace = true

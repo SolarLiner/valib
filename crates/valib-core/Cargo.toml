@@ -1,0 +1,29 @@
+[package]
+name = "valib-core"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+valib-derive = { path = "../valib-derive" }
+
+az = "1.2.1"
+simba = { version = "0.9.0", features = ["wide", "fixed", "portable_simd"] }
+nalgebra.workspace = true
+num-traits.workspace = true
+numeric_literals.workspace = true
+portable-atomic = { version = "1.7.0", features = ["float"] }
+profiling.workspace = true
+plotters = { workspace = true, optional = true }
+
+[dev-dependencies]
+rstest.workspace = true
+insta.workspace = true
+
+[features]
+test-utils = ["dep:plotters"]
