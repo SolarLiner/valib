@@ -57,6 +57,8 @@ jobs:
             target/
           key: ${{ matrix.name }}-${{ matrix.cross-target }}
 
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
       - name: Set up Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
