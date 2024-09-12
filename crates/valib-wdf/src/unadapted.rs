@@ -1,7 +1,7 @@
-use crate::dsp::{DSPMeta, DSPProcess};
-use crate::wdf::{Wave, Wdf};
+use crate::{Wave, Wdf};
 use num_traits::Zero;
-use simba::simd::SimdBool;
+use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::simd::SimdBool;
 use valib_core::Scalar;
 
 #[derive(Debug, Copy, Clone)]

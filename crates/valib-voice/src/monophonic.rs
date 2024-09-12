@@ -123,18 +123,6 @@ impl<V: Voice + DSPProcess<0, 1>> DSPProcess<0, 1> for Monophonic<V> {
     }
 }
 
-impl<V: Voice + DSPProcess<1, 1>> DSPProcess<0, 1> for Monophonic<V> {
-    fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
-        if let Some(voice) = &mut self.voice {
-            let note_data = voice.note_data();
-            let freq = note_data.frequency;
-            voice.process([freq])
-        } else {
-            [zero()]
-        }
-    }
-}
-
 impl<V: Voice + DSPProcessBlock<0, 1>> DSPProcessBlock<0, 1> for Monophonic<V> {
     fn process_block(
         &mut self,

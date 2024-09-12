@@ -17,6 +17,8 @@ num-traits.workspace = true
 numeric_literals.workspace = true
 profiling.workspace = true
 
+paste = "1.0.15"
+
 [dev-dependencies]
 rstest.workspace = true
 insta.workspace = true

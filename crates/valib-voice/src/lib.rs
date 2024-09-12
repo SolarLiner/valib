@@ -11,9 +11,9 @@ pub trait Voice: DSPMeta {
     fn note_data_mut(&mut self) -> &mut NoteData<Self::Sample>;
     fn release(&mut self);
     fn reuse(&mut self);
-    fn reset(&mut self);
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct Velocity<T> {
     value: T,
     sqrt: T,
@@ -38,6 +38,7 @@ impl<T: Copy + SimdRealField> Velocity<T> {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
 pub struct Gain<T> {
     linear: T,
     db: T,

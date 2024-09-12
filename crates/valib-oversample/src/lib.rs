@@ -1,7 +1,7 @@
 use std::borrow::{Borrow, BorrowMut};
 use std::ops::{Deref, DerefMut};
 
-use nalgebra::Complex;
+use num_complex::Complex;
 
 use valib_core::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib_core::dsp::parameter::HasParameters;

@@ -1,6 +1,6 @@
 use num_traits::Zero;
 
-use crate::wdf::{AdaptedWdf, Wave, Wdf};
+use crate::{AdaptedWdf, Wave, Wdf};
 use valib_core::Scalar;
 
 #[derive(Debug, Copy, Clone)]

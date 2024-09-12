@@ -1,11 +1,11 @@
-use crate::math::nr::{newton_rhapson_tol_max_iter, RootEq};
-use crate::saturators::clippers::{DiodeClipper, DiodeClipperModel};
-use crate::wdf::unadapted::WdfDsp;
-use crate::wdf::{Wave, Wdf};
-use nalgebra::{SMatrix, SVector, SimdBool};
+use crate::unadapted::WdfDsp;
+use crate::{Wave, Wdf};
+use nalgebra::{SMatrix, SVector};
 use num_traits::{Float, Num, Zero};
 use numeric_literals::replace_float_literals;
+use valib_core::math::nr::{newton_rhapson_tol_max_iter, RootEq};
 use valib_core::Scalar;
+use valib_saturators::clippers::{DiodeClipper, DiodeClipperModel};
 
 #[inline]
 #[replace_float_literals(T::from_f64(literal))]
@@ -228,12 +228,11 @@ impl<T: Scalar<Element: Float>> Wdf for DiodeNR<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::saturators::clippers::DiodeClipper;
-    use crate::util::tests::{Plot, Series};
-    use crate::wdf::adapters::Parallel;
-    use crate::wdf::dsl::*;
-    use crate::wdf::leaves::{Capacitor, ResistiveVoltageSource};
-    use crate::wdf::module::WdfModule;
+    use valib_core::util::tests::{Plot, Series};
+    use valib_saturators::clippers::DiodeClipper;
+
+    use crate::dsl::*;
+
     use plotters::style::*;
     use std::f32::consts::TAU;
 

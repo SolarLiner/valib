@@ -4,9 +4,9 @@ use std::ops;
 
 use clippers::DiodeClipperModel;
 
-use crate::dsp::{DSPMeta, DSPProcess};
-use crate::math::nr::RootEq;
-use crate::Scalar;
+use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::math::nr::RootEq;
+use valib_core::Scalar;
 
 pub mod adaa;
 pub mod bjt;
@@ -53,7 +53,7 @@ impl<'a, T: Scalar, S: Saturator<T>> MultiSaturator<T, 1> for &'a mut S {
 macro_rules! impl_multisat_tuples {
     ($count:literal; $($t:ident),*) => { ::paste::paste! {
         #[allow(non_snake_case)]
-        impl<T: $crate::Scalar, $($t: $crate::saturators::Saturator<T>),*> MultiSaturator<T, $count> for ($($t,)*) {
+        impl<T: $crate::Scalar, $($t: $crate::Saturator<T>),*> MultiSaturator<T, $count> for ($($t,)*) {
             fn multi_saturate(&self, [$([<x $t>]),*]: [T; $count]) -> [T; $count] {
                 let ($($t),*) = self;
                 [$($t.saturate([<x $t>])),*]

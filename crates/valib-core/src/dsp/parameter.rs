@@ -169,7 +169,7 @@ impl SmoothedParam {
 
     pub fn current_value(&self) -> f32 {
         match self.smoothing {
-            Smoothing::Linear { last_out, .. } => *last_out,
+            Smoothing::Linear { last_out, .. } => last_out,
             Smoothing::Exponential { state, .. } => state,
         }
     }

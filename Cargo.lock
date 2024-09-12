@@ -1588,11 +1588,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "valib-oscillators"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "nalgebra",
+ "num-traits",
+ "numeric_literals",
+ "plotters",
+ "profiling",
+ "rstest",
+ "valib-core",
+ "valib-filters",
+ "valib-saturators",
+]
+
+[[package]]
 name = "valib-oversample"
 version = "0.1.0"
 dependencies = [
  "insta",
  "nalgebra",
+ "num-complex",
  "numeric_literals",
  "plotters",
  "profiling",
@@ -1610,6 +1627,7 @@ dependencies = [
  "nalgebra",
  "num-traits",
  "numeric_literals",
+ "paste",
  "plotters",
  "profiling",
  "rstest",

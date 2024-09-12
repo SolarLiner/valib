@@ -1,7 +1,7 @@
-use crate::wdf::dsl::{node_mut, node_ref};
-use crate::wdf::{AdaptedWdf, Node, Wave, Wdf};
+use crate::dsl::{node_mut, node_ref};
+use crate::{AdaptedWdf, Node, Wave, Wdf};
 use num_traits::Zero;
-use simba::simd::SimdComplexField;
+use valib_core::simd::SimdComplexField;
 
 #[derive(Debug, Clone)]
 pub struct Series<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> {

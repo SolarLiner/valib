@@ -1,5 +1,5 @@
-use crate::wdf::dsl::node_mut;
-use crate::wdf::{AdaptedWdf, Node, Wdf};
+use crate::dsl::node_mut;
+use crate::{AdaptedWdf, Node, Wdf};
 
 pub struct WdfModule<Root: Wdf, Leaf: AdaptedWdf<Scalar = Root::Scalar>> {
     pub root: Node<Root>,
