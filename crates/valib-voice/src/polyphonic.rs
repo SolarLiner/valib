@@ -1,5 +1,6 @@
 use crate::{NoteData, Voice, VoiceManager};
-use valib_core::dsp::DSPMeta;
+use num_traits::zero;
+use valib_core::dsp::{DSPMeta, DSPProcess};
 
 pub struct Polyphonic<V: Voice> {
     create_voice: Box<dyn Fn(f32, NoteData<V::Sample>) -> V>,
@@ -77,5 +78,29 @@ impl<V: Voice> VoiceManager<V> for Polyphonic<V> {
 
     fn panic(&mut self) {
         self.voice_pool.fill(None);
+    }
+}
+
+impl<V: Voice + DSPProcess<0, 1>> DSPProcess<0, 1> for Polyphonic<V> {
+    fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
+        let mut out = zero();
+        for voice in self.voice_pool.iter_mut().flatten() {
+            let [y] = voice.process([]);
+            out += y;
+        }
+        [out]
+    }
+}
+
+impl<V: Voice + DSPProcess<1, 1>> DSPProcess<0, 1> for Polyphonic<V> {
+    fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
+        let mut out = zero();
+        for voice in self.voice_pool.iter_mut().flatten() {
+            let note_data = voice.note_data();
+            let freq = note_data.frequency;
+            let [y] = voice.process([freq]);
+            out += y;
+        }
+        [out]
     }
 }

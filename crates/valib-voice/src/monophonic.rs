@@ -1,5 +1,7 @@
 use crate::{NoteData, Voice, VoiceManager};
-use valib_core::dsp::DSPMeta;
+use num_traits::zero;
+use valib_core::dsp::buffer::{AudioBufferMut, AudioBufferRef};
+use valib_core::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
 
 pub struct Monophonic<V: Voice> {
     create_voice: Box<dyn Fn(f32, NoteData<V::Sample>) -> V>,
@@ -108,5 +110,44 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
 
     fn panic(&mut self) {
         self.voice.take();
+    }
+}
+
+impl<V: Voice + DSPProcess<0, 1>> DSPProcess<0, 1> for Monophonic<V> {
+    fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
+        if let Some(voice) = &mut self.voice {
+            voice.process([])
+        } else {
+            [zero()]
+        }
+    }
+}
+
+impl<V: Voice + DSPProcess<1, 1>> DSPProcess<0, 1> for Monophonic<V> {
+    fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
+        if let Some(voice) = &mut self.voice {
+            let note_data = voice.note_data();
+            let freq = note_data.frequency;
+            voice.process([freq])
+        } else {
+            [zero()]
+        }
+    }
+}
+
+impl<V: Voice + DSPProcessBlock<0, 1>> DSPProcessBlock<0, 1> for Monophonic<V> {
+    fn process_block(
+        &mut self,
+        inputs: AudioBufferRef<Self::Sample, 0>,
+        mut outputs: AudioBufferMut<Self::Sample, 1>,
+    ) {
+        if let Some(voice) = &mut self.voice {
+            voice.process_block(inputs, outputs);
+        } else {
+            outputs.fill(zero())
+        }
+    }
+    fn max_block_size(&self) -> Option<usize> {
+        self.voice.as_ref().and_then(|v| v.max_block_size())
     }
 }
