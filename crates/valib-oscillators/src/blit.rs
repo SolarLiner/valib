@@ -1,6 +1,6 @@
-use crate::dsp::DSPMeta;
-use crate::dsp::DSPProcess;
 use numeric_literals::replace_float_literals;
+use valib_core::dsp::DSPMeta;
+use valib_core::dsp::DSPProcess;
 use valib_core::Scalar;
 
 /// Raw Band-Limited Impulse Train output. To be fed to leaky integrators to reconstruct the oscillator shape.
@@ -208,8 +208,8 @@ impl<T: Scalar> Square<T> {
 
 #[cfg(test)]
 mod tests {
-    use crate::dsp::buffer::AudioBuffer;
-    use crate::dsp::{BlockAdapter, DSPProcessBlock};
+    use valib_core::dsp::buffer::AudioBuffer;
+    use valib_core::dsp::{BlockAdapter, DSPProcessBlock};
 
     use super::*;
 

@@ -1,10 +1,10 @@
-use crate::dsp::DSPMeta;
-use crate::math::interpolation::{SimdIndex, SimdInterpolatable};
-use crate::{
+use std::ops::Range;
+use valib_core::dsp::DSPMeta;
+use valib_core::math::interpolation::{SimdIndex, SimdInterpolatable};
+use valib_core::{
     dsp::DSPProcess,
     math::interpolation::{Interpolate, Linear},
 };
-use std::ops::Range;
 use valib_core::{Scalar, SimdCast};
 
 /// Wavetable oscillator, reading samples from its internal array, with a customizable interpolation method

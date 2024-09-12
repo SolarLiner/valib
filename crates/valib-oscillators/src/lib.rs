@@ -1,6 +1,6 @@
-use crate::dsp::DSPMeta;
-use crate::dsp::DSPProcess;
 use numeric_literals::replace_float_literals;
+use valib_core::dsp::DSPMeta;
+use valib_core::dsp::DSPProcess;
 use valib_core::Scalar;
 
 pub mod blit;
