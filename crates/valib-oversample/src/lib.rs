@@ -1,3 +1,9 @@
+#![warn(missing_docs)]
+//! # Oversampling
+//!
+//! This crate provides oversampling capabilities, allowing you to oversample any block processor.
+//!
+//! Available here is a polyphase-based oversampling method, with more to come in the future.
 use std::borrow::{Borrow, BorrowMut};
 use std::ops::{Deref, DerefMut};
 
@@ -82,6 +88,7 @@ impl<T> PingPongBuffer<T> {
         self.input_is_left = !self.input_is_left;
     }
 
+    #[allow(dead_code)]
     fn is_empty(&self) -> bool {
         self.left.is_empty()
     }
@@ -139,6 +146,10 @@ impl<T: Scalar> ResampleStage<T, false> {
     }
 }
 
+/// Raw oversampling type. Works by taking a block of audio, processing it and returning a slice to
+/// an internal buffer containing the upsampled audio data you should process in place. Once done,
+/// call `.finish(output)` on the slice to downsample the internal buffer again, and output it to
+/// `output`.
 #[derive(Debug, Clone)]
 pub struct Oversample<T> {
     max_factor: usize,
@@ -148,7 +159,48 @@ pub struct Oversample<T> {
     downsample: Box<[ResampleStage<T, false>]>,
 }
 
+impl<T> Oversample<T> {
+    /// Returns the current oversampling amount.
+    pub fn oversampling_amount(&self) -> usize {
+        usize::pow(2, self.num_stages_active as _)
+    }
+
+    /// Sets the oversampling amount.
+    ///
+    /// Only square numbers are supported; otherwise the next power of two from the given factor
+    /// will be used.
+    ///
+    /// # Arguments
+    ///
+    /// `amt`: Oversampling amount. Needs to be less than or equal to the maximum oversampling rate
+    ///     configured when constructed with [`Oversample::new`].
+    pub fn set_oversampling_amount(&mut self, amt: usize) {
+        assert!(amt <= self.max_factor);
+        self.num_stages_active = amt.next_power_of_two().ilog2() as _;
+    }
+
+    /// Maximum block size supported at the current oversampling factor.
+    pub fn max_block_size(&self) -> usize {
+        self.os_buffer.len() / usize::pow(2, self.num_stages_active as _)
+    }
+
+    /// Return the length of the oversampled buffer.
+    pub fn get_os_len(&self, input_len: usize) -> usize {
+        input_len * usize::pow(2, self.num_stages_active as _)
+    }
+}
+
 impl<T: Scalar> Oversample<T> {
+    /// Create a new oversampling filter.
+    ///
+    /// # Arguments
+    ///
+    /// * `max_os_factor`: Maximum oversampling factor supported by this instance. The actual
+    ///     oversampling can be changed after creation, but will need to always be less than or equal
+    ///     to this factor.
+    /// * `max_block_size`: Maximum block size that will be expected to be processed.
+    ///
+    /// returns: Oversample<T>
     pub fn new(max_os_factor: usize, max_block_size: usize) -> Self
     where
         Complex<T>: SimdComplexField,
@@ -169,29 +221,14 @@ impl<T: Scalar> Oversample<T> {
         }
     }
 
-    pub fn oversampling_amount(&self) -> usize {
-        usize::pow(2, self.num_stages_active as _)
-    }
-
-    pub fn set_oversampling_amount(&mut self, amt: usize) {
-        assert!(amt <= self.max_factor);
-        self.num_stages_active = amt.next_power_of_two().ilog2() as _;
-    }
-
+    /// Returns the latency of the filter. This includes both upsampling and downsampling.
     pub fn latency(&self) -> usize {
         let upsample_latency = self.upsample.iter().map(|p| p.latency()).sum::<usize>();
         let downsample_latency = self.downsample.iter().map(|p| p.latency()).sum::<usize>();
         2 * self.num_stages_active + upsample_latency + downsample_latency
     }
 
-    pub fn max_block_size(&self) -> usize {
-        self.os_buffer.len() / usize::pow(2, self.num_stages_active as _)
-    }
-
-    pub fn get_os_len(&self, input_len: usize) -> usize {
-        input_len * usize::pow(2, self.num_stages_active as _)
-    }
-
+    /// Reset the state of this oversampling filter.
     pub fn reset(&mut self) {
         self.os_buffer.fill(T::zero());
         for stage in &mut self.upsample {
@@ -202,6 +239,7 @@ impl<T: Scalar> Oversample<T> {
         }
     }
 
+    /// Construct an [`Oversampled`] given this oversample instance and a block processor to wrap.
     pub fn with_dsp<P: DSPProcessBlock<1, 1>>(
         self,
         samplerate: f32,
@@ -263,18 +301,24 @@ impl<T: Scalar> Oversample<T> {
     }
 }
 
+/// Wraps a block processor to orversample it, and allow using it within other DSP blocks.
+///
+/// Oversampling is transparently performed over the inner block processor.
 pub struct Oversampled<T, P> {
     oversampling: Oversample<T>,
     staging_buffer: Box<[T]>,
+    /// Inner processor
     pub inner: P,
     base_samplerate: f32,
 }
 
 impl<T, P> Oversampled<T, P> {
+    /// Return the current oversampling factor
     pub fn os_factor(&self) -> usize {
-        usize::pow(2, self.oversampling.num_stages_active as _)
+        self.oversampling.oversampling_amount()
     }
 
+    /// Drops the oversampling filter, returning the inner processor.
     pub fn into_inner(self) -> P {
         self.inner
     }
@@ -285,12 +329,14 @@ where
     T: Scalar,
     P: DSPProcessBlock<1, 1, Sample = T>,
 {
+    /// Sets the oversampling amount. See [`Oversample::set_oversampling_amount`] for more details.
     pub fn set_oversampling_amount(&mut self, amt: usize) {
         assert!(amt >= 1);
         self.oversampling.set_oversampling_amount(amt);
         self.set_samplerate(self.base_samplerate);
     }
 
+    /// Returns the sample rate of the oversampled buffer.
     pub fn inner_samplerate(&self) -> f32 {
         self.base_samplerate * self.oversampling.oversampling_amount() as f32
     }
