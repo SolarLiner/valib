@@ -6,13 +6,19 @@ use crate::{NoteData, Voice, VoiceManager};
 use num_traits::zero;
 use valib_core::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib_core::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
+use valib_core::util::lerp;
+use valib_core::Scalar;
 
 /// Monophonic voice manager over a single voice.
 pub struct Monophonic<V: Voice> {
+    /// Minimum pitch bend amount (semitones)
+    pub pitch_bend_min_st: V::Sample,
+    /// Maximum pitch bend amount (semitones)
+    pub pitch_bend_max_st: V::Sample,
     create_voice: Box<dyn Fn(f32, NoteData<V::Sample>) -> V>,
     voice: Option<V>,
-    base_frequency: f32,
-    pitch_bend: f32,
+    base_frequency: V::Sample,
+    pitch_bend_st: V::Sample,
     released: bool,
     legato: bool,
     samplerate: f32,
@@ -53,11 +59,13 @@ impl<V: Voice> Monophonic<V> {
         legato: bool,
     ) -> Self {
         Self {
+            pitch_bend_min_st: V::Sample::from_f64(-2.),
+            pitch_bend_max_st: V::Sample::from_f64(2.),
             create_voice: Box::new(create_voice),
             voice: None,
             released: false,
-            base_frequency: 440.,
-            pitch_bend: 0.,
+            base_frequency: V::Sample::from_f64(440.),
+            pitch_bend_st: zero(),
             legato,
             samplerate,
         }
@@ -102,6 +110,8 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
     }
 
     fn note_on(&mut self, note_data: NoteData<V::Sample>) -> Self::ID {
+        self.base_frequency = note_data.frequency;
+        self.pitch_bend_st = zero();
         if let Some(voice) = &mut self.voice {
             *voice.note_data_mut() = note_data;
             if self.released || !self.legato {
@@ -124,6 +134,29 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
 
     fn panic(&mut self) {
         self.voice.take();
+    }
+
+    fn pitch_bend(&mut self, amount: f64) {
+        self.pitch_bend_st = lerp(
+            V::Sample::from_f64(0.5 + amount / 2.),
+            self.pitch_bend_min_st,
+            self.pitch_bend_max_st,
+        );
+    }
+
+    fn aftertouch(&mut self, amount: f64) {
+        if let Some(voice) = &mut self.voice {
+            voice.note_data_mut().pressure = V::Sample::from_f64(amount);
+        }
+    }
+
+    fn pressure(&mut self, _: Self::ID, pressure: f32) {
+        if let Some(voice) = &mut self.voice {
+            voice.note_data_mut().pressure = V::Sample::from_f64(pressure as _);
+        }
+    }
+    fn glide(&mut self, _: Self::ID, semitones: f32) {
+        self.pitch_bend_st = V::Sample::from_f64(semitones as _);
     }
 }
 

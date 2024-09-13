@@ -20,7 +20,6 @@ mod util;
 const TARGET_SAMPLERATE: f32 = 192000.;
 
 type Sample = AutoF64x2;
-type Sample32 = AutoF32x2;
 
 pub struct Ts404 {
     params: Arc<Ts404Params>,

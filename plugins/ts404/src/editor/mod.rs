@@ -113,6 +113,7 @@ where
     })
 }
 
+#[cfg(never)]
 fn labelled_node_enum<E: 'static + PartialEq + ToString + Data + Enum>(
     cx: &mut Context,
     params: impl Lens<Target = Arc<Ts404Params>>,

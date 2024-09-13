@@ -51,6 +51,13 @@ impl<T, S> Biquad<T, S> {
 }
 
 impl<T: Copy, S> Biquad<T, S> {
+    /// Update the coefficients from another [`Biquad`]  instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `other`: Biquad instance to copy the coefficients from.
+    ///
+    /// returns: ()
     pub fn update_coefficients<S2>(&mut self, other: &Biquad<T, S2>) {
         self.na = other.na;
         self.b = other.b;

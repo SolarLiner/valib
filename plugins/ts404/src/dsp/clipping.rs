@@ -7,7 +7,7 @@ use std::sync::{atomic::Ordering, Arc};
 use valib::math::smooth_clamp;
 use valib::saturators::clippers::DiodeClipper;
 use valib::saturators::{Saturator, Slew};
-use valib::simd::{SimdComplexField, SimdValue};
+use valib::simd::SimdValue;
 use valib::wdf::dsl::*;
 use valib::{
     dsp::{DSPMeta, DSPProcess},
@@ -16,14 +16,14 @@ use valib::{
 };
 
 struct CrossoverDistortion<T> {
-    pub t: T,
+    // pub t: T,
     pub drift: T,
 }
 
 impl<T: Scalar> CrossoverDistortion<T> {
     pub fn new(drift: T) -> Self {
         Self {
-            t: T::from_f64(1e-1),
+            // t: T::from_f64(1e-1),
             drift,
         }
     }

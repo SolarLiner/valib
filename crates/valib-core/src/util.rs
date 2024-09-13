@@ -1,7 +1,7 @@
 //! Utilities for all of `valib`.
 
 use crate::Scalar;
-use num_traits::{AsPrimitive, Float, One, Zero};
+use num_traits::{AsPrimitive, Float, Zero};
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdValue;
 

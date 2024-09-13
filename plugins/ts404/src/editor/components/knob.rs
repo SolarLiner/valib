@@ -181,7 +181,6 @@ pub struct Knob {
 impl Knob {
     pub fn new<Params: 'static, P: Param>(
         cx: &mut Context,
-        bipolar: bool,
         params: impl Lens<Target = Params>,
         get_param: impl 'static + Copy + Fn(&Params) -> &P,
     ) -> Handle<Self> {

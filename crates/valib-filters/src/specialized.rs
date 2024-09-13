@@ -1,3 +1,6 @@
+//! # Specialized filters
+//!
+//! Provides specialized filters for specific use-cases.
 use crate::biquad::Biquad;
 use valib_core::dsp::{DSPMeta, DSPProcess};
 use valib_core::Scalar;

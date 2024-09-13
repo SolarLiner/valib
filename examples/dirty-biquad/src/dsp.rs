@@ -93,7 +93,7 @@ pub struct DspInner {
     fc: SmoothedParam,
     resonance: SmoothedParam,
     ftype: FilterType,
-    saturator: SaturatorType,
+    // saturator: SaturatorType,
     biquad: Biquad<Sample, Dynamic<Sample>>,
 }
 
@@ -172,7 +172,7 @@ pub fn create(samplerate: f32) -> RemoteControlled<Dsp> {
         fc: SmoothedParam::exponential(3000.0, samplerate, 50.0),
         resonance: SmoothedParam::linear(0.5, samplerate, 10.0),
         ftype: FilterType::Lowpass,
-        saturator: SaturatorType::Linear,
+        //saturator: SaturatorType::Linear,
         biquad: Biquad::lowpass(Sample::splat(3000.0 / samplerate), Sample::splat(0.5))
             .with_saturators(Dynamic::default(), Dynamic::default()),
     };

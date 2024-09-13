@@ -1,3 +1,6 @@
+//! # Upsampled voices
+//!
+//! Provides upsampling for DSP process which are generators (0 input channels).
 use num_traits::zero;
 use valib_core::dsp::buffer::{AudioBufferBox, AudioBufferMut, AudioBufferRef};
 use valib_core::dsp::{DSPMeta, DSPProcessBlock};

@@ -1,4 +1,7 @@
 #![warn(missing_docs)]
+//! # Filters for `valib`
+//!
+//! This module provides various filter implementations using `valib` process definitions.
 
 pub mod biquad;
 pub mod halfband;
