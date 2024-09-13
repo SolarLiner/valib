@@ -417,7 +417,7 @@ impl<C> AudioBuffer<C, 0> {
     /// # Arguments
     ///
     /// `block_size`: Size of the audio buffer
-    pub fn empty(block_size: usize) -> Self {
+    pub const fn empty(block_size: usize) -> Self {
         Self {
             containers: [],
             inner_size: block_size,
