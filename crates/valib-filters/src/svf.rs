@@ -14,9 +14,12 @@ use valib_core::dsp::{
 use valib_core::Scalar;
 use valib_saturators::{Linear, Saturator};
 
+/// Parameter type for the SVF filter
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ParamName)]
 pub enum SvfParams {
+    /// Cutoff frequency (Hz)
     Cutoff,
+    /// Resonance
     Resonance,
 }
 
@@ -52,6 +55,14 @@ impl<T: Scalar, Mode: Saturator<T>> DSPMeta for Svf<T, Mode> {
     fn set_samplerate(&mut self, samplerate: f32) {
         self.w_step = T::simd_pi() / T::from_f64(samplerate as _);
         self.update_coefficients();
+    }
+
+    fn latency(&self) -> usize {
+        2
+    }
+
+    fn reset(&mut self) {
+        self.s.fill(T::zero());
     }
 }
 
@@ -116,10 +127,6 @@ impl<T: Scalar, C: Default> Svf<T, C> {
 }
 
 impl<T: Scalar, C> Svf<T, C> {
-    pub fn reset(&mut self) {
-        self.s.fill(T::zero());
-    }
-
     /// Set the new filter cutoff frequency (in Hz).
     pub fn set_cutoff(&mut self, freq: T) {
         self.fc = freq;

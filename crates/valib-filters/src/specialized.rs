@@ -3,11 +3,20 @@ use valib_core::dsp::{DSPMeta, DSPProcess};
 use valib_core::Scalar;
 use valib_saturators::Linear;
 
+/// Specialized filter that removes DC offsets by applying a 5 Hz biquad highpass filter
 pub struct DcBlocker<T>(Biquad<T, Linear>);
 
 impl<T> DcBlocker<T> {
     const CUTOFF_HZ: f32 = 5.0;
     const Q: f32 = 0.707;
+
+    /// Create a new DC Blocker filter at the given sample rate
+    ///
+    /// # Arguments
+    ///
+    /// * `samplerate`: Sample rate at which the filter is going to run
+    ///
+    /// returns: DcBlocker<T>
     pub fn new(samplerate: f32) -> Self
     where
         T: Scalar,

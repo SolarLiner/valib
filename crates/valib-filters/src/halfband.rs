@@ -57,6 +57,7 @@ impl<T: Zero> Allpass<T> {
     }
 }
 
+/// Half-band filter of order `2*ORDER`.
 #[derive(Debug, Clone, Copy)]
 pub struct HalfbandFilter<T, const ORDER: usize> {
     filter_a: Series<[Allpass<T>; ORDER]>,
@@ -91,6 +92,7 @@ impl<T: Scalar, const ORDER: usize> HalfbandFilter<T, ORDER> {
     }
 }
 
+/// Construct a steep half-band filter of order 12
 #[rustfmt::skip]
 pub fn steep_order12<T: Scalar>() -> HalfbandFilter<T, 6> {
     HalfbandFilter::from_coeffs(
@@ -111,6 +113,7 @@ pub fn steep_order12<T: Scalar>() -> HalfbandFilter<T, 6> {
     )
 }
 
+/// Construct a steep half-band filter of order 10
 #[rustfmt::skip]
 pub fn steep_order10<T: Scalar>() -> HalfbandFilter<T, 5> {
     HalfbandFilter::from_coeffs(

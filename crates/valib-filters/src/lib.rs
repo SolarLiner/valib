@@ -1,3 +1,5 @@
+#![warn(missing_docs)]
+
 pub mod biquad;
 pub mod halfband;
 pub mod ladder;

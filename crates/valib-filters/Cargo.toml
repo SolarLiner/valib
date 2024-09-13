@@ -19,6 +19,7 @@ numeric_literals.workspace = true
 profiling.workspace = true
 
 [dev-dependencies]
+valib-core = { path = "../valib-core", features = ["test-utils"] }
 rstest.workspace = true
 insta.workspace = true
 plotters.workspace = true

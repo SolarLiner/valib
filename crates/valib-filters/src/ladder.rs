@@ -97,9 +97,12 @@ impl<T: Scalar, S: Default + Saturator<T>> LadderTopology<T> for Transistor<S> {
     }
 }
 
+/// Parameter type for the ladder filter
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ParamName)]
 pub enum LadderParams {
+    /// Cutoff (Hz)
     Cutoff,
+    /// Resonance
     Resonance,
 }
 
@@ -165,6 +168,13 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
         this
     }
 
+    /// Set the topology of this ladder filter
+    ///
+    /// # Arguments
+    ///
+    /// * `topology`: Topology instance
+    ///
+    /// returns: Ladder<T, T2>
     pub fn with_topology<T2>(self, topology: T2) -> Ladder<T, T2> {
         let Self {
             inv_2fs,
@@ -321,13 +331,13 @@ mod tests {
                 Series {
                     label: "Input",
                     samplerate: samplerate as f32,
-                    series: &*inp_f32,
+                    series: &inp_f32,
                     color: &BLUE,
                 },
                 Series {
                     label: "Output",
                     samplerate: samplerate as f32,
-                    series: &*out_f32,
+                    series: &out_f32,
                     color: &RED,
                 },
             ],

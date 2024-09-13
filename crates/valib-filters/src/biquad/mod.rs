@@ -218,10 +218,6 @@ impl<T: Scalar> Biquad<T, Linear> {
 
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
     }
-
-    pub fn reset(&mut self) {
-        self.s.fill(T::zero());
-    }
 }
 
 impl<T: Scalar, S: Saturator<T>> DSPMeta for Biquad<T, S> {

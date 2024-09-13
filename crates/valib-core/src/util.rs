@@ -1,10 +1,9 @@
 //! Utilities for all of `valib`.
 
-use crate::math::interpolation::{Cubic, Interpolate};
-use crate::{Scalar, SimdCast};
-use num_traits::{AsPrimitive, Float, FromPrimitive, Num, One, Zero};
+use crate::Scalar;
+use num_traits::{AsPrimitive, Float, One, Zero};
 use numeric_literals::replace_float_literals;
-use simba::simd::{SimdPartialOrd, SimdValue};
+use simba::simd::SimdValue;
 
 /// Transmutes a slice into a slice of static arrays, putting the remainder of the slice not fitting
 /// as a separate slice.
@@ -154,7 +153,7 @@ where
 /// use valib_core::util::simd_is_finite;
 /// let value = AutoF32x4::new(0.0, f32::INFINITY, f32::NAN, f32::EPSILON);
 /// let ret = simd_is_finite(value);
-/// assert_eq!(Auto)
+/// assert_eq!(AutoBoolx4::new(true, false, false, true), ret);
 /// ```
 pub fn simd_is_finite<
     Simd: SimdValue<Element: Float, SimdBool: Default + SimdValue<Element = bool>>,
