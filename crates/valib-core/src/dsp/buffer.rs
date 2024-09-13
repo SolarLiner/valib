@@ -113,8 +113,8 @@ impl<T, const LENGTH: usize, const CHANNELS: usize> AudioBuffer<[T; LENGTH], CHA
     /// # Examples
     ///
     /// ```
-    /// use valib_core::dsp::buffer::AudioBufferBox;
-    /// let buffer = AudioBufferBox::<f32, 1>::zeroed(64);
+    /// use valib_core::dsp::buffer::{AudioBuffer, AudioBufferBox};
+    /// let buffer = AudioBuffer::const_new([[0f32; 64]; 2]);
     /// let slice = buffer.array_slice(16..32);
     /// ```
     pub fn array_slice(&self, bounds: impl RangeBounds<usize>) -> AudioBufferRef<T, CHANNELS> {
@@ -137,8 +137,8 @@ impl<T, const LENGTH: usize, const CHANNELS: usize> AudioBuffer<[T; LENGTH], CHA
     /// # Examples
     ///
     /// ```
-    /// use valib_core::dsp::buffer::AudioBufferBox;
-    /// let mut buffer = AudioBufferBox::<f32, 1>::zeroed(64);
+    /// use valib_core::dsp::buffer::{AudioBuffer, AudioBufferBox};
+    /// let mut buffer = AudioBuffer::const_new([[0f32; 64]; 2]);
     /// let mut slice = buffer.array_slice_mut(16..32);
     /// ```
     pub fn array_slice_mut(
@@ -258,7 +258,7 @@ impl<T, C: Deref<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNELS> 
     /// ```
     /// use valib_core::dsp::buffer::AudioBufferBox;
     /// let buffer = AudioBufferBox::<f32, 1>::zeroed(64);
-    /// let slice = buffer.array_slice(16..32);
+    /// let slice = buffer.slice(16..32);
     /// ```
     pub fn slice(&self, bounds: impl RangeBounds<usize>) -> AudioBufferRef<T, CHANNELS> {
         let range = bounds_into_range(bounds, 0..self.inner_size);
@@ -350,7 +350,7 @@ impl<T, C: DerefMut<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNEL
     /// ```
     /// use valib_core::dsp::buffer::AudioBufferBox;
     /// let mut buffer = AudioBufferBox::<f32, 1>::zeroed(64);
-    /// let mut slice = buffer.array_slice_mut(16..32);
+    /// let mut slice = buffer.slice_mut(16..32);
     /// ```
     pub fn slice_mut(&mut self, bounds: impl RangeBounds<usize>) -> AudioBufferMut<T, CHANNELS> {
         let range = bounds_into_range(bounds, 0..self.inner_size);
