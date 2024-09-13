@@ -4,7 +4,7 @@ use nih_plug::prelude::*;
 use valib::contrib::nih_plug::process_buffer_simd64;
 use valib::dsp::parameter::RemoteControlled;
 use valib::dsp::DSPMeta;
-use valib::simd::{AutoF32x2, AutoF64x2};
+use valib::simd::AutoF64x2;
 
 use dsp::MAX_BLOCK_SIZE;
 use params::Ts404Params;
