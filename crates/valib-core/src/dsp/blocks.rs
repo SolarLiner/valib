@@ -642,8 +642,10 @@ where
     fn process(&mut self, x: [Self::Sample; I]) -> [Self::Sample; O] {
         self.0
             .iter_mut()
-            .map(|dsp| {
-                profiling::scope!("Parallel", &format!("{_i}"));
+            .enumerate()
+            .map(|(i, dsp)| {
+                let _ = i; // Needed to shut down warnings when the profiling macro evaluates to noop
+                profiling::scope!("Parallel", &format!("{i}"));
                 dsp.process(x)
             })
             .fold([Self::Sample::from_f64(0.0); O], |out, dsp| {
