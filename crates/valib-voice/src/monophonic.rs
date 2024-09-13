@@ -1,11 +1,18 @@
+//! # Monophonic voice manager
+//!
+//! Provides a monophonic voice manager which can optionally do legato.
+
 use crate::{NoteData, Voice, VoiceManager};
 use num_traits::zero;
 use valib_core::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib_core::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
 
+/// Monophonic voice manager over a single voice.
 pub struct Monophonic<V: Voice> {
     create_voice: Box<dyn Fn(f32, NoteData<V::Sample>) -> V>,
     voice: Option<V>,
+    base_frequency: f32,
+    pitch_bend: f32,
     released: bool,
     legato: bool,
     samplerate: f32,
@@ -31,6 +38,15 @@ impl<V: Voice> DSPMeta for Monophonic<V> {
 }
 
 impl<V: Voice> Monophonic<V> {
+    /// Create a new monophonic voice manager.
+    ///
+    /// # Arguments
+    ///
+    /// * `samplerate`: Sample rate of the voices
+    /// * `create_voice`: Closure to create the voice from the note data
+    /// * `legato`: Whether to make the voice legato (don't reset the voice) or not
+    ///
+    /// returns: Monophonic<V>
     pub fn new(
         samplerate: f32,
         create_voice: impl Fn(f32, NoteData<V::Sample>) -> V + 'static,
@@ -40,28 +56,27 @@ impl<V: Voice> Monophonic<V> {
             create_voice: Box::new(create_voice),
             voice: None,
             released: false,
+            base_frequency: 440.,
+            pitch_bend: 0.,
             legato,
             samplerate,
         }
     }
 
+    /// Whether the monophonic voice manager
     pub fn legato(&self) -> bool {
         self.legato
     }
 
+    /// Set the monophonic voice manager is in legato mode or not
     pub fn set_legato(&mut self, legato: bool) {
         self.legato = legato;
     }
 }
 
-#[derive(Debug, Default, Copy, Clone, Ord, PartialOrd, Eq, PartialEq)]
-pub enum MonophonicVoiceId {
-    #[default]
-    Mono,
-}
-
 impl<V: Voice> VoiceManager<V> for Monophonic<V> {
-    type ID = MonophonicVoiceId;
+    type ID = ();
+
     fn capacity(&self) -> usize {
         1
     }
@@ -75,15 +90,15 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
     }
 
     fn all_voices(&self) -> impl Iterator<Item = Self::ID> {
-        [MonophonicVoiceId::Mono].into_iter()
+        [()].into_iter()
     }
 
     fn active(&self) -> usize {
-        self.voice
-            .as_ref()
-            .is_some_and(|v| v.active())
-            .then_some(1)
-            .unwrap_or(0)
+        if self.voice.as_ref().is_some_and(|v| v.active()) {
+            1
+        } else {
+            0
+        }
     }
 
     fn note_on(&mut self, note_data: NoteData<V::Sample>) -> Self::ID {
@@ -95,7 +110,6 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
         } else {
             self.voice = Some((self.create_voice)(self.samplerate, note_data));
         }
-        MonophonicVoiceId::Mono
     }
 
     fn note_off(&mut self, _id: Self::ID) {
