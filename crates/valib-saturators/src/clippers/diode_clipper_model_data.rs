@@ -8,6 +8,14 @@ use valib_core::Scalar;
 //
 // See the `clippers.ipynb` Notebook to see the rationale and working out process.
 impl<T: Scalar> DiodeClipperModel<T> {
+    /// Create a new instance of the diode clipper model, made of silicon.
+    ///
+    /// # Arguments
+    ///
+    /// * `nf`: Number of diode in the forward direction (up to 5)
+    /// * `nb`: Number of diode in the backward direction (up to 5)
+    ///
+    /// returns: DiodeClipperModel<T>
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new_silicon(nf: u8, nb: u8) -> Self {
         let [a, b, si, so] = match (nf, nb) {
@@ -192,6 +200,14 @@ impl<T: Scalar> DiodeClipperModel<T> {
         Self { a, b, si, so }
     }
 
+    /// Create a new instance of the diode clipper model, made of germanium.
+    ///
+    /// # Arguments
+    ///
+    /// * `nf`: Number of diode in the forward direction (up to 5)
+    /// * `nb`: Number of diode in the backward direction (up to 5)
+    ///
+    /// returns: DiodeClipperModel<T>
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new_germanium(nf: u8, nb: u8) -> Self {
         let [a, b, si, so] = match (nf, nb) {
@@ -376,6 +392,14 @@ impl<T: Scalar> DiodeClipperModel<T> {
         Self { a, b, si, so }
     }
 
+    /// Create a new instance of the diode clipper model, made of LEDs.
+    ///
+    /// # Arguments
+    ///
+    /// * `nf`: Number of diode in the forward direction (up to 5)
+    /// * `nb`: Number of diode in the backward direction (up to 5)
+    ///
+    /// returns: DiodeClipperModel<T>
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new_led(nf: u8, nb: u8) -> Self {
         let [a, b, si, so] = match (nf, nb) {

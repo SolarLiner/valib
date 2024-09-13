@@ -1,3 +1,12 @@
+#![warn(missing_docs)]
+//! # Saturators
+//!
+//! This crate provides abstractions over saturators, as well as several standard saturator
+//! functions.
+//!
+//! Saturators are set up so that their processing and their updating are separate; this allows
+//! setting up iterative methods to improve accuracy. They should also provide a differentiation
+//! function for more complex iteration schemes and feedback processing.
 use num_traits::One;
 use numeric_literals::replace_float_literals;
 use std::ops;
@@ -5,22 +14,27 @@ use std::ops;
 use clippers::DiodeClipperModel;
 
 use valib_core::dsp::{DSPMeta, DSPProcess};
-use valib_core::math::nr::RootEq;
 use valib_core::Scalar;
 
 pub mod adaa;
 pub mod bjt;
 pub mod clippers;
 
+/// Trait for types which are saturators.
+///
+/// Saturators are single-sample processors can have state, however the state must be updated after
+/// the fact. This allows evaluating saturators with multistep methods or iterative schemes, i.e. to
+/// resolve instantaneous feedback.
 #[allow(unused_variables)]
 pub trait Saturator<T: Scalar> {
     /// Saturate an input with a frozen state.
     fn saturate(&self, x: T) -> T;
 
-    /// Update the state given an input and the output of [`Self::saturate`].
+    /// Update the state given an input and the output of [`Self::saturate`] for that input.
     #[inline(always)]
     fn update_state(&mut self, x: T, y: T) {}
 
+    /// Differentiate the saturator at the given input.
     #[inline(always)]
     #[replace_float_literals(T::from_f64(literal))]
     fn sat_diff(&self, x: T) -> T {
@@ -28,11 +42,17 @@ pub trait Saturator<T: Scalar> {
     }
 }
 
+/// Trait for types which are multi-saturators.
+///
+/// Multi-saturators are a generalization of saturators which are N-dimensional.
 pub trait MultiSaturator<T: Scalar, const N: usize> {
+    /// Saturate the inputs with a frozen state.
     fn multi_saturate(&self, x: [T; N]) -> [T; N];
 
+    /// Update the state given an input and the output of [`Self::saturate`] for that input.
     fn update_state_multi(&mut self, x: [T; N], y: [T; N]);
 
+    /// Differentiate the saturator at the given input.
     fn sat_jacobian(&self, x: [T; N]) -> [T; N];
 }
 
@@ -86,6 +106,7 @@ impl_multisat_tuples!(10; A, B, C, D, E, F, G, H, I, J);
 impl_multisat_tuples!(11; A, B, C, D, E, F, G, H, I, J, K);
 impl_multisat_tuples!(12; A, B, C, D, E, F, G, H, I, J, K, L);
 
+/// Linear "saturator", a noop saturator which can be used when wanting no saturation.
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct Linear;
 
@@ -117,6 +138,7 @@ impl<S: Scalar, const N: usize> MultiSaturator<S, N> for Linear {
     }
 }
 
+/// The `tanh` function as a saturator.
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct Tanh;
 
@@ -134,6 +156,7 @@ impl<S: Scalar> Saturator<S> for Tanh {
     }
 }
 
+/// The `asinh` function as a saturator.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default)]
 pub struct Asinh;
 
@@ -149,9 +172,12 @@ impl<T: Scalar> Saturator<T> for Asinh {
     }
 }
 
+/// Hard-clipper saturator, keeping the output within the provided bounds.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Clipper<T> {
+    /// Minimum bound
     pub min: T,
+    /// Maximum bound
     pub max: T,
 }
 
@@ -192,9 +218,11 @@ impl<T: Scalar, const N: usize> MultiSaturator<T, N> for Clipper<T> {
     }
 }
 
+/// Blend the output of a saturator with its input by the given amount.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct Blend<T, S> {
-    amt: T,
+    /// Amount of blending of the input to add to the output. The output will be scaled down to keep
+    pub amt: T,
     inner: S,
 }
 
@@ -225,13 +253,20 @@ impl<T: Scalar, S: Default> Default for Blend<T, S> {
     }
 }
 
+/// Runtime-switchable dynamic saturator
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Dynamic<T> {
+    /// Linear "saturator". No saturation.
     Linear,
+    /// `tanh` function
     Tanh,
+    /// `asinh` function
     Asinh,
+    /// Hard clipping between -1 and 1
     HardClipper,
+    /// Diode clipper model
     DiodeClipper(DiodeClipperModel<T>),
+    /// "Overdrive" clipper model
     SoftClipper(Blend<T, DiodeClipperModel<T>>),
 }
 
@@ -268,19 +303,27 @@ impl<T> Default for Dynamic<T> {
     }
 }
 
+/// Slew rate saturator. Only allows the signal to change up to a maximum speed.
 #[derive(Debug, Clone, Copy)]
 pub struct Slew<T> {
+    /// Maximum difference between two consecutive samples.
     pub max_diff: T,
     last_out: T,
 }
 
 impl<T: Scalar> Slew<T> {
+    /// Returns true if the signal is being rate-limited by the slew.
+    ///
+    /// # Arguments
+    ///
+    /// `target`: Target value
     pub fn is_changing(&self, target: T) -> T::SimdBool {
         (target - self.last_out)
             .simd_abs()
             .simd_gt(T::from_f64(1e-6))
     }
 
+    /// Returns the last output.
     pub fn current_value(&self) -> T {
         self.last_out
     }
@@ -317,6 +360,14 @@ impl<T: Scalar> DSPProcess<1, 1> for Slew<T> {
 }
 
 impl<T: Scalar> Slew<T> {
+    /// Create a new slew rate limiter.
+    ///
+    /// # Arguments
+    ///
+    /// * `samplerate`: Sample rate the limiter will be running at
+    /// * `max_diff`: Maximum speed in units/s
+    ///
+    /// returns: Slew<T>
     pub fn new(samplerate: T, max_diff: T) -> Self {
         Self {
             max_diff: max_diff / samplerate,
@@ -324,11 +375,26 @@ impl<T: Scalar> Slew<T> {
         }
     }
 
+    /// Sets the current state of the slew limiter.
+    ///
+    /// # Arguments
+    ///
+    /// * `state`: New state ("last output") of the slew limiter.
+    ///
+    /// returns: Slew<T>
     pub fn with_state(mut self, state: T) -> Self {
         self.last_out = state;
         self
     }
 
+    /// Set the maximum difference within a second that the signal will be able to change.
+    ///
+    /// # Arguments
+    ///
+    /// * `max`: Maximum difference (units/s)
+    /// * `samplerate`:  Sample rate of the slew limiter
+    ///
+    /// returns: ()
     pub fn set_max_diff(&mut self, max: T, samplerate: T) {
         self.max_diff = max / samplerate;
     }
@@ -358,9 +424,16 @@ impl<T: Scalar> Saturator<T> for Slew<T> {
     }
 }
 
+/// Boost the input to the saturator, then reduce the saturator output by the same amount.
+///
+/// Also biases the inputs and corrects at the output.
 #[derive(Debug, Clone, Copy)]
 pub struct Driven<T, S> {
+    /// Drive amount
     pub drive: T,
+    /// Bias amount
+    pub bias: T,
+    /// Inner saturator
     pub saturator: S,
 }
 
@@ -372,8 +445,8 @@ impl<T: Scalar, S: Saturator<T>> Saturator<T> for Driven<T, S> {
 
     #[inline(always)]
     fn update_state(&mut self, x: T, y: T) {
-        let x = x / self.drive;
-        let y = self.drive * y;
+        let x = x * self.drive;
+        let y = self.drive / y;
         self.saturator.update_state(x, y);
     }
 

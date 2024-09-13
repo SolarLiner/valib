@@ -1,3 +1,6 @@
+//! # BJT saturators
+//!
+//! Provides saturators for BJT transistors in various configurations.
 use crate::Saturator;
 use numeric_literals::replace_float_literals;
 use valib_core::dsp::{DSPMeta, DSPProcess};
@@ -9,9 +12,13 @@ use valib_core::Scalar;
 /// signal before and after the saturation.
 #[derive(Debug, Copy, Clone)]
 pub struct CommonCollector<T> {
+    /// Positive rail (positive input supply) voltage
     pub vcc: T,
+    /// Negative rail (negative input supply) voltage
     pub vee: T,
+    /// X-axis bias at the input
     pub xbias: T,
+    /// Y-axis bias at the output.
     pub ybias: T,
 }
 
