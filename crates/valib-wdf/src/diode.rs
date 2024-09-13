@@ -1,3 +1,6 @@
+//! # WDF Diode
+//!
+//! Implementations of arbitrary-count parallel diode setups in forward-backward configurations.
 use crate::unadapted::WdfDsp;
 use crate::{Wave, Wdf};
 use nalgebra::{SMatrix, SVector};
@@ -26,13 +29,20 @@ fn lambdertw<T: Scalar>(x: T) -> T {
         / (2.0 + pexpminusw * (2.0 - minusw))
 }
 
+/// Type alias for the analytical approximation model of the diode clipper, using the
+/// [`DiodeClipperModel`] saturator.
 pub type DiodeModel<T> = WdfDsp<DiodeClipperModel<T>>;
 
+/// Diode clipper WDF node using the Lambert W function as analytical solution to the wave equation.
 #[derive(Debug, Copy, Clone)]
 pub struct DiodeLambert<T> {
+    /// Reverse saturation current of the diode.
     pub isat: T,
+    /// n*vt, where n is the ideality factor of the diode, and vt is the thermal voltage
     pub nvt: T,
+    /// Number of forward diodes
     pub nf: T,
+    /// Number of backward diodes
     pub nb: T,
     r: T,
     a: T,
@@ -82,6 +92,13 @@ impl<T: Scalar> Wdf for DiodeLambert<T> {
 }
 
 impl<T: Num + Zero> DiodeLambert<T> {
+    /// Create a new lambert W function-based diode clipper node.
+    ///
+    /// # Arguments
+    ///
+    /// * `data`: Diode clipper data used to build this node
+    ///
+    /// returns: DiodeLambert<T>
     pub fn new(data: DiodeClipper<T>) -> Self {
         Self {
             isat: data.isat,
@@ -94,6 +111,13 @@ impl<T: Num + Zero> DiodeLambert<T> {
         }
     }
 
+    /// Sets the configuration of the diode
+    ///
+    /// # Arguments
+    ///
+    /// * `data`: Diode clipper data used to build this node
+    ///
+    /// returns: ()
     pub fn set_configuration(&mut self, data: DiodeClipper<T>) {
         self.isat = data.isat;
         self.nvt = data.n * data.vt;
@@ -103,20 +127,42 @@ impl<T: Num + Zero> DiodeLambert<T> {
 }
 
 impl<T: Scalar> DiodeLambert<T> {
+    /// Sets the number of forward diodes in this clipper node.
+    ///
+    /// # Arguments
+    ///
+    /// * `nf`: Number of forward diodes
+    ///
+    /// returns: ()
     pub fn set_num_forward(&mut self, nf: usize) {
         self.nf = T::from_f64(nf as _);
     }
 
+    /// Sets the number of backward diodes in this clipper node.
+    ///
+    /// # Arguments
+    ///
+    /// * `nb`: Number of backward diodes
+    ///
+    /// returns: ()
     pub fn set_num_backward(&mut self, nf: usize) {
         self.nb = T::from_f64(nf as _);
     }
 }
 
-struct DiodeRootEq<T: Scalar> {
+/// Root equation type of the diode clipper wave equation.
+///
+/// This contains the relevant values to tweak the diode clipper configuration.
+pub struct DiodeRootEq<T: Scalar> {
+    /// Reverse saturation current
     pub isat: T,
+    /// Ideality factor
     pub n: T,
+    /// Thermal voltage
     pub vt: T,
+    /// Number of diodes in forward direction
     pub nf: T,
+    /// Number of diodes in backward direction
     pub nb: T,
     r: T,
     a: T,
@@ -151,14 +197,26 @@ impl<T: Scalar> RootEq<T, 1> for DiodeRootEq<T> {
     }
 }
 
+/// Diode clipper WDF node using the implicit wave equation and Newton's method to solve it.
 pub struct DiodeNR<T: Scalar> {
+    /// Inner root equation type. This is where you can change the diode configuration.
     pub root_eq: DiodeRootEq<T>,
+    /// Maximum error allowed in Newton's method.
     pub max_tolerance: T,
+    /// Maximum number of iterations of Newton's method before force-stopping.
     pub max_iter: usize,
     b: T,
 }
 
 impl<T: Scalar> DiodeNR<T> {
+    /// Create a new Newton-Rhapson-based diode clipper WDF node based on the provided diode clipper
+    /// data.
+    ///
+    /// # Arguments
+    ///
+    /// * `data`: Diode clipper data used to create this node.
+    ///
+    /// returns: DiodeNR<T>
     pub fn from_data(data: DiodeClipper<T>) -> Self {
         Self {
             root_eq: DiodeRootEq {
@@ -176,6 +234,13 @@ impl<T: Scalar> DiodeNR<T> {
         }
     }
 
+    /// Sets the diode configuration from the provided diode clipper data.
+    ///
+    /// # Arguments
+    ///
+    /// * `data`: Diode clipper data used to create this node.
+    ///
+    /// returns: DiodeNR<T>
     pub fn set_configuration(&mut self, data: DiodeClipper<T>) {
         self.root_eq.isat = data.isat;
         self.root_eq.n = data.n;
@@ -184,10 +249,24 @@ impl<T: Scalar> DiodeNR<T> {
         self.root_eq.nb = data.num_diodes_bwd;
     }
 
+    /// sets the number of forward diodes in this clipper node.
+    ///
+    /// # arguments
+    ///
+    /// * `nf`: number of forward diodes
+    ///
+    /// returns: ()
     pub fn set_num_forward(&mut self, nf: usize) {
         self.root_eq.nf = T::from_f64(nf as _);
     }
 
+    /// sets the number of backward diodes in this clipper node.
+    ///
+    /// # arguments
+    ///
+    /// * `nb`: number of backward diodes
+    ///
+    /// returns: ()
     pub fn set_num_backward(&mut self, nf: usize) {
         self.root_eq.nb = T::from_f64(nf as _);
     }
