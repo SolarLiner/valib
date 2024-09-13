@@ -1,8 +1,29 @@
+//! Utilities for all of `valib`.
+
+use crate::math::interpolation::{Cubic, Interpolate};
 use crate::{Scalar, SimdCast};
 use num_traits::{AsPrimitive, Float, FromPrimitive, Num, One, Zero};
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdPartialOrd, SimdValue};
 
+/// Transmutes a slice into a slice of static arrays, putting the remainder of the slice not fitting
+/// as a separate slice.
+///
+/// # Arguments
+///
+/// * `data`: Slice to transmute
+///
+/// returns: (&[[T; N]], &[T])
+///
+/// # Examples
+///
+/// ```
+/// use valib_core::util::as_nested_arrays;
+/// let array = vec![0, 1, 2, 3, 4, 5, 6, 7];
+/// let (arrays, remainder) = as_nested_arrays(&array);
+/// assert_eq!(&[[0,1,2],[3,4,5]], arrays);
+/// assert_eq!(&[6,7], remainder);
+/// ```
 pub fn as_nested_arrays<T, const N: usize>(data: &[T]) -> (&[[T; N]], &[T]) {
     let rem = data.len() % N;
     let last = data.len() - rem;
@@ -14,6 +35,27 @@ pub fn as_nested_arrays<T, const N: usize>(data: &[T]) -> (&[[T; N]], &[T]) {
     (result, remaining)
 }
 
+/// Transmutes a mutable slice into a slice of static arrays, putting the remainder of the slice not
+/// fitting as a separate slice.
+///
+/// # Arguments
+///
+/// * `data`: Slice to transmute
+///
+/// returns: (&mut [[T; N]], &mut [T])
+///
+/// # Examples
+///
+/// ```
+/// use valib_core::util::as_nested_arrays_mut;
+/// let mut array = vec![0, 1, 2, 3, 4, 5, 6, 7];
+/// let (arrays, remainder) = as_nested_arrays_mut(&mut array);
+/// assert_eq!(&[[0,1,2],[3,4,5]], arrays);
+/// assert_eq!(&[6,7], remainder);
+///
+/// arrays[1][0] = 10;
+/// assert_eq!(vec![0, 1, 2, 10, 4, 5, 6, 7], array);
+/// ```
 pub fn as_nested_arrays_mut<T, const N: usize>(data: &mut [T]) -> (&mut [[T; N]], &mut [T]) {
     let rem = data.len() % N;
     let last = data.len() - rem;
@@ -26,6 +68,26 @@ pub fn as_nested_arrays_mut<T, const N: usize>(data: &mut [T]) -> (&mut [[T; N]]
     (result, remaining)
 }
 
+/// Index a slice of scalars with a SIMD index, returning a SIMD with the corresponding scalar values
+/// on each lane.
+///
+/// # Arguments
+///
+/// * `values`: Slice to index
+/// * `index`: Index SIMD value
+///
+/// returns: Simd
+///
+/// # Examples
+///
+/// ```
+/// use simba::simd::{AutoF32x4, AutoUsizex4};
+/// use valib_core::util::simd_index_scalar;
+/// let data = [0.0, 0.1, 0.2, 0.3];
+/// let index = AutoUsizex4::new(0, 1, 2, 3);
+/// let  ret = simd_index_scalar::<AutoF32x4, _>(&data, index);
+/// assert_eq!(AutoF32x4::new(0.0, 0.1, 0.2, 0.3), ret);
+/// ```
 pub fn simd_index_scalar<Simd: Zero + SimdValue, Index: SimdValue<Element = usize>>(
     values: &[Simd::Element],
     index: Index,
@@ -41,6 +103,26 @@ where
     ret
 }
 
+/// Index a slice of SIMD values with a SIMD index, returning a new SIMD values corresponding to
+/// each lane of the values for each index.
+///
+/// # Arguments
+///
+/// * `values`: Slice to index
+/// * `index`: Index SIMD value
+///
+/// returns: Simd
+///
+/// # Examples
+///
+/// ```
+/// use simba::simd::{AutoF32x2, AutoUsizex2};
+/// use valib_core::util::simd_index_simd;
+/// let data = [AutoF32x2::new(0.0, 0.1), AutoF32x2::new(1.0, 1.1)];
+/// let index = AutoUsizex2::new(1, 0);
+/// let ret = simd_index_simd(&data, index);
+/// assert_eq!(AutoF32x2::new(1.0, 0.1), ret);
+/// ```
 pub fn simd_index_simd<Simd: Zero + SimdValue, Index: SimdValue>(
     values: &[Simd],
     index: Index,
@@ -56,6 +138,24 @@ where
     ret
 }
 
+/// Generic method for checking if a SIMD float is finie or not. Returns a SIMD mask where the lanes
+/// are finite.
+///
+/// # Arguments
+///
+/// * `value`: Value to check
+///
+/// returns: <Simd as SimdValue>::SimdBool
+///
+/// # Examples
+///
+/// ```
+/// use simba::simd::{AutoF32x4, AutoBoolx4};
+/// use valib_core::util::simd_is_finite;
+/// let value = AutoF32x4::new(0.0, f32::INFINITY, f32::NAN, f32::EPSILON);
+/// let ret = simd_is_finite(value);
+/// assert_eq!(Auto)
+/// ```
 pub fn simd_is_finite<
     Simd: SimdValue<Element: Float, SimdBool: Default + SimdValue<Element = bool>>,
 >(
@@ -68,198 +168,36 @@ pub fn simd_is_finite<
     mask
 }
 
-#[replace_float_literals(T::from_f64(literal))]
-#[deprecated = "Use math::interpolators"]
-pub fn lerp_block<T: Scalar + SimdCast<usize>>(out: &mut [T], inp: &[T])
-where
-    <T as SimdCast<usize>>::Output: Copy + Num + FromPrimitive + SimdPartialOrd,
-{
-    let ix_max = <T as SimdCast<usize>>::Output::from_usize(inp.len() - 1).unwrap();
-    let rate = T::from_f64(inp.len() as f64) / T::from_f64(out.len() as f64);
-
-    for (i, y) in out.iter_mut().enumerate() {
-        let j = T::from_f64(i as f64) * rate;
-        let f = j.simd_fract();
-        let j = j.simd_floor().cast();
-        let jp1 = (j + <T as SimdCast<usize>>::Output::one()).simd_min(ix_max);
-        let a = simd_index_simd(inp, j);
-        let b = simd_index_simd(inp, jp1);
-        *y = lerp(f, a, b);
-    }
-}
-
+/// Shortcut function to perform linear interpolation. Uses the interpolation module.
 pub fn lerp<T: Scalar>(t: T, a: T, b: T) -> T {
     use crate::math::interpolation::{Interpolate, Linear};
     Linear.interpolate(t, [a, b])
 }
 
+/// Computes the frequency of a MIDI note number, assuming 12TET and A4 = 440 Hz
+///
+/// # Arguments
+///
+/// * `midi_note`: MIDI note number
+///
+/// returns: T
 #[replace_float_literals(T::from_f64(literal))]
 pub fn midi_to_freq<T: Scalar>(midi_note: u8) -> T {
     440.0 * semitone_to_ratio(T::from_f64(midi_note as _) - 69.0)
 }
 
+/// Compute the ratio corresponding to the given semitone change, such that multiplying a frequency
+/// by this value changes it by the given semitones.
+///
+/// # Arguments
+///
+/// * `semi`: Semitone change
+///
+/// returns: T
 #[replace_float_literals(T::from_f64(literal))]
 pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
     2.0.simd_powf(semi / 12.0)
 }
 
 #[cfg(feature = "test-utils")]
-pub mod tests {
-    use std::{ops::Range, path::Path};
-
-    use plotters::coord::{self, ranged1d::ValueFormatter};
-    use plotters::{chart::SeriesAnno, prelude::*};
-
-    use crate::math::interpolation::{Interpolate, Linear};
-
-    fn assert_ok(res: Result<(), impl std::fmt::Display>) {
-        match res {
-            Ok(()) => {}
-            Err(value) => panic!("Not OK: {value}"),
-        }
-    }
-
-    pub struct Series<'a> {
-        pub label: &'a str,
-        pub samplerate: f32,
-        pub series: &'a [f32],
-        pub color: &'a RGBColor,
-    }
-
-    impl<'a> Series<'a> {
-        pub fn validate(&self) -> Result<(), String> {
-            if self.samplerate <= 0. {
-                return Err(format!("Series: {:?}: Samplerate is negative", self.label));
-            }
-            if self.series.is_empty() {
-                return Err(format!("Series: {:?}: No data", self.label));
-            }
-
-            Ok(())
-        }
-
-        pub fn timescale(&self, bode: bool) -> Range<f32> {
-            assert_ok(self.validate());
-            if bode {
-                0.0..self.samplerate / 2.0
-            } else {
-                let tmax = self.series.len() as f32 / self.samplerate;
-                0.0..tmax
-            }
-        }
-
-        pub fn y_range(&self) -> Range<f32> {
-            assert_ok(self.validate());
-            let min = self.series.iter().copied().min_by(f32::total_cmp).unwrap();
-            let max = self.series.iter().copied().max_by(f32::total_cmp).unwrap();
-            min..max
-        }
-
-        fn as_series<DB: DrawingBackend>(&self, bode: bool) -> LineSeries<DB, (f32, f32)> {
-            LineSeries::new(
-                self.series.iter().copied().enumerate().map(|(i, y)| {
-                    let x = if bode {
-                        i as f32
-                    } else {
-                        i as f32 / self.samplerate
-                    };
-                    (x, y)
-                }),
-                self.color,
-            )
-        }
-
-        fn apply_legend(&self, ann: &mut SeriesAnno<impl DrawingBackend>) {
-            let color = *self.color;
-            ann.label(self.label);
-            ann.legend(move |(x, y)| PathElement::new([(x, y), (x + 20, y)], color));
-        }
-    }
-
-    pub struct Plot<'a> {
-        pub title: &'a str,
-        pub bode: bool,
-        pub series: &'a [Series<'a>],
-    }
-
-    impl<'a> Plot<'a> {
-        pub fn validate(&self) -> Result<(), String> {
-            if self.series.is_empty() {
-                return Err(format!("Plot {:?}: no series", self.title));
-            }
-            self.series.iter().try_for_each(|s| s.validate())?;
-            Ok(())
-        }
-
-        pub fn render_into(&self, output: &DrawingArea<impl DrawingBackend, coord::Shift>) {
-            use plotters::prelude::*;
-            assert_ok(self.validate());
-
-            let timescale = self
-                .series
-                .iter()
-                .map(|s| s.timescale(self.bode))
-                .reduce(|l, r| {
-                    let start = l.start.min(r.start);
-                    let end = l.end.max(r.end);
-                    start..end
-                })
-                .unwrap();
-            let timescale = if self.bode {
-                timescale.start * 2.0..timescale.end * 2.0
-            } else {
-                timescale
-            };
-
-            let yrange = self
-                .series
-                .iter()
-                .map(|s| s.y_range())
-                .reduce(|l, r| {
-                    let start = l.start.min(r.start);
-                    let end = l.end.max(r.end);
-                    start..end
-                })
-                .unwrap();
-
-            let mut ctx = ChartBuilder::on(output);
-            ctx.set_label_area_size(LabelAreaPosition::Left, 40)
-                .set_label_area_size(LabelAreaPosition::Bottom, 40)
-                .caption(self.title, ("sans-serif", 40));
-            if self.bode {
-                let ctx = ctx
-                    .build_cartesian_2d(timescale.log_scale(), yrange.log_scale())
-                    .unwrap();
-                self.render(ctx);
-            } else {
-                let ctx = ctx.build_cartesian_2d(timescale, yrange).unwrap();
-                self.render(ctx);
-            }
-        }
-
-        fn render<'ctx, T: 'ctx + Ranged<ValueType = f32> + ValueFormatter<f32>>(
-            &self,
-            mut ctx: ChartContext<'ctx, impl 'ctx + DrawingBackend, Cartesian2d<T, T>>,
-        ) {
-            ctx.configure_mesh().draw().unwrap();
-
-            for series in self.series {
-                let ann = ctx.draw_series(series.as_series(self.bode)).unwrap();
-                series.apply_legend(ann);
-            }
-
-            ctx.configure_series_labels()
-                .background_style(WHITE.mix(0.8))
-                .draw()
-                .unwrap();
-        }
-
-        pub fn create_svg(&self, filename: impl AsRef<Path>) {
-            let path = filename.as_ref();
-            let _ = std::fs::create_dir_all(path.parent().expect("Filename is empty"));
-            let root = SVGBackend::new(path, (600, 400)).into_drawing_area();
-            root.fill(&WHITE).unwrap();
-            self.render_into(&root);
-        }
-    }
-}
+pub mod tests;

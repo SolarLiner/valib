@@ -111,16 +111,20 @@ where
     }
 }
 
+/// Parameter type for one-pole filters
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ParamName)]
 pub enum P1Params {
+    /// Change the frequency cutoff (in Hz) of the filter
     Cutoff,
 }
 
 /// 6 dB/oct one-pole filter (fig. 3.31, eq. 3.32).
-/// Outputs modes as follows: [LP, HP, AP].
+/// Implements [`DSPProcess`] with up to 3 outputs, in order: LP, HP, AP
 #[derive(Debug, Copy, Clone)]
 pub struct P1<T> {
+    /// Cutoff frequency of the filter, in Hz
     pub fc: T,
+    /// Inner state of the filter (can be set arbitrarily to avoid pops at the start of processing)
     pub s: T,
     w_step: T,
 }
@@ -166,6 +170,15 @@ where
 }
 
 impl<T: Scalar> P1<T> {
+    /// Create a new one-pole filter.
+    ///
+    /// # Arguments
+    ///
+    /// * `samplerate`: Sample rate at which the filter will run
+    /// * `fc`: Cutoff frequency in Hz
+    ///
+    /// returns: P1<T>
+    ///
     pub fn new(samplerate: T, fc: T) -> Self {
         Self {
             w_step: T::simd_pi() / samplerate,
@@ -174,13 +187,67 @@ impl<T: Scalar> P1<T> {
         }
     }
 
+    /// Returns a modified one-pole filter with the given state set.
+    ///
+    /// # Arguments
+    ///
+    /// * `state`: New value for the state of the filter
+    ///
+    /// returns: P1<T>
     pub fn with_state(mut self, state: T) -> Self {
         self.s = state;
         self
     }
 
+    /// Set the filter cutoff.
+    ///
+    /// # Arguments
+    ///
+    /// * `fc`: New cutoff frequency in Hz.
+    ///
+    /// returns: ()
     pub fn set_fc(&mut self, fc: T) {
         self.fc = fc;
+    }
+}
+
+#[profiling::all_functions]
+impl<T: Scalar> DSPProcess<1, 1> for P1<T>
+where
+    Self: DSPMeta<Sample = T>,
+{
+    #[inline(always)]
+    #[replace_float_literals(T::from_f64(literal))]
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        // One-sample feedback tick over a transposed integrator, implementation following
+        // eq (3.32), page 77
+        let g = self.w_step * self.fc;
+        let k = g / (1. + g);
+        let v = k * (x[0] - self.s);
+        let lp = v + self.s;
+        self.s = lp + v;
+        [lp]
+    }
+}
+
+#[profiling::all_functions]
+impl<T: Scalar> DSPProcess<1, 2> for P1<T>
+where
+    Self: DSPMeta<Sample = T>,
+{
+    #[inline(always)]
+    #[replace_float_literals(T::from_f64(literal))]
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 2] {
+        // One-sample feedback trick over a transposed integrator, implementation following
+        // eq (3.32), page 77
+        let g = self.w_step * self.fc;
+        let k = g / (1. + g);
+        let v = k * (x[0] - self.s);
+        let lp = v + self.s;
+        self.s = lp + v;
+
+        let hp = x[0] - lp;
+        [lp, hp]
     }
 }
 
@@ -212,6 +279,7 @@ pub struct Series<T>(pub T);
 
 macro_rules! series_tuple {
     ($params_name:ident: $count:literal; $($p:ident),*) => {
+        #[allow(missing_docs)]
         #[derive(Debug, Copy, Clone)]
         pub enum $params_name<$($p),*> {
             $($p($p)),*
@@ -325,6 +393,7 @@ series_tuple!(Tuple6Params: 6; A, B, C, D, E, F);
 series_tuple!(Tuple7Params: 7; A, B, C, D, E, F, G);
 series_tuple!(Tuple8Params: 8; A, B, C, D, E, F, G, H);
 
+/// Parameter type for Series/Parallel blocks having N elements
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleArrayParams<Name, const N: usize>(pub ParamId, pub Name);
 
@@ -387,8 +456,9 @@ where
 {
     #[profiling::function]
     fn process(&mut self, x: [Self::Sample; N]) -> [Self::Sample; N] {
-        self.0.iter_mut().enumerate().fold(x, |x, (_i, dsp)| {
-            profiling::scope!("Series", &format!("{_i}"));
+        self.0.iter_mut().enumerate().fold(x, |x, (i, dsp)| {
+            let _ = i; // Needed to suppress warnings when the profiling macro evaluates to noop
+            profiling::scope!("Series", &format!("{i}"));
             dsp.process(x)
         })
     }
@@ -667,6 +737,7 @@ where
     }
 }
 
+/// Parameter type for a parameter update within a mod matrix
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModMatrixParams<const I: usize, const O: usize>(pub ParamId, pub ParamId);
 
@@ -741,10 +812,14 @@ where
     }
 }
 
+/// Parameter type for param changes within the [`Feedback`] processor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeedbackParams<FF, FB, const N: ParamId> {
+    /// Param change in the feed-forward processor
     Feedforward(FF),
+    /// Param change in the feedback processor
     Feedback(FB),
+    /// Param change is the mix factor
     Mix(Dynamic<N>),
 }
 
@@ -788,8 +863,9 @@ where
     FF: DSPMeta,
 {
     memory: [FF::Sample; N],
-    /// Inner DSP instance
+    /// Inner feed-forward DSP instance
     pub feedforward: FF,
+    /// Inner feedback DSP instance
     pub feedback: FB,
     /// Mixing vector, which is lanewise-multiplied from the output and summed back to the input at the next sample.
     pub mix: [SmoothedParam; N],
@@ -904,13 +980,26 @@ impl<FF: DSPMeta + HasParameters, const N: usize> HasParameters for Feedback<FF,
     }
 }
 
+/// Switch between 2 processors with a crossfade between them.
 pub struct SwitchAB<A, B> {
+    /// First inner processor
     pub a: A,
+    /// Second inner processor
     pub b: B,
     switch: SmoothedParam,
 }
 
 impl<A, B> SwitchAB<A, B> {
+    /// Create a new crossfade switch processor
+    ///
+    /// # Arguments
+    ///
+    /// * `samplerate`: Sample rate at which the processor will run
+    /// * `a`: First inner processor
+    /// * `b`: Second inner processor
+    /// * `b_active`: Is B active ? (If false, A is set active)
+    ///
+    /// returns: SwitchAB<A, B>
     pub fn new(samplerate: f32, a: A, b: B, b_active: bool) -> Self {
         Self {
             a,
@@ -919,26 +1008,36 @@ impl<A, B> SwitchAB<A, B> {
         }
     }
 
+    /// Returns true if A is currently active (and processing audio).
     pub fn is_a_active(&self) -> bool {
         self.switch.current_value() < 0.995
     }
 
+    /// Returns true if B is currently active (and processing audio).
     pub fn is_b_active(&self) -> bool {
         self.switch.current_value() > 0.005
     }
 
+    /// Returns true if the switch is currently crossfading between the two processors.
     pub fn is_transitioning(&self) -> bool {
         self.switch.is_changing()
     }
 
+    /// Switch to the A processor.
     pub fn switch_to_a(&mut self) {
         self.switch.param = 0.;
     }
 
+    /// Switch to the B procesor.
     pub fn switch_to_b(&mut self) {
         self.switch.param = 1.;
     }
 
+    /// Switch to A or B depending on the value of `shoult_switch`.
+    ///
+    /// # Arguments
+    ///
+    /// `should_switch`: When false, switch to A. When true, switch to B.
     pub fn should_switch_to_b(&mut self, should_switch: bool) {
         if should_switch {
             self.switch_to_b()
@@ -950,6 +1049,12 @@ impl<A, B> SwitchAB<A, B> {
 
 impl<A: DSPMeta, B: DSPMeta<Sample = A::Sample>> DSPMeta for SwitchAB<A, B> {
     type Sample = A::Sample;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.switch.set_samplerate(samplerate);
+        self.a.set_samplerate(samplerate);
+        self.b.set_samplerate(samplerate);
+    }
 
     fn latency(&self) -> usize {
         let la = if self.is_a_active() {
@@ -963,12 +1068,6 @@ impl<A: DSPMeta, B: DSPMeta<Sample = A::Sample>> DSPMeta for SwitchAB<A, B> {
             0
         };
         la.max(lb)
-    }
-
-    fn set_samplerate(&mut self, samplerate: f32) {
-        self.switch.set_samplerate(samplerate);
-        self.a.set_samplerate(samplerate);
-        self.b.set_samplerate(samplerate);
     }
 
     fn reset(&mut self) {

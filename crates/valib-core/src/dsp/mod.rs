@@ -73,6 +73,7 @@ pub trait DSPProcessBlock<const I: usize, const O: usize>: DSPMeta {
     }
 }
 
+/// Adapter for per-sample processes implementing [`DSPProcess`], so that they work as a [`DSPProcessBlock`].
 #[derive(Debug, Copy, Clone)]
 pub struct BlockAdapter<P>(pub P);
 
@@ -122,12 +123,13 @@ pub struct SampleAdapter<P, const I: usize, const O: usize>
 where
     P: DSPProcessBlock<I, O>,
 {
+    /// Size of the buffers passed into the inner block processor.
+    pub buffer_size: usize,
     input_buffer: AudioBufferBox<P::Sample, I>,
     input_filled: usize,
     output_buffer: AudioBufferBox<P::Sample, O>,
     output_filled: usize,
     inner: P,
-    pub buffer_size: usize,
 }
 
 impl<P, const I: usize, const O: usize> std::ops::Deref for SampleAdapter<P, I, O>
@@ -154,11 +156,29 @@ impl<P, const I: usize, const O: usize> SampleAdapter<P, I, O>
 where
     P: DSPProcessBlock<I, O>,
 {
+    /// Default buffer size used without constraints from the inner processor or explicit size given
+    /// by the user.
     pub const DEFAULT_BUFFER_SIZE: usize = 64;
+
+    /// Create a new adapter for block processes to be used per-sample.
+    ///
+    /// # Arguments
+    ///
+    /// * `dsp_block`: Block process to adapt
+    ///
+    /// returns: SampleAdapter<P, { I }, { O }>
     pub fn new(dsp_block: P) -> Self {
         Self::new_with_max_buffer_size(dsp_block, Self::DEFAULT_BUFFER_SIZE)
     }
 
+    /// Create a new per-sample adaptor with the given buffer size for the inner block processor
+    ///
+    /// # Arguments
+    ///
+    /// * `dsp_block`: Block process to adapt
+    /// * `max_buffer_size`: Maximum buffer size to be passed to the buffer.
+    ///
+    /// returns: SampleAdapter<P, { I }, { O }>
     pub fn new_with_max_buffer_size(dsp_block: P, max_buffer_size: usize) -> Self {
         let buffer_size = dsp_block
             .max_block_size()
@@ -174,6 +194,7 @@ where
         }
     }
 
+    /// Drop this per-sample adapter, and return the inner block process
     pub fn into_inner(self) -> P {
         self.inner
     }

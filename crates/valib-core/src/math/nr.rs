@@ -1,8 +1,9 @@
+//! Module for working with numerical root finding, using the Newton-Rhapson method.
 use crate::math;
 use crate::Scalar;
 use nalgebra::{SMatrix, SVector};
-use num_traits::{Float, Zero};
-use simba::simd::{SimdBool, SimdPartialOrd, SimdValue};
+use num_traits::Float;
+use simba::simd::SimdBool;
 use std::hint;
 
 /// Trait desciring a multivariate root equation. Root equations are solved with numerical methods such as
@@ -15,7 +16,15 @@ pub trait RootEq<T, const N: usize> {
     fn j_inv(&self, input: &SVector<T, N>) -> Option<SMatrix<T, N, N>>;
 }
 
-/// Perform a single step of the Newton-Rhapson algorithm. This takes the inverse jabobian and computes the differential to the next step.
+/// Perform a single step of the Newton-Rhapson algorithm. This takes the inverse jabobian and
+/// computes the differential to the next step.
+///
+/// # Arguments
+///
+/// * `eq`: Equation to solve
+/// * `input`: Pre-iteration value.
+///
+/// returns: Option<Matrix<T, Const<{ N }>, Const<1>, ArrayStorage<T, { N }, 1>>>
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline)]
 pub fn nr_step<T: Scalar, const N: usize>(
@@ -36,6 +45,16 @@ where
 }
 
 /// Solve the given root equation using Newton-Rhapson for a specified number of setps.
+///
+/// Returns the root-mean-square error after the last iteration.
+///
+/// # Arguments
+///
+/// * `eq`: Equation to solve
+/// * `value`: Initial guess and output value
+/// * `iter`: Number of iterations to perform
+///
+/// returns: T
 #[inline]
 #[profiling::function]
 pub fn newton_rhapson_steps<T: Scalar, const N: usize>(
@@ -60,7 +79,16 @@ where
     math::rms(&step)
 }
 
-/// Solve the given root equation using Newton-Rhapson until the RMS of the differential is lesser than the given tolerance.
+/// Solve the given root equation using Newton-Rhapson until the RMS of the differential is lesser
+/// than the given tolerance.
+///
+/// # Arguments
+///
+/// * `eq`: Equation to solve
+/// * `value`: Initial guess and output value
+/// * `tol`: Maximum tolerance for the output.
+///
+/// returns: usize
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline)]
 #[profiling::function]
@@ -88,8 +116,19 @@ where
     i
 }
 
-/// Solve the given root equation using Newton-Rhapson, until either the RMS of the differential is less than the
-/// given tolerances, or the specified max number of steps has been taken.
+/// Solve the given root equation using Newton-Rhapson, until either the RMS of the differential is
+/// less than the given tolerances, or the specified max number of steps has been taken.
+///
+/// Returns the number of iterations performed.
+///
+/// # Arguments
+///
+/// * `eq`: Equation to solve
+/// * `value`: Initial guess and output value
+/// * `tol`: Maximum tolerance for the output.
+/// * `max_iter`: Maximum number of iterations to perform.
+///
+/// returns: usize
 #[cfg_attr(test, inline(never))]
 #[cfg_attr(not(test), inline)]
 #[profiling::function]
@@ -113,7 +152,7 @@ where
             return i;
         }
     }
-    return max_iter;
+    max_iter
 }
 
 #[cfg(test)]

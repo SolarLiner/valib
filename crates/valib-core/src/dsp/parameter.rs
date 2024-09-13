@@ -26,7 +26,9 @@ use crate::Scalar;
 
 /// Filtered parameter value, useful with any DSP<1, 1, Sample=f32> algorithm.
 pub struct FilteredParam<P> {
+    /// Raw parameter value. This can be set directly to update the parameter.
     pub param: f32,
+    /// Process which will take in the raw value and filter it.
     pub dsp: P,
 }
 
@@ -110,6 +112,7 @@ impl DSPProcess<1, 1> for Smoothing {
 /// Smoothed parameter. Smoothing can be applied exponentially or linearly.
 #[derive(Debug, Copy, Clone)]
 pub struct SmoothedParam {
+    /// Raw parameter value; can be set directly to change the target of the smoothed parameter.
     pub param: f32,
     smoothing: Smoothing,
 }
@@ -167,6 +170,7 @@ impl SmoothedParam {
         }
     }
 
+    /// Returns the current smoothed value of the parameter.
     pub fn current_value(&self) -> f32 {
         match self.smoothing {
             Smoothing::Linear { last_out, .. } => last_out,
@@ -174,14 +178,17 @@ impl SmoothedParam {
         }
     }
 
+    /// Computes the next sample of the smoother.
     pub fn next_sample(&mut self) -> f32 {
         self.process([])[0]
     }
 
+    /// Computes the next sample of the smoother, casting it into a `T`.
     pub fn next_sample_as<T: Scalar>(&mut self) -> T {
         T::from_f64(self.next_sample() as _)
     }
 
+    /// Returns true when the smoother is still in the process of smoothing the change to the raw value.
     pub fn is_changing(&self) -> bool {
         self.smoothing.is_changing(self.param)
     }
@@ -238,14 +245,19 @@ pub trait HasParameters {
     fn set_parameter(&mut self, param: Self::Name, value: f32);
 }
 
+/// Extension trait for types which have parameters.
 pub trait HasParametersExt: HasParameters {
+    /// Set the parameter as a boolean value. It will be encoded such that `value > 0.5` decodes
+    /// back to the input boolean value.
+    ///
+    /// # Arguments
+    ///
+    /// * `param`: Name of the parameter to change
+    /// * `value`: Boolean value to set
+    ///
+    /// returns: ()
     fn set_parameter_bool(&mut self, param: Self::Name, value: bool) {
         self.set_parameter(param, if value { 1.0 } else { 0.0 });
-    }
-
-    fn set_parameter_discrete(&mut self, param: Self::Name, num_values: usize, value: usize) {
-        let value = value as f32 / num_values as f32;
-        self.set_parameter(param, value);
     }
 }
 
@@ -265,10 +277,18 @@ impl<P: HasParameters> HasParameters for Box<P> {
     }
 }
 
+/// Dynamic parameter type which advertises as having `N` possible names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Dynamic<const N: ParamId>(ParamId);
 
 impl<const N: ParamId> Dynamic<N> {
+    /// Create a new `Dynamic<N>` parameter name, checking the passed in ID for validity.
+    ///
+    /// # Arguments
+    ///
+    /// * `value`: Raw ID to use for this parameter type. The parameter is valid when `value < N`.
+    ///
+    /// returns: Option<Dynamic<{ N }>>
     pub fn new(value: ParamId) -> Option<Self> {
         (value < N).then_some(Self(value))
     }
@@ -305,6 +325,7 @@ impl<P: ParamName, T: Default> Default for ParamMap<P, T> {
     }
 }
 
+/// Type which implements [`Iterator`] listing the parameters and their associated value.
 pub struct ParamMapIntoIter<P, T> {
     data: std::vec::IntoIter<T>,
     item: u64,
@@ -375,6 +396,13 @@ impl<P: ParamName + Clone, T> ops::IndexMut<&P> for ParamMap<P, T> {
 }
 
 impl<P: ParamName, T> ParamMap<P, T> {
+    /// Create a new parameter map, filled in by the provided closure.
+    ///
+    /// # Arguments
+    ///
+    /// * `fill_fn`: Closure which is called for each parameter, and returns the associated value.
+    ///
+    /// returns: ParamMap<P, T>
     pub fn new(fill_fn: impl FnMut(P) -> T) -> Self {
         Self {
             data: Vec::from_iter(P::iter().map(fill_fn)),
@@ -382,6 +410,7 @@ impl<P: ParamName, T> ParamMap<P, T> {
         }
     }
 
+    /// Iterate over parameters and references to their values.
     pub fn iter(&self) -> impl '_ + Iterator<Item = (P, &T)> {
         self.data
             .iter()
@@ -389,6 +418,7 @@ impl<P: ParamName, T> ParamMap<P, T> {
             .map(|(i, x)| (P::from_id(i as _), x))
     }
 
+    /// Iterate over parameters and mutable references to their values.
     pub fn iter_mut(&mut self) -> impl '_ + Iterator<Item = (P, &mut T)> {
         self.data
             .iter_mut()
@@ -397,18 +427,31 @@ impl<P: ParamName, T> ParamMap<P, T> {
     }
 }
 
+/// Object-safe trait for types with parameters.
 pub trait HasParametersErased {
+    /// Set a parameter value by its raw param ID.
+    ///
+    /// # Arguments
+    ///
+    /// * `param_id`: Raw param ID to set.
+    /// * `value`: Value to set the param ID with.
+    ///
+    /// returns: ()
     fn set_parameter_raw(&mut self, param_id: ParamId, value: f32);
 }
 
+/// Proxy parameter updates to another type. This allows thread-safe control of processors via their
+/// parameters.
 pub struct ParamsProxy<P: ParamName> {
     params: ParamMap<P, Arc<AtomicF32>>,
     param_changed: ParamMap<P, Arc<AtomicBool>>,
 }
 
+/// Type alias for the type that allows remote control of processors via their parameters.
 pub type RemoteControl<P> = Arc<ParamsProxy<P>>;
 
 impl<P: ParamName> ParamsProxy<P> {
+    /// Create a new param proxy.
     pub fn new() -> Arc<Self> {
         let params = ParamMap::new(|_| Arc::new(AtomicF32::new(0.0)));
         let param_changed = ParamMap::new(|_| Arc::new(AtomicBool::new(false)));
@@ -418,6 +461,14 @@ impl<P: ParamName> ParamsProxy<P> {
         })
     }
 
+    /// Set a parameter for a remote type.
+    ///
+    /// # Arguments
+    ///
+    /// * `param`: Parameter to set
+    /// * `value`: Value to set
+    ///
+    /// returns: ()
     pub fn set_parameter(&self, param: P, value: f32) {
         self.param_changed[param].store(true, Ordering::SeqCst);
         self.params[param].store(value, Ordering::SeqCst);
@@ -434,8 +485,11 @@ impl<P: ParamName> ParamsProxy<P> {
     }
 }
 
+/// Type which remote controls the type `P` through its [`RemoteControlled::proxy`].
 pub struct RemoteControlled<P: HasParameters> {
+    /// Remote-controlled type
     pub inner: P,
+    /// Remote control proxy, which you can clone and send to another thread.
     pub proxy: RemoteControl<P::Name>,
     update_params_phase: f32,
     update_params_step: f32,
@@ -482,6 +536,16 @@ impl<P: HasParameters + DSPProcessBlock<I, O>, const I: usize, const O: usize> D
 }
 
 impl<P: HasParameters> RemoteControlled<P> {
+    /// Create a new remote, controlling the passed in processor.
+    ///
+    /// # Arguments
+    ///
+    /// * `samplerate`: Sample rate at which the processor and remote control will run
+    /// * `update_frequency`: Frequency (in Hz) at which the remote control will check for updated
+    ///     parameters, and transfer them to the inner processor.
+    /// * `inner`: Inner processor, that is going to be controlled by this.
+    ///
+    /// returns: RemoteControlled<P>
     pub fn new(samplerate: f32, update_frequency: f32, inner: P) -> Self {
         Self {
             inner,
@@ -494,6 +558,8 @@ impl<P: HasParameters> RemoteControlled<P> {
 
 #[profiling::all_functions]
 impl<P: HasParameters> RemoteControlled<P> {
+    /// Check for update on all parameters, and transmit them to the inner processor if they have
+    /// changed.
     pub fn update_parameters(&mut self) {
         for param in P::Name::iter() {
             if let Some(value) = self.proxy.get_update(param) {

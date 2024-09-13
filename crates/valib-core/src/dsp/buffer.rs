@@ -1,3 +1,8 @@
+//! # Audio buffers
+//!
+//! This module contains an audio buffer type that is container agnostic. A "container" here is
+//! defined to be any type that derefs into `[T]`.
+
 use num_traits::Zero;
 use std::collections::Bound;
 use std::ops::{Deref, DerefMut, Index, IndexMut, Range, RangeBounds};
@@ -82,6 +87,13 @@ fn bounds_into_range(
 }
 
 impl<T, const LENGTH: usize, const CHANNELS: usize> AudioBuffer<[T; LENGTH], CHANNELS> {
+    /// Create a new audio buffer, backed by a static array.
+    ///
+    /// # Arguments
+    ///
+    /// * `containers`: Containers of audio data to use in this buffer
+    ///
+    /// returns: AudioBuffer<[T; LENGTH], { CHANNELS }>
     pub const fn const_new(containers: [[T; LENGTH]; CHANNELS]) -> Self {
         Self {
             containers,
@@ -89,6 +101,22 @@ impl<T, const LENGTH: usize, const CHANNELS: usize> AudioBuffer<[T; LENGTH], CHA
         }
     }
 
+    /// Slice the audio buffer, returning a new audio buffer referencing the data of this one at the
+    /// given range.
+    ///
+    /// # Arguments
+    ///
+    /// * `bounds`: Per-channel bounds to restrict the buffer view with
+    ///
+    /// returns: AudioBuffer<&[T], { CHANNELS }>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use valib_core::dsp::buffer::AudioBufferBox;
+    /// let buffer = AudioBufferBox::<f32, 1>::zeroed(64);
+    /// let slice = buffer.array_slice(16..32);
+    /// ```
     pub fn array_slice(&self, bounds: impl RangeBounds<usize>) -> AudioBufferRef<T, CHANNELS> {
         let range = bounds_into_range(bounds, 0..self.inner_size);
         AudioBuffer {
@@ -97,6 +125,22 @@ impl<T, const LENGTH: usize, const CHANNELS: usize> AudioBuffer<[T; LENGTH], CHA
         }
     }
 
+    /// Slice the audio buffer, returning a new audio buffer referencing the data of this one at the
+    /// given range.
+    ///
+    /// # Arguments
+    ///
+    /// * `bounds`: Per-channel bounds to restrict the buffer mutable view with
+    ///
+    /// returns: AudioBuffer<&[T], { CHANNELS }>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use valib_core::dsp::buffer::AudioBufferBox;
+    /// let mut buffer = AudioBufferBox::<f32, 1>::zeroed(64);
+    /// let mut slice = buffer.array_slice_mut(16..32);
+    /// ```
     pub fn array_slice_mut(
         &mut self,
         bounds: impl RangeBounds<usize>,
@@ -138,11 +182,45 @@ impl<T, C: Deref<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNELS> 
         }
     }
 
+    /// Read a frame (array of a single sample for each channel) at the specified index and return a
+    /// reference to the audio samples.
+    ///
+    /// Panics if the index is out of bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `index`: Buffer index.
+    ///
+    /// returns: [&T; CHANNELS]
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use valib_core::dsp::buffer::AudioBufferBox;
+    /// let stereo_buffer = AudioBufferBox::<f32, 2>::zeroed(64);
+    /// let [left, right] = stereo_buffer.frame_ref(0);
+    /// ```
     pub fn frame_ref(&self, index: usize) -> [&T; CHANNELS] {
         std::array::from_fn(|ch| &self.containers[ch][index])
     }
 
-    /// Get a multi-channel sample at the given index.
+    /// Get a multichannel sample at the given index. Returns a copy of the audio samples.
+    ///
+    /// Panics if the index is out of bounds.
+    ///
+    /// # Arguments
+    ///
+    /// * `index`: Index into the buffer.
+    ///
+    /// returns: [T; CHANNELS]
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use valib_core::dsp::buffer::AudioBufferBox;
+    /// let stereo_buffer = AudioBufferBox::<f32, 2>::zeroed(64);
+    /// let [left, right] = stereo_buffer.frame_ref(0);
+    /// ```
     pub fn get_frame(&self, index: usize) -> [T; CHANNELS]
     where
         T: Clone,
@@ -150,6 +228,7 @@ impl<T, C: Deref<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNELS> 
         std::array::from_fn(|ch| self.containers[ch][index].clone())
     }
 
+    /// Return an iterator of frames in this buffer.
     pub fn iter<'a>(&'a self) -> impl 'a + Iterator<Item = [&'a T; CHANNELS]>
     where
         T: 'a,
@@ -165,6 +244,22 @@ impl<T, C: Deref<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNELS> 
         }
     }
 
+    /// Slice the audio buffer, returning a new audio buffer referencing the data of this one at the
+    /// given range.
+    ///
+    /// # Arguments
+    ///
+    /// * `bounds`: Per-channel bounds to restrict the buffer view with
+    ///
+    /// returns: AudioBuffer<&[T], { CHANNELS }>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use valib_core::dsp::buffer::AudioBufferBox;
+    /// let buffer = AudioBufferBox::<f32, 1>::zeroed(64);
+    /// let slice = buffer.array_slice(16..32);
+    /// ```
     pub fn slice(&self, bounds: impl RangeBounds<usize>) -> AudioBufferRef<T, CHANNELS> {
         let range = bounds_into_range(bounds, 0..self.inner_size);
         AudioBuffer {
@@ -210,6 +305,13 @@ impl<T, C: DerefMut<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNEL
         }
     }
 
+    /// Fill the audio buffer with the provided value.
+    ///
+    /// # Arguments
+    ///
+    /// * `value`: Value to copy into all samples of this buffer
+    ///
+    /// returns: ()
     pub fn fill(&mut self, value: T)
     where
         T: Copy,
@@ -219,12 +321,37 @@ impl<T, C: DerefMut<Target = [T]>, const CHANNELS: usize> AudioBuffer<C, CHANNEL
         }
     }
 
+    /// Runs the provided closure to replace all samples in this buffer.
+    ///
+    /// The order at which the function is called is not guaranteed.
+    ///
+    /// # Arguments
+    ///
+    /// * `fill`: Closure which will generate all new values of this buffer.
+    ///
+    /// returns: ()
     pub fn fill_with(&mut self, mut fill: impl FnMut() -> T) {
         for container in &mut self.containers {
             container.fill_with(&mut fill);
         }
     }
 
+    /// Slice the audio buffer, returning a new audio buffer referencing the data of this one at the
+    /// given range.
+    ///
+    /// # Arguments
+    ///
+    /// * `bounds`: Per-channel bounds to restrict the buffer mutable view with
+    ///
+    /// returns: AudioBuffer<&[T], { CHANNELS }>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use valib_core::dsp::buffer::AudioBufferBox;
+    /// let mut buffer = AudioBufferBox::<f32, 1>::zeroed(64);
+    /// let mut slice = buffer.array_slice_mut(16..32);
+    /// ```
     pub fn slice_mut(&mut self, bounds: impl RangeBounds<usize>) -> AudioBufferMut<T, CHANNELS> {
         let range = bounds_into_range(bounds, 0..self.inner_size);
         AudioBuffer {
@@ -280,6 +407,25 @@ impl<T: Scalar, C: DerefMut<Target = [T]>, const CHANNELS: usize> AudioBuffer<C,
     }
 }
 
+impl<C> AudioBuffer<C, 0> {
+    /// Creates a 0-channel empty buffer with the specified buffer size. This constructor is
+    /// required to provide a non-zero block size that matches the companion buffer passed into
+    /// `process_block`.
+    ///
+    /// Better API design is needed to remove this need.
+    ///
+    /// # Arguments
+    ///
+    /// `block_size`: Size of the audio buffer
+    pub fn empty(block_size: usize) -> Self {
+        Self {
+            containers: [],
+            inner_size: block_size,
+        }
+    }
+}
+
+/// Type alias for audio buffers which have non-owning storage (i.e. a slice).
 pub type AudioBufferRef<'a, T, const CHANNELS: usize> = AudioBuffer<&'a [T], CHANNELS>;
 
 impl<'a, T> From<&'a [T]> for AudioBufferRef<'a, T, 1> {
@@ -292,19 +438,7 @@ impl<'a, T> From<&'a [T]> for AudioBufferRef<'a, T, 1> {
     }
 }
 
-impl<C> AudioBuffer<C, 0> {
-    /// Creates a 0-channel empty buffer with the specified buffer size. This constructor is required to provide a non-
-    /// zero block size that matches the companion buffer passed into `process_block`.
-    ///
-    /// Better API design is needed to remove this need.
-    pub fn empty(block_size: usize) -> Self {
-        Self {
-            containers: [],
-            inner_size: block_size,
-        }
-    }
-}
-
+/// Type alias for audio buffers which have non-owned mutable storage (i.e. a mut slice).
 pub type AudioBufferMut<'a, T, const CHANNELS: usize> = AudioBuffer<&'a mut [T], CHANNELS>;
 
 impl<'a, T> From<&'a mut [T]> for AudioBufferMut<'a, T, 1> {
@@ -317,6 +451,7 @@ impl<'a, T> From<&'a mut [T]> for AudioBufferMut<'a, T, 1> {
     }
 }
 
+/// Type alias for audio buffers which have owned storage (i.e. a `Box<[T]>`).
 pub type AudioBufferBox<T, const CHANNELS: usize> = AudioBuffer<Box<[T]>, CHANNELS>;
 
 impl<T> FromIterator<T> for AudioBufferBox<T, 1> {
@@ -331,6 +466,13 @@ impl<T> FromIterator<T> for AudioBufferBox<T, 1> {
 }
 
 impl<T: Zero, const CHANNELS: usize> AudioBufferBox<T, CHANNELS> {
+    /// Allocate a new audio buffer with zeroed out contents.
+    ///
+    /// # Arguments
+    ///
+    /// * `size`: Block size of the buffer
+    ///
+    /// returns: AudioBuffer<Box<[T], Global>, { CHANNELS }>
     pub fn zeroed(size: usize) -> Self {
         Self {
             containers: std::array::from_fn(|_| {
