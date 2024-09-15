@@ -129,7 +129,7 @@ impl Default for PolysynthPlugin {
         const DEFAULT_SAMPLERATE: f32 = 44100.;
         let params = Arc::new(PolysynthParams::default());
         Self {
-            dsp: BlockAdapter(dsp::create(DEFAULT_SAMPLERATE, &params)),
+            dsp: BlockAdapter(dsp::create(DEFAULT_SAMPLERATE, params.clone())),
             params,
             voice_id_map: VoiceIdMap::default(),
         }
@@ -156,8 +156,8 @@ impl Plugin for PolysynthPlugin {
         self.params.clone()
     }
 
-    fn reset(&mut self) {
-        self.dsp.reset();
+    fn editor(&mut self, _: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        editor::create(self.params.clone(), self.params.editor_state.clone())
     }
 
     fn initialize(
@@ -171,8 +171,8 @@ impl Plugin for PolysynthPlugin {
         true
     }
 
-    fn editor(&mut self, _: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
-        editor::create(self.params.clone(), self.params.editor_state.clone())
+    fn reset(&mut self) {
+        self.dsp.reset();
     }
 
     fn process(

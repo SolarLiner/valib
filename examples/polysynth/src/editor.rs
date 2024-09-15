@@ -1,11 +1,9 @@
 use crate::params::PolysynthParams;
-use nih_plug::prelude::{util, AtomicF32, Editor};
+use nih_plug::prelude::Editor;
 use nih_plug_vizia::vizia::prelude::*;
 use nih_plug_vizia::widgets::*;
 use nih_plug_vizia::{assets, create_vizia_editor, ViziaState, ViziaTheming};
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
 
 #[derive(Lens)]
 struct Data {
@@ -33,26 +31,28 @@ pub(crate) fn create(
         .build(cx);
 
         VStack::new(cx, |cx| {
-            Label::new(cx, "Polysynth")
-                .font_weight(FontWeightKeyword::Thin)
-                .font_size(30.0)
-                .height(Pixels(50.0))
-                .child_top(Stretch(1.0))
-                .child_bottom(Pixels(0.0));
-            HStack::new(cx, |cx| {
-                for ix in 0..2 {
-                    let p = Data::params.map(move |p| p.osc_params[ix].clone());
-                    VStack::new(cx, |cx| {
-                        Label::new(cx, &format!("Oscillator {}", ix + 1))
-                            .font_size(22.)
-                            .height(Pixels(30.))
-                            .child_bottom(Pixels(8.));
-                        GenericUi::new(cx, p).width(Percentage(100.));
-                    })
-                    .width(Stretch(1.0));
-                }
-            })
-            .row_between(Pixels(0.0));
+            VStack::new(cx, |cx| {
+                Label::new(cx, "Polysynth")
+                    .font_weight(FontWeightKeyword::Thin)
+                    .font_size(30.0)
+                    .height(Pixels(50.0))
+                    .child_top(Stretch(1.0))
+                    .child_bottom(Pixels(0.0));
+                HStack::new(cx, |cx| {
+                    for ix in 0..2 {
+                        let p = Data::params.map(move |p| p.osc_params[ix].clone());
+                        VStack::new(cx, |cx| {
+                            Label::new(cx, &format!("Oscillator {}", ix + 1))
+                                .font_size(22.)
+                                .height(Pixels(30.))
+                                .child_bottom(Pixels(8.));
+                            GenericUi::new(cx, p).width(Percentage(100.));
+                        })
+                        .width(Stretch(1.0));
+                    }
+                })
+                .row_between(Pixels(0.0));
+            });
 
             VStack::new(cx, |cx| {
                 Label::new(cx, "Filter")
@@ -61,6 +61,13 @@ pub(crate) fn create(
                     .child_bottom(Pixels(8.));
                 GenericUi::new(cx, Data::params.map(|p| p.filter_params.clone()))
                     .width(Percentage(100.));
+            });
+
+            VStack::new(cx, |cx| {
+                HStack::new(cx, |cx| {
+                    Label::new(cx, "Output Level").width(Stretch(1.));
+                    ParamSlider::new(cx, Data::params, |p| &p.output_level).width(Stretch(1.));
+                });
             });
         })
         .width(Percentage(100.))
