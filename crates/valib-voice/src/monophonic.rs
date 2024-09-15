@@ -82,7 +82,8 @@ impl<V: Voice> Monophonic<V> {
     }
 }
 
-impl<V: Voice> VoiceManager<V> for Monophonic<V> {
+impl<V: Voice> VoiceManager for Monophonic<V> {
+    type Voice = V;
     type ID = ();
 
     fn capacity(&self) -> usize {
@@ -122,9 +123,9 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
         }
     }
 
-    fn note_off(&mut self, _id: Self::ID) {
+    fn note_off(&mut self, _: Self::ID, release_velocity: f32) {
         if let Some(voice) = &mut self.voice {
-            voice.release();
+            voice.release(release_velocity);
         }
     }
 

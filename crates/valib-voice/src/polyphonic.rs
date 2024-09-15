@@ -1,16 +1,33 @@
 //! # Polyphonic voice manager
 //!
 //! Provides a polyphonic voice manager with rotating voice allocation.
+
 use crate::{NoteData, Voice, VoiceManager};
 use num_traits::zero;
+use std::fmt;
+use std::fmt::Formatter;
 use valib_core::dsp::{DSPMeta, DSPProcess};
 
 /// Polyphonic voice manager with rotating voice allocation
 pub struct Polyphonic<V: Voice> {
-    create_voice: Box<dyn Fn(f32, NoteData<V::Sample>) -> V>,
+    create_voice: Box<dyn 'static + Send + Sync + Fn(f32, NoteData<V::Sample>) -> V>,
     voice_pool: Box<[Option<V>]>,
     next_voice: usize,
     samplerate: f32,
+}
+
+impl<V: Voice> fmt::Debug for Polyphonic<V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Polyphonic")
+            .field(
+                "create_voice",
+                &"Box<dyn Fn(f32, NoteData<V::Sample>) -> V>",
+            )
+            .field("voice_pool", &"Box<[Option<impl Voice>]>")
+            .field("next_voice", &self.next_voice)
+            .field("samplerate", &self.samplerate)
+            .finish()
+    }
 }
 
 impl<V: Voice> Polyphonic<V> {
@@ -26,13 +43,22 @@ impl<V: Voice> Polyphonic<V> {
     pub fn new(
         samplerate: f32,
         voice_capacity: usize,
-        create_voice: impl Fn(f32, NoteData<V::Sample>) -> V + 'static,
+        create_voice: impl 'static + Send + Sync + Fn(f32, NoteData<V::Sample>) -> V + 'static,
     ) -> Self {
         Self {
             create_voice: Box::new(create_voice),
             next_voice: 0,
             voice_pool: (0..voice_capacity).map(|_| None).collect(),
             samplerate,
+        }
+    }
+
+    /// Clean inactive voices to prevent them being processed for nothing.
+    pub fn clean_inactive_voices(&mut self) {
+        for slot in &mut self.voice_pool {
+            if slot.as_ref().is_some_and(|v| !v.active()) {
+                slot.take();
+            }
         }
     }
 }
@@ -61,7 +87,8 @@ impl<V: Voice> DSPMeta for Polyphonic<V> {
     }
 }
 
-impl<V: Voice> VoiceManager<V> for Polyphonic<V> {
+impl<V: Voice> VoiceManager for Polyphonic<V> {
+    type Voice = V;
     type ID = usize;
 
     fn capacity(&self) -> usize {
@@ -82,7 +109,7 @@ impl<V: Voice> VoiceManager<V> for Polyphonic<V> {
 
     fn note_on(&mut self, note_data: NoteData<V::Sample>) -> Self::ID {
         let id = self.next_voice;
-        self.next_voice += 1;
+        self.next_voice = (self.next_voice + 1) % self.voice_pool.len();
 
         if let Some(voice) = &mut self.voice_pool[id] {
             *voice.note_data_mut() = note_data;
@@ -94,9 +121,9 @@ impl<V: Voice> VoiceManager<V> for Polyphonic<V> {
         id
     }
 
-    fn note_off(&mut self, id: Self::ID) {
+    fn note_off(&mut self, id: Self::ID, release_velocity: f32) {
         if let Some(voice) = &mut self.voice_pool[id] {
-            voice.release();
+            voice.release(release_velocity);
         }
     }
 

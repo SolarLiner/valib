@@ -123,13 +123,14 @@ pub struct SampleAdapter<P, const I: usize, const O: usize>
 where
     P: DSPProcessBlock<I, O>,
 {
+    /// Inner block processor
+    pub inner: P,
     /// Size of the buffers passed into the inner block processor.
     pub buffer_size: usize,
     input_buffer: AudioBufferBox<P::Sample, I>,
     input_filled: usize,
     output_buffer: AudioBufferBox<P::Sample, O>,
     output_filled: usize,
-    inner: P,
 }
 
 impl<P, const I: usize, const O: usize> std::ops::Deref for SampleAdapter<P, I, O>
