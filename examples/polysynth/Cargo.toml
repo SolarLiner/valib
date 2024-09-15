@@ -15,4 +15,5 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 valib = { path = "../..", features = ["filters", "oversample", "oscillators", "voice", "voice-upsampled", "nih-plug"]}
 nih_plug = { workspace = true, features = ["standalone"] }
+nih_plug_vizia.workspace = true
 num-traits.workspace = true

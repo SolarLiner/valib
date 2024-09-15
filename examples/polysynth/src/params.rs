@@ -4,6 +4,7 @@ use crate::{
 };
 use nih_plug::prelude::*;
 use nih_plug::util::{db_to_gain, MINUS_INFINITY_DB};
+use nih_plug_vizia::ViziaState;
 use std::sync::Arc;
 use valib::dsp::parameter::{ParamId, ParamName};
 
@@ -148,6 +149,8 @@ pub struct PolysynthParams {
     #[nested]
     pub filter_params: Arc<FilterParams>,
     pub oversample: Arc<AtomicF32>,
+    #[persist = "editor"]
+    pub editor_state: Arc<ViziaState>,
 }
 
 impl Default for PolysynthParams {
@@ -157,6 +160,7 @@ impl Default for PolysynthParams {
             osc_params: std::array::from_fn(|i| Arc::new(OscParams::new(i, oversample.clone()))),
             filter_params: Arc::new(FilterParams::new(oversample.clone())),
             oversample,
+            editor_state: crate::editor::default_state(),
         }
     }
 }
