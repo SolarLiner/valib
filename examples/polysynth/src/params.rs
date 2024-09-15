@@ -102,6 +102,8 @@ pub struct FilterParams {
     pub cutoff: FloatParam,
     #[id = "res"]
     pub resonance: FloatParam,
+    #[id = "kt"]
+    pub keyboard_tracking: FloatParam,
 }
 
 impl FilterParams {
@@ -138,6 +140,18 @@ impl FilterParams {
                 oversample.clone(),
                 &SmoothingStyle::Linear(10.),
             )),
+            keyboard_tracking: FloatParam::new(
+                "Keyboard Tracking",
+                0.5,
+                FloatRange::Linear { min: 0., max: 2. },
+            )
+            .with_unit(" %")
+            .with_string_to_value(formatters::s2v_f32_percentage())
+            .with_value_to_string(formatters::v2s_f32_percentage(2))
+            .with_smoother(SmoothingStyle::OversamplingAware(
+                oversample.clone(),
+                &SmoothingStyle::Linear(10.),
+            )),
         }
     }
 }
@@ -148,6 +162,8 @@ pub struct PolysynthParams {
     pub osc_params: [Arc<OscParams>; 2],
     #[nested]
     pub filter_params: Arc<FilterParams>,
+    #[id = "out"]
+    pub output_level: FloatParam,
     pub oversample: Arc<AtomicF32>,
     #[persist = "editor"]
     pub editor_state: Arc<ViziaState>,
@@ -159,6 +175,21 @@ impl Default for PolysynthParams {
         Self {
             osc_params: std::array::from_fn(|i| Arc::new(OscParams::new(i, oversample.clone()))),
             filter_params: Arc::new(FilterParams::new(oversample.clone())),
+            output_level: FloatParam::new(
+                "Output Level",
+                0.25,
+                FloatRange::Skewed {
+                    min: 0.0,
+                    max: 1.0,
+                    factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, 0.),
+                },
+            )
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_smoother(SmoothingStyle::OversamplingAware(
+                oversample.clone(),
+                &SmoothingStyle::Exponential(50.),
+            )),
             oversample,
             editor_state: crate::editor::default_state(),
         }
