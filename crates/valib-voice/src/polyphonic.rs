@@ -12,6 +12,7 @@ use valib_core::dsp::{DSPMeta, DSPProcess};
 pub struct Polyphonic<V: Voice> {
     create_voice: Box<dyn 'static + Send + Sync + Fn(f32, NoteData<V::Sample>) -> V>,
     voice_pool: Box<[Option<V>]>,
+    active_voices: usize,
     next_voice: usize,
     samplerate: f32,
 }
@@ -49,6 +50,7 @@ impl<V: Voice> Polyphonic<V> {
             create_voice: Box::new(create_voice),
             next_voice: 0,
             voice_pool: (0..voice_capacity).map(|_| None).collect(),
+            active_voices: 0,
             samplerate,
         }
     }
@@ -58,6 +60,7 @@ impl<V: Voice> Polyphonic<V> {
         for slot in &mut self.voice_pool {
             if slot.as_ref().is_some_and(|v| !v.active()) {
                 slot.take();
+                self.active_voices -= 1;
             }
         }
     }
@@ -108,17 +111,31 @@ impl<V: Voice> VoiceManager for Polyphonic<V> {
     }
 
     fn note_on(&mut self, note_data: NoteData<V::Sample>) -> Self::ID {
-        let id = self.next_voice;
-        self.next_voice = (self.next_voice + 1) % self.voice_pool.len();
+        if self.active_voices == self.capacity() {
+            // At capacity, we must steal a voice
+            let id = self.next_voice;
 
-        if let Some(voice) = &mut self.voice_pool[id] {
-            *voice.note_data_mut() = note_data;
-            voice.reuse();
+            if let Some(voice) = &mut self.voice_pool[id] {
+                *voice.note_data_mut() = note_data;
+                voice.reuse();
+            } else {
+                self.voice_pool[id] = Some((self.create_voice)(self.samplerate, note_data));
+            }
+
+            self.next_voice = (self.next_voice + 1) % self.voice_pool.len();
+            id
         } else {
-            self.voice_pool[id] = Some((self.create_voice)(self.samplerate, note_data));
-        }
+            // Find first available slot
+            while self.voice_pool[self.next_voice].is_some() {
+                self.next_voice += 1;
+            }
 
-        id
+            let id = self.next_voice;
+            self.voice_pool[id] = Some((self.create_voice)(self.samplerate, note_data));
+            self.next_voice = (self.next_voice + 1) % self.voice_pool.len();
+            self.active_voices += 1;
+            id
+        }
     }
 
     fn note_off(&mut self, id: Self::ID, release_velocity: f32) {
@@ -129,10 +146,12 @@ impl<V: Voice> VoiceManager for Polyphonic<V> {
 
     fn choke(&mut self, id: Self::ID) {
         self.voice_pool[id] = None;
+        self.active_voices -= 1;
     }
 
     fn panic(&mut self) {
         self.voice_pool.fill_with(|| None);
+        self.active_voices = 0;
     }
 }
 

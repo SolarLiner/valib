@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 use valib_core::dsp::blocks::P1;
 use valib_core::dsp::{DSPMeta, DSPProcess};
 use valib_core::simd::SimdBool;
+use valib_core::util::lerp;
 use valib_core::Scalar;
 
 pub struct PolyBLEP<T> {
@@ -34,7 +35,7 @@ impl<T: Scalar> PolyBLEP<T> {
 }
 
 pub trait PolyBLEPOscillator: DSPMeta {
-    fn bleps() -> impl IntoIterator<Item = PolyBLEP<Self::Sample>>;
+    fn bleps(&self) -> impl IntoIterator<Item = PolyBLEP<Self::Sample>>;
     fn naive_eval(&mut self, phase: Self::Sample) -> Self::Sample;
 }
 
@@ -62,7 +63,7 @@ impl<Osc: PolyBLEPOscillator> DSPProcess<0, 1> for PolyBLEPDriver<Osc> {
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
         let [phase] = self.phasor.process([]);
         let mut y = self.blep.naive_eval(phase);
-        for blep in Osc::bleps() {
+        for blep in self.blep.bleps() {
             y += blep.eval(self.phasor.step, phase);
         }
         [y]
@@ -101,7 +102,7 @@ impl<T: Scalar> DSPMeta for SawBLEP<T> {
 }
 
 impl<T: ConstZero + ConstOne + Scalar> PolyBLEPOscillator for SawBLEP<T> {
-    fn bleps() -> impl IntoIterator<Item = PolyBLEP<Self::Sample>> {
+    fn bleps(&self) -> impl IntoIterator<Item = PolyBLEP<Self::Sample>> {
         [PolyBLEP {
             amplitude: -T::ONE,
             phase: T::ZERO,
@@ -139,7 +140,7 @@ impl<T: Scalar> DSPMeta for SquareBLEP<T> {
 }
 
 impl<T: ConstZero + ConstOne + Scalar> PolyBLEPOscillator for SquareBLEP<T> {
-    fn bleps() -> impl IntoIterator<Item = PolyBLEP<Self::Sample>> {
+    fn bleps(&self) -> impl IntoIterator<Item = PolyBLEP<Self::Sample>> {
         [
             PolyBLEP {
                 amplitude: T::ONE,
@@ -147,13 +148,14 @@ impl<T: ConstZero + ConstOne + Scalar> PolyBLEPOscillator for SquareBLEP<T> {
             },
             PolyBLEP {
                 amplitude: -T::ONE,
-                phase: T::from_f64(0.5),
+                phase: T::one() - self.pw,
             },
         ]
     }
 
     fn naive_eval(&mut self, phase: Self::Sample) -> Self::Sample {
-        T::from_f64(2.0) * phase - T::one()
+        let dc_offset = lerp(self.pw, -T::ONE, T::ONE);
+        phase.simd_gt(self.pw).if_else(T::one, || -T::one()) + dc_offset
     }
 }
 
