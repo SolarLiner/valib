@@ -19,6 +19,7 @@ profiling.workspace = true
 num-complex.workspace = true
 
 [dev-dependencies]
+valib-core = { path = "../valib-core", features = ["test-utils"] }
 rstest.workspace = true
 insta.workspace = true
 nalgebra.workspace = true

@@ -1,3 +1,6 @@
+//! # Diode clipper
+//!
+//! Saturators for emulating a diode clipper.
 use super::adaa::Antiderivative;
 use crate::MultiSaturator;
 use crate::Saturator;
@@ -12,26 +15,37 @@ use valib_core::Scalar;
 
 mod diode_clipper_model_data;
 
+/// Diode clipper evaluated with the Newton-Rhapson method.
 #[derive(Debug, Copy, Clone)]
 pub struct DiodeClipper<T> {
+    /// Reverse saturation current of the diode
     pub isat: T,
+    /// Ideality coefficient of the diode
     pub n: T,
+    /// Thermal voltage
     pub vt: T,
+    /// Input voltage
     pub vin: T,
+    /// Number of diodes in the forward direction
     pub num_diodes_fwd: T,
+    /// Number of diodes in the backward direction
     pub num_diodes_bwd: T,
+    /// Simulation tolerance
     pub sim_tol: T,
+    /// Maximum number of iterations
     pub max_iter: usize,
     last_vout: T,
 }
 
 impl<T: Copy> DiodeClipper<T> {
+    /// Return the last output of the clipper.
     pub fn last_output(&self) -> T {
         self.last_vout
     }
 }
 
 impl<T: Copy> DiodeClipper<T> {
+    /// Reset the state of the clipper
     pub fn reset(&mut self) {
         self.last_vout = self.vin;
     }
@@ -69,6 +83,15 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
 }
 
 impl<T: Scalar> DiodeClipper<T> {
+    /// New diode clipper made of silicon.
+    ///
+    /// # Arguments
+    ///
+    /// * `fwd`: Number of diodes in the forward direction
+    /// * `bwd`: Number of diodes in the backward direction
+    /// * `vin`: Input voltage
+    ///
+    /// returns: DiodeClipper<T>
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new_silicon(fwd: usize, bwd: usize, vin: T) -> Self {
         Self {
@@ -84,6 +107,15 @@ impl<T: Scalar> DiodeClipper<T> {
         }
     }
 
+    /// New diode clipper made of germanium.
+    ///
+    /// # Arguments
+    ///
+    /// * `fwd`: Number of diodes in the forward direction
+    /// * `bwd`: Number of diodes in the backward direction
+    /// * `vin`: Input voltage
+    ///
+    /// returns: DiodeClipper<T>
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new_germanium(fwd: usize, bwd: usize, vin: T) -> Self {
         Self {
@@ -99,6 +131,15 @@ impl<T: Scalar> DiodeClipper<T> {
         }
     }
 
+    /// New diode clipper made of LEDs.
+    ///
+    /// # Arguments
+    ///
+    /// * `fwd`: Number of diodes in the forward direction
+    /// * `bwd`: Number of diodes in the backward direction
+    /// * `vin`: Input voltage
+    ///
+    /// returns: DiodeClipper<T>
     #[replace_float_literals(T::from_f64(literal))]
     pub fn new_led(nf: usize, nb: usize, vin: T) -> DiodeClipper<T> {
         Self {
@@ -135,11 +176,16 @@ where
     }
 }
 
+/// Analytical model of the diode clipper, described in the clippers notebook.
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DiodeClipperModel<T> {
+    /// A parameter
     pub a: T,
+    /// B parameter
     pub b: T,
+    /// Input scaling
     pub si: T,
+    /// Output scaling
     pub so: T,
 }
 
@@ -148,6 +194,13 @@ impl<T: Scalar> DSPMeta for DiodeClipperModel<T> {
 }
 
 impl<T: Scalar> DiodeClipperModel<T> {
+    /// Evaluate the saturator
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Input value
+    ///
+    /// returns: T
     #[replace_float_literals(T::from_f64(literal))]
     #[inline]
     pub fn eval(&self, x: T) -> T {

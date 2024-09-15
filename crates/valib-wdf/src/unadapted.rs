@@ -1,17 +1,29 @@
+//! # WDF unadapted nodes
+//!
+//! Provides nodes which cannot be adapted anywhere in the tree, and have to sit at the root.
 use crate::{Wave, Wdf};
 use num_traits::Zero;
 use valib_core::dsp::{DSPMeta, DSPProcess};
 use valib_core::simd::SimdBool;
 use valib_core::Scalar;
 
+/// Ideal voltage source WDF node.
 #[derive(Debug, Copy, Clone)]
 pub struct IdealVoltageSource<T> {
+    /// Voltage source value (V)
     pub vs: T,
     a: T,
     b: T,
 }
 
 impl<T: Zero> IdealVoltageSource<T> {
+    /// Create a new ideal voltage source node.
+    ///
+    /// # Arguments
+    ///
+    /// * `vs`: Voltage source value (V)
+    ///
+    /// returns: IdealVoltageSource<T>
     pub fn new(vs: T) -> Self {
         Self {
             vs,
@@ -46,8 +58,10 @@ impl<T: Scalar> Wdf for IdealVoltageSource<T> {
     }
 }
 
+/// Ideal current source WDF node.
 #[derive(Debug, Copy, Clone)]
 pub struct IdealCurrentSource<T> {
+    /// Current source value (A)
     pub j: T,
     r: T,
     a: T,
@@ -55,6 +69,13 @@ pub struct IdealCurrentSource<T> {
 }
 
 impl<T: Zero> IdealCurrentSource<T> {
+    /// Create a new ideal current source node.
+    ///
+    /// # Arguments
+    ///
+    /// * `j`: Current source value (A)
+    ///
+    /// returns: IdealCurrentSource<T>
     pub fn new(j: T) -> Self {
         Self {
             j,
@@ -101,6 +122,7 @@ impl<T: Scalar> Wdf for IdealCurrentSource<T> {
     }
 }
 
+/// Short circuit WDF node.
 #[derive(Debug, Copy, Clone)]
 pub struct ShortCircuit<T> {
     a: T,
@@ -135,6 +157,7 @@ impl<T: Scalar> Wdf for ShortCircuit<T> {
     }
 }
 
+/// Open circuit WDF node.
 #[derive(Debug, Copy, Clone)]
 pub struct OpenCircuit<T> {
     a: T,
@@ -169,7 +192,9 @@ impl<T: Scalar> Wdf for OpenCircuit<T> {
     }
 }
 
+/// Switch WDF node.
 pub struct Switch<T: Scalar> {
+    /// State of the switch
     pub closed: T::SimdBool,
     a: T,
     b: T,
@@ -202,6 +227,13 @@ impl<T: Scalar> Wdf for Switch<T> {
 }
 
 impl<T: Scalar> Switch<T> {
+    /// Create a new switch node.
+    ///
+    /// # Arguments
+    ///
+    /// * `closed`: When true, the switch starts closed.
+    ///
+    /// returns: Switch<T>
     pub fn new(closed: T::SimdBool) -> Self {
         Self {
             closed,
@@ -211,14 +243,29 @@ impl<T: Scalar> Switch<T> {
     }
 }
 
+/// Arbitrary DSP WDF node.
+///
+/// Arbitrary filters can be run as an unadapted WDF node with the following equation:
+///
+/// $$ b = 2*f(a) - a $$
+///
+/// Where $f$ is the function which is run on the incident wave.
 #[derive(Debug, Copy, Clone)]
 pub struct WdfDsp<P: DSPMeta> {
+    /// Inner DSP process
     pub dsp: P,
     a: P::Sample,
     b: P::Sample,
 }
 
 impl<P: DSPMeta<Sample: Zero>> WdfDsp<P> {
+    /// Create a new DSP WDF node.
+    ///
+    /// # Arguments
+    ///
+    /// * `dsp`: Inner DSP process to run. Must be a `DSPProcess<1, 1>`.
+    ///
+    /// returns: WdfDsp<P>
     pub fn new(dsp: P) -> Self {
         Self {
             dsp,

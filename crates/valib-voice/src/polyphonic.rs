@@ -1,12 +1,40 @@
+//! # Polyphonic voice manager
+//!
+//! Provides a polyphonic voice manager with rotating voice allocation.
 use crate::{NoteData, Voice, VoiceManager};
 use num_traits::zero;
 use valib_core::dsp::{DSPMeta, DSPProcess};
 
+/// Polyphonic voice manager with rotating voice allocation
 pub struct Polyphonic<V: Voice> {
     create_voice: Box<dyn Fn(f32, NoteData<V::Sample>) -> V>,
     voice_pool: Box<[Option<V>]>,
     next_voice: usize,
     samplerate: f32,
+}
+
+impl<V: Voice> Polyphonic<V> {
+    /// Create a new polyphonice voice manager.
+    ///
+    /// # Arguments
+    ///
+    /// * `samplerate`: Sample rate the voices will run at
+    /// * `voice_capacity`: Maximum voice capacity
+    /// * `create_voice`: Closure to create a voice given the given note data
+    ///
+    /// returns: Polyphonic<V>
+    pub fn new(
+        samplerate: f32,
+        voice_capacity: usize,
+        create_voice: impl Fn(f32, NoteData<V::Sample>) -> V + 'static,
+    ) -> Self {
+        Self {
+            create_voice: Box::new(create_voice),
+            next_voice: 0,
+            voice_pool: (0..voice_capacity).map(|_| None).collect(),
+            samplerate,
+        }
+    }
 }
 
 impl<V: Voice> DSPMeta for Polyphonic<V> {

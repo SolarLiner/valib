@@ -1,3 +1,6 @@
+//! # Antiderivative Anti-Aliasing
+//!
+//! Methods which suppresses aliasing by relying on 1st and 2nd order antiderivatives
 use numeric_literals::replace_float_literals;
 use valib_core::simd::SimdBool;
 
@@ -7,12 +10,34 @@ use valib_core::Scalar;
 
 /// Trait for functions that have antiderivatives.
 pub trait Antiderivative<T> {
+    /// Evaluate the function itself.
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Input to the function
+    ///
+    /// returns: T
     fn evaluate(&self, x: T) -> T;
 
+    /// Evaluate the antiderivative of the function. The extra constant is assumed to be zero.
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Input value
+    ///
+    /// returns: T
     fn antiderivative(&self, x: T) -> T;
 }
 
+/// Trait for functions which have a 2nd-order antiderivative.
 pub trait Antiderivative2<T>: Antiderivative<T> {
+    /// Evaluate the 2nd-order antiderivative. The additional constants are assumed to be zero.
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Function input
+    ///
+    /// returns: T
     fn antiderivative2(&self, x: T) -> T;
 }
 
@@ -97,14 +122,22 @@ impl<T: Scalar, S: Antiderivative2<T>> Antiderivative2<T> for Blend<T, S> {
     }
 }
 
+/// Antiderivative Anti-Aliasing implementation
 #[derive(Debug, Copy, Clone)]
 pub struct Adaa<T, S, const ORDER: usize> {
+    /// Minimum input difference to use the antiderivative instead of calling the saturator directly
     pub epsilon: T,
+    /// Inner saturator
     pub inner: S,
     memory: [T; ORDER],
 }
 
 impl<T: Scalar, S, const ORDER: usize> Adaa<T, S, ORDER> {
+    /// Create a new ADAA saturator, wrapping an inner saturator.
+    ///
+    /// # Arguments
+    ///
+    /// * `inner`: Inner saturator
     pub fn new(inner: S) -> Self {
         Self {
             epsilon: T::from_f64(1e-3),
@@ -121,6 +154,15 @@ impl<T: Scalar, S: Default, const ORDER: usize> Default for Adaa<T, S, ORDER> {
 }
 
 impl<T: Scalar, S: Antiderivative<T>> Adaa<T, S, 1> {
+    /// Compute the next sample, without updating the inner saturator state.
+    ///
+    /// Uses the 1st order antiderivative of the inner saturator.
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Function input
+    ///
+    /// returns: T
     #[replace_float_literals(T::from_f64(literal))]
     pub fn next_sample_immutable(&self, x: T) -> T {
         let den = x - self.memory[0];
@@ -134,10 +176,28 @@ impl<T: Scalar, S: Antiderivative<T>> Adaa<T, S, 1> {
         )
     }
 
+    /// Commit the input sample.
+    ///
+    /// Uses the 1st order antiderivative of the inner saturator.
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Input sample
+    ///
+    /// returns: ()
     pub fn commit_sample(&mut self, x: T) {
         self.memory = [x];
     }
 
+    /// Shortcut for calling [`Sample::next_sample_immutable`], then [`Sample::commit_sample`].
+    ///
+    /// Uses the 1st order antiderivative of the inner saturator.
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Input sample
+    ///
+    /// returns: T
     pub fn next_sample(&mut self, x: T) -> T {
         let y = self.next_sample_immutable(x);
         self.commit_sample(x);
@@ -146,6 +206,15 @@ impl<T: Scalar, S: Antiderivative<T>> Adaa<T, S, 1> {
 }
 
 impl<T: Scalar, S: Antiderivative2<T>> Adaa<T, S, 2> {
+    /// Compute the next sample, without updating the inner saturator state.
+    ///
+    /// Uses the 1st order antiderivative of the inner saturator.
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Function input
+    ///
+    /// returns: T
     #[replace_float_literals(T::from_f64(literal))]
     #[profiling::function]
     pub fn next_sample_immutable(&self, x: T) -> T {
@@ -166,11 +235,29 @@ impl<T: Scalar, S: Antiderivative2<T>> Adaa<T, S, 2> {
         )
     }
 
+    /// Commit the input sample.
+    ///
+    /// Uses the 1st order antiderivative of the inner saturator.
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Input sample
+    ///
+    /// returns: ()
     pub fn commit_sample(&mut self, x: T) {
         self.memory.swap(0, 1);
         self.memory[0] = x;
     }
 
+    /// Shortcut for calling [`Sample::next_sample_immutable`], then [`Sample::commit_sample`].
+    ///
+    /// Uses the 1st order antiderivative of the inner saturator.
+    ///
+    /// # Arguments
+    ///
+    /// * `x`: Input sample
+    ///
+    /// returns: T
     pub fn next_sample(&mut self, x: T) -> T {
         let y = self.next_sample_immutable(x);
         self.commit_sample(x);

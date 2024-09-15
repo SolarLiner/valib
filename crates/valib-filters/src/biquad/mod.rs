@@ -51,6 +51,13 @@ impl<T, S> Biquad<T, S> {
 }
 
 impl<T: Copy, S> Biquad<T, S> {
+    /// Update the coefficients from another [`Biquad`]  instance.
+    ///
+    /// # Arguments
+    ///
+    /// * `other`: Biquad instance to copy the coefficients from.
+    ///
+    /// returns: ()
     pub fn update_coefficients<S2>(&mut self, other: &Biquad<T, S2>) {
         self.na = other.na;
         self.b = other.b;
@@ -217,10 +224,6 @@ impl<T: Scalar> Biquad<T, Linear> {
         let a2 = ((amp + 1.) - (amp - 1.) * cw0) - 2. * amp.simd_sqrt() * alpha;
 
         Self::new([b0, b1, b2].map(|b| b / a0), [a1, a2].map(|a| a / a0))
-    }
-
-    pub fn reset(&mut self) {
-        self.s.fill(T::zero());
     }
 }
 

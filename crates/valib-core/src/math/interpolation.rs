@@ -1,3 +1,5 @@
+//! Abstraction over interpolation methods.
+
 use nalgebra::SimdPartialOrd;
 use num_traits::{FromPrimitive, NumAssignOps, NumOps};
 use numeric_literals::replace_float_literals;
@@ -6,6 +8,7 @@ use simba::simd::SimdValue;
 use crate::util::simd_index_simd;
 use crate::{Scalar, SimdCast};
 
+/// Trait for SIMD values which can be used as indices into an array.
 pub trait SimdIndex:
     Copy + NumAssignOps + NumOps + SimdPartialOrd + SimdValue<Element = usize>
 {
@@ -16,10 +19,13 @@ impl<T: Copy + NumAssignOps + NumOps + SimdPartialOrd + SimdValue<Element = usiz
 {
 }
 
+/// Trait for SIMD values which can be cast into SIMD indices (i.e. which have a [`SimdIndex`]
+/// implementation)
 pub trait SimdInterpolatable: SimdCast<usize>
 where
     <Self as SimdCast<usize>>::Output: SimdIndex,
 {
+    /// Returns the SIMD index from a non-SIMD scalar index
     fn index_from_usize(value: usize) -> Self::Output {
         Self::Output::splat(value)
     }
@@ -127,6 +133,7 @@ impl<T: Scalar> Interpolate<T, 2> for Linear {
 #[derive(Debug, Copy, Clone)]
 pub struct MappedLinear<F>(pub F);
 
+/// Returns an interpolator that performs sine interpolation.
 pub fn sine_interpolation<T: Scalar>() -> MappedLinear<impl Fn(T) -> T> {
     MappedLinear(|t| T::simd_cos(t * T::simd_pi()))
 }
@@ -183,6 +190,7 @@ impl<T: Scalar> Interpolate<T, 4> for Hermite {
     }
 }
 
+/// Lanczos interpolation method.
 #[derive(Debug, Copy, Clone)]
 pub struct Lanczos;
 

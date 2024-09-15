@@ -1,0 +1,29 @@
+[package]
+name = "ts404"
+version = "0.1.0"
+edition = "2021"
+authors = ["SolarLiner <me@solarliner.dev>"]
+license = "GPL-3.0-or-later"
+homepage = "https://solarliner.dev"
+description = "An inspired but fantasy screamer guitar pedal emulation"
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+valib = { path = "../..", features = ["oversample", "wdf", "nih-plug"] }
+
+nalgebra.workspace = true
+nih_plug = { workspace = true, features = ["standalone"] }
+nih_plug_vizia.workspace = true
+num-traits.workspace = true
+numeric_literals.workspace = true
+profiling.workspace = true
+
+enum-map = "2.7.3"
+
+[dev-dependencies]
+insta = { version = "1.39.0", features = ["csv", "redactions"] }
+
+[features]
+profiling = ["profiling/profile-with-tracy"]

@@ -1,3 +1,6 @@
+//! # Band-limited Impulse Train oscillators
+//!
+//! Provides oscillators which are generated from integrating BLITs, or Band-Limited Impulse Trains.
 use numeric_literals::replace_float_literals;
 use valib_core::dsp::DSPMeta;
 use valib_core::dsp::DSPProcess;
@@ -6,6 +9,7 @@ use valib_core::Scalar;
 /// Raw Band-Limited Impulse Train output. To be fed to leaky integrators to reconstruct the oscillator shape.
 #[derive(Debug, Clone, Copy)]
 pub struct Blit<T> {
+    /// Current phase. Can be changed to perform phase modulation, at the cost of aliasing.
     pub p: T,
     dp: T,
     pmax: T,
@@ -46,6 +50,7 @@ impl<T: Scalar> DSPProcess<0, 1> for Blit<T> {
 }
 
 impl<T: Copy> Blit<T> {
+    /// Maximum phase value
     #[inline(always)]
     pub fn pmax(&self) -> T {
         self.pmax
@@ -74,11 +79,25 @@ impl<T: Scalar> Blit<T> {
         self.update_coefficients();
     }
 
+    /// Set the current position of the oscillator.
+    ///
+    /// # Arguments
+    ///
+    /// * `pos`: New position of the oscillator, normalized
+    ///
+    /// returns: ()
     pub fn set_position(&mut self, pos: T) {
         let delta = pos - self.p;
         self.p += delta * self.pmax;
     }
 
+    /// Return a modified oscillator with the position set to the given value.
+    ///
+    /// # Arguments
+    ///
+    /// * `pos`: New position of the oscillator, normalized
+    ///
+    /// returns: Blit<T>
     pub fn with_position(mut self, pos: T) -> Self {
         self.set_position(pos);
         self

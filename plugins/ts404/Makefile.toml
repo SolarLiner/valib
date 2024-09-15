@@ -1,0 +1,26 @@
+extend = "../../Makefile.plugins.toml"
+
+[tasks.venv]
+script_runner = "@shell"
+script = """
+poetry install --no-root
+"""
+
+[tasks.generate]
+dependencies = ["venv"]
+script_runner = "@shell"
+script = """
+poetry run python ./gen_statespace.py
+"""
+condition = { files_modified = { input = ["./gen_statespace.py"], output = ["./src/gen.rs"] } }
+
+[tasks.format-flow]
+dependencies = ["generate"]
+
+[tasks.pre-build]
+run_task = "generate"
+
+[tasks.run]
+command = "cargo"
+args = ["run", "-p", "ts404", "${@}"]
+dependencies = ["generate"]

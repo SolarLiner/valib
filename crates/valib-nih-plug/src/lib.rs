@@ -1,3 +1,8 @@
+#![warn(missing_docs)]
+//! # `nih-plug` integration into `valib`
+//!
+//! This crates provides integrations of `valib`'s parameters into `nih-plug` parameter system, as
+//! well as functions to drive processors with `nih-plug`'s [`Buffer`] type.
 use std::sync::Arc;
 
 use nih_plug::buffer::Buffer;
@@ -10,14 +15,7 @@ use valib_core::dsp::parameter::{ParamName, RemoteControl};
 use valib_core::dsp::DSPProcessBlock;
 use valib_core::Scalar;
 
-pub fn enum_int_param<E: 'static + Enum + PartialEq>(
-    param_name: impl Into<String>,
-    default_value: E,
-) -> EnumParam<E> {
-    EnumParam::new(param_name, default_value)
-}
-
-/// Bind a [`valib`] [`Parameter`] to a [`nig_plug`] parameter..
+/// Bind a [`valib`] [`Parameter`] to a [`nig_plug`] parameter.
 pub trait BindToParameter<P: ParamName> {
     /// Bind a [`Parameter`] to a nih-plug [`FloatParam`].
     fn bind_to_parameter(self, set: &RemoteControl<P>, param: P) -> Self;

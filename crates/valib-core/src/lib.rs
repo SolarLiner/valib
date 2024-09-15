@@ -1,3 +1,7 @@
+//! # `valib_core`
+//!
+//! Provides the basic definitions for all of `valib`. Contains basic DSP definitions and useful math
+//! constructs.
 #![warn(missing_docs)]
 #![feature(generic_const_exprs)]
 
@@ -13,13 +17,22 @@ pub mod dsp;
 pub mod math;
 pub mod util;
 
+/// Scalar trait. All of `valib` uses this trait as bound for scalar values.
+///
+/// A scalar is defined here to mean the value which is used as an audio sample. It very often is `f32`,
+/// but can also be any SIMD type, where the values within the SIMD (also called scalars but for a
+/// different reason)
 pub trait Scalar: Copy + SimdRealField {
+    /// Create a new [`Scalar`] from a single `f64` value. The resulting type, if it is a SIMD with
+    /// multiple lanes, should have all lanes being this value.
     fn from_f64(value: f64) -> Self;
 
+    /// Create a new [`Scalar`] containing the values passed in the array.
     fn from_values(values: [Self::Element; <Self as SimdValue>::LANES]) -> Self
     where
         [Self::Element; <Self as SimdValue>::LANES]:;
 
+    /// Return the array of elements contained in this [`Scalar`].
     fn values(self) -> [Self::Element; <Self as SimdValue>::LANES]
     where
         [Self::Element; <Self as SimdValue>::LANES]:,
@@ -27,6 +40,7 @@ pub trait Scalar: Copy + SimdRealField {
         std::array::from_fn(|i| self.extract(i))
     }
 
+    /// Return an iterator of the elements contained in this scalar.
     fn into_iter(self) -> impl ExactSizeIterator<Item = Self::Element> {
         (0..Self::LANES).map(move |i| self.extract(i))
     }
@@ -40,6 +54,7 @@ where
         Self::from_subset(&value)
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn from_values(values: [Self::Element; <Self as SimdValue>::LANES]) -> Self
     where
         [Self::Element; <Self as SimdValue>::LANES]:,
@@ -54,9 +69,18 @@ where
     }
 }
 
+/// Trait for SIMD values which can be cast.
 pub trait SimdCast<E>: SimdValue {
+    /// Output type. This should be an SIMD value containing the same number of lanes as the input.
     type Output: SimdValue<Element = E>;
+
+    /// Perform the cast.
     fn cast(self) -> Self::Output;
+}
+
+/// Shortcut method for casing a SIMD value into another one.
+pub fn simd_cast<E, In: SimdCast<E>>(value: In) -> In::Output {
+    value.cast()
 }
 
 impl<E1, E2, const N: usize> SimdCast<E2> for AutoSimd<[E1; N]>
@@ -127,25 +151,35 @@ impl_simdcast_wide!(simd::WideF32x4 : [f32; 4]);
 impl_simdcast_wide!(simd::WideF32x8 : [f32; 8]);
 impl_simdcast_wide!(simd::WideF64x4 : [f64; 4]);
 
-pub trait SimdFromSlice: Scalar {
+/// Trait for SIMD values which have a transparent repr with arrays, and as such can be directly
+/// transmuted from them.
+///
+/// # Safety
+///
+/// This trait should **only** be implemented on types which are `#[repr(transparent)]` to a
+/// `[Self::Element; Self::LANES]` array.
+pub unsafe trait SimdFromSlice: Scalar {
+    /// Transmutes a slice into a slice of [`Self`].
     fn from_slice(data: &[Self::Element]) -> (&[Self], &[Self::Element]);
+
+    /// Transmutes a slice into a mut slice of [`Self`].
     fn from_slice_mut(data: &mut [Self::Element]) -> (&mut [Self], &mut [Self::Element]);
 }
 
-impl<T, const N: usize> SimdFromSlice for Simd<[T; N]>
+unsafe impl<T, const N: usize> SimdFromSlice for Simd<[T; N]>
 where
-    Self: Scalar,
+    Self: Scalar<Element = T>,
 {
     fn from_slice(data: &[Self::Element]) -> (&[Self], &[Self::Element]) {
         let (inner, remaining) = as_nested_arrays::<_, N>(data);
         // Satefy: Simd<N> is repr(transparent)
-        let ret = unsafe { std::mem::transmute(inner) };
+        let ret = unsafe { std::mem::transmute::<&[[T; N]], &[Simd<[T; N]>]>(inner) };
         (ret, remaining)
     }
     fn from_slice_mut(data: &mut [Self::Element]) -> (&mut [Self], &mut [Self::Element]) {
         let (inner, remaining) = as_nested_arrays_mut::<_, N>(data);
         // Satefy: Simd<N> is repr(transparent)
-        let ret = unsafe { std::mem::transmute(inner) };
+        let ret = unsafe { std::mem::transmute::<&mut [[T; N]], &mut [Simd<[T; N]>]>(inner) };
         (ret, remaining)
     }
 }

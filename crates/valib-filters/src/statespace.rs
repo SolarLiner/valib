@@ -38,9 +38,13 @@ pub struct StateSpace<
     const OUT: usize,
     S: MultiSaturator<T, STATE> = Linear,
 > {
+    /// Internal state matrix
     pub a: SMatrix<T, STATE, STATE>,
+    /// Input -> state matrix
     pub b: SMatrix<T, STATE, IN>,
+    /// State -> output matrix
     pub c: SMatrix<T, OUT, STATE>,
+    /// Input -> Output matriw
     pub d: SMatrix<T, OUT, IN>,
     state: SVector<T, STATE>,
     saturators: S,
@@ -123,6 +127,19 @@ impl<
         self.d = other.d;
     }
 
+    /// Replace the state saturators with the given ones
+    ///
+    /// # Arguments
+    ///
+    /// * `saturators`: New multi-saturator
+    ///
+    /// returns: StateSpace<T, { IN }, { STATE }, { OUT }, S2>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///
+    /// ```
     pub fn with_saturators<S2: MultiSaturator<T, STATE>>(
         self,
         saturators: S2,

@@ -1,4 +1,6 @@
+#![warn(missing_docs)]
 #![feature(generic_const_exprs)]
+//! # `fundsp` integration into `valib`
 //! fundsp integration for statically-defined graphs.
 //!
 //! The integration provides impls for `An` objects, taking their defined input and output counts as the number of
@@ -8,13 +10,11 @@
 
 use fundsp::audionode::{AudioNode, Frame};
 use fundsp::combinator::An;
-use num_complex::Complex;
 use numeric_array::ArrayLength;
 use typenum::{Const, ToUInt, Unsigned, U};
-use valib_core::dsp::analysis::DspAnalysis;
 use valib_core::dsp::{DSPMeta, DSPProcess};
-use valib_core::simd::SimdComplexField;
 
+/// Wrapper DSP processor for FunDSP nodes
 pub struct FunDSP<Node: AudioNode>(pub An<Node>);
 
 impl<Node: AudioNode> DSPMeta for FunDSP<Node> {

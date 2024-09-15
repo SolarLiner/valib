@@ -1,3 +1,4 @@
+//! Module implementing FIR filters by way of convolution.
 use std::{collections::VecDeque, ops};
 
 use crate::dsp::DSPMeta;

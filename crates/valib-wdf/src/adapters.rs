@@ -1,17 +1,31 @@
+//! # WDF adapters
+//!
+//! Nodes which can take other nodes, and "adapt them" in some fashion.
 use crate::dsl::{node_mut, node_ref};
 use crate::{AdaptedWdf, Node, Wave, Wdf};
 use num_traits::Zero;
 use valib_core::simd::SimdComplexField;
 
+/// WDF adapter which makes its children be connected in series with each other.
 #[derive(Debug, Clone)]
 pub struct Series<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> {
+    /// Left inner node
     pub left: Node<A>,
+    /// Right inner node
     pub right: Node<B>,
     a: A::Scalar,
     b: A::Scalar,
 }
 
 impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Series<A, B> {
+    /// Create a new series adapter WDF node.
+    ///
+    /// # Arguments
+    ///
+    /// * `left`: Left inner node
+    /// * `right`: Right inner node
+    ///
+    /// returns: Series<A, B>
     pub fn new(left: Node<A>, right: Node<B>) -> Self {
         Self {
             left,
@@ -76,8 +90,11 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> AdaptedWdf for Series<A, 
     }
 }
 
+/// Parallel WDF adapter node. This node connects its children in parallel.
 pub struct Parallel<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> {
+    /// Left inner node
     pub left: Node<A>,
+    /// Right inner node
     pub right: Node<B>,
     a: A::Scalar,
     b: A::Scalar,
@@ -86,6 +103,14 @@ pub struct Parallel<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> {
 }
 
 impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> Parallel<A, B> {
+    /// Create a new parallel adapter node.
+    ///
+    /// # Arguments
+    ///
+    /// * `left`: Left inner node
+    /// * `right`: Right inner node
+    ///
+    /// returns: Parallel<A, B>
     pub fn new(left: Node<A>, right: Node<B>) -> Self {
         Self {
             left,
@@ -154,13 +179,24 @@ impl<A: AdaptedWdf, B: AdaptedWdf<Scalar = A::Scalar>> AdaptedWdf for Parallel<A
     }
 }
 
+/// Polarity inverter node. Take its children and inverts the polarity of the wave.
+///
+/// This can be though as a Series <-> Parallel converter.
 pub struct Inverter<A: AdaptedWdf> {
+    /// Inner node
     pub inner: Node<A>,
     a: A::Scalar,
     b: A::Scalar,
 }
 
 impl<A: AdaptedWdf> Inverter<A> {
+    /// Create a new polarity inverter node adapter.
+    ///
+    /// # Arguments
+    ///
+    /// * `inner`: Inner node
+    ///
+    /// returns: Inverter<A>
     pub fn new(inner: Node<A>) -> Self {
         Self {
             inner,

@@ -1,3 +1,7 @@
+//! # Wavetables
+//!
+//! Provides oscillators which work by interpolating a single-cycle waveform defined as a set of
+//! samples.
 use std::ops::Range;
 use valib_core::dsp::DSPMeta;
 use valib_core::math::interpolation::{SimdIndex, SimdInterpolatable};
@@ -34,6 +38,14 @@ where
 }
 
 impl<T, const N: usize, Interp> Wavetable<T, N, Interp> {
+    /// Create a new wavetable oscillator, given the interpolation method and data.
+    ///
+    /// # Arguments
+    ///
+    /// * `interpolation`: Interpolation method
+    /// * `array`: Wavetable data
+    ///
+    /// returns: Wavetable<T, { N }, Interp, 2>
     pub const fn new(interpolation: Interp, array: [T; N]) -> Self {
         Self {
             array,
@@ -43,6 +55,16 @@ impl<T, const N: usize, Interp> Wavetable<T, N, Interp> {
 }
 
 impl<T: Scalar, const N: usize, Interp> Wavetable<T, N, Interp> {
+    /// Create a new wavetable oscillator given the closure, which will sample it N times over the
+    /// provided range.
+    ///
+    /// # Arguments
+    ///
+    /// * `interpolation`: Interpolation method
+    /// * `range`: Input range
+    /// * `f`: Closure to sample
+    ///
+    /// returns: Wavetable<T, { N }, Interp, 2>
     pub fn from_fn(interpolation: Interp, range: Range<T>, f: impl Fn(T) -> T) -> Self {
         let r = range.end - range.start;
         let step = T::from_f64(N as f64) / r;
@@ -55,15 +77,14 @@ impl<T: Scalar, const N: usize, Interp> Wavetable<T, N, Interp> {
         )
     }
 
+    /// Create a new sine wavetable oscillator by sampling the sine function over one period.
+    ///
+    /// # Arguments
+    ///
+    /// * `interpolation`: Interpolation method
+    ///
+    /// returns: Wavetable<T, { N }, Interp, 2>
     pub fn sin(interpolation: Interp) -> Self {
         Self::from_fn(interpolation, T::zero()..T::simd_two_pi(), |x| x.simd_sin())
-    }
-
-    pub fn cos(interpolation: Interp) -> Self {
-        Self::from_fn(interpolation, T::zero()..T::simd_two_pi(), |x| x.simd_cos())
-    }
-
-    pub fn tan(interpolation: Interp) -> Self {
-        Self::from_fn(interpolation, T::zero()..T::simd_two_pi(), |x| x.simd_tan())
     }
 }
