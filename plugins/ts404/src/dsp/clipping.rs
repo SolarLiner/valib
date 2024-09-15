@@ -1,4 +1,4 @@
-use crate::{util::Rms, TARGET_SAMPLERATE};
+use crate::TARGET_SAMPLERATE;
 use nih_plug::prelude::AtomicF32;
 use nih_plug::util::db_to_gain_fast;
 use num_traits::{Float, ToPrimitive};
@@ -8,6 +8,7 @@ use valib::math::smooth_clamp;
 use valib::saturators::clippers::DiodeClipper;
 use valib::saturators::{Saturator, Slew};
 use valib::simd::SimdValue;
+use valib::util::Rms;
 use valib::wdf::dsl::*;
 use valib::{
     dsp::{DSPMeta, DSPProcess},
