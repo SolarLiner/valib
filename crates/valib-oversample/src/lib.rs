@@ -169,6 +169,19 @@ impl<T: Scalar, const UPSAMPLE: bool> ResampleStage<T, UPSAMPLE> {
 }
 
 impl<T: Scalar> ResampleStage<T, true> {
+    /// Upsample a single sample of audio
+    ///
+    /// # Arguments
+    ///
+    /// * `s`: Input sample
+    ///
+    /// returns: [T; 2]
+    pub fn process(&mut self, s: T) -> [T; 2] {
+        let [x0] = self.filter.process([s + s]);
+        let [x1] = self.filter.process([T::zero()]);
+        [x0, x1]
+    }
+
     /// Upsample the input buffer by a factor of 2.
     ///
     /// The output slice should be twice the length of the input slice.
@@ -176,8 +189,7 @@ impl<T: Scalar> ResampleStage<T, true> {
     pub fn process_block(&mut self, input: &[T], output: &mut [T]) {
         assert_eq!(input.len() * 2, output.len());
         for (i, s) in input.iter().copied().enumerate() {
-            let [x0] = self.filter.process([s + s]);
-            let [x1] = self.filter.process([T::zero()]);
+            let [x0, x1] = self.process(s);
             output[2 * i + 0] = x0;
             output[2 * i + 1] = x1;
         }
@@ -185,6 +197,19 @@ impl<T: Scalar> ResampleStage<T, true> {
 }
 
 impl<T: Scalar> ResampleStage<T, false> {
+    /// Downsample 2 samples of input audio, and output a single sample of audio.
+    ///
+    /// # Arguments
+    ///
+    /// * `[x0, x1]`: Inputs samples
+    ///
+    /// returns: T
+    pub fn process(&mut self, [x0, x1]: [T; 2]) -> T {
+        let [y] = self.filter.process([x0]);
+        let _ = self.filter.process([x1]);
+        y
+    }
+
     /// Downsample the input buffer by a factor of 2.
     ///
     /// The output slice should be twice the length of the input slice.

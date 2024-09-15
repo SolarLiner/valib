@@ -7,8 +7,12 @@ dependencies = ["xtask-build"]
 command = "cargo"
 args = ["xtask", "bundle", "${CARGO_MAKE_CRATE_NAME}", "${@}"]
 
+[tasks.install-target-x86_64-darwin]
+command = "rustup"
+args = ["target", "add", "x86_64-apple-darwin"]
+
 [tasks.bundle-universal]
-dependencies = ["xtask-build"]
+dependencies = ["xtask-build", "install-target-x86_64-darwin"]
 command = "cargo"
 args = ["xtask", "bundle-universal", "${CARGO_MAKE_CRATE_NAME}", "${@}"]
 

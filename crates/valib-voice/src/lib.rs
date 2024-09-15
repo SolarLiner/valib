@@ -2,8 +2,9 @@
 //! # Voice abstractions
 //!
 //! This crate provides abstractions around voice processing and voice management.
-use valib_core::dsp::DSPMeta;
+use valib_core::dsp::{BlockAdapter, DSPMeta, DSPProcessBlock, SampleAdapter};
 use valib_core::simd::SimdRealField;
+use valib_core::util::midi_to_freq;
 use valib_core::Scalar;
 
 pub mod monophonic;
@@ -20,9 +21,55 @@ pub trait Voice: DSPMeta {
     /// Return a mutable reference to the voice's note data
     fn note_data_mut(&mut self) -> &mut NoteData<Self::Sample>;
     /// Release the note (corresponding to a note off)
-    fn release(&mut self);
+    fn release(&mut self, release_velocity: f32);
     /// Reuse the note (corresponding to a soft reset)
     fn reuse(&mut self);
+}
+
+impl<V: DSPProcessBlock<I, O> + Voice, const I: usize, const O: usize> Voice
+    for SampleAdapter<V, I, O>
+{
+    fn active(&self) -> bool {
+        self.inner.active()
+    }
+
+    fn note_data(&self) -> &NoteData<Self::Sample> {
+        self.inner.note_data()
+    }
+
+    fn note_data_mut(&mut self) -> &mut NoteData<Self::Sample> {
+        self.inner.note_data_mut()
+    }
+
+    fn release(&mut self, release_velocity: f32) {
+        self.inner.release(release_velocity);
+    }
+
+    fn reuse(&mut self) {
+        self.inner.reuse();
+    }
+}
+
+impl<V: Voice> Voice for BlockAdapter<V> {
+    fn active(&self) -> bool {
+        self.0.active()
+    }
+
+    fn note_data(&self) -> &NoteData<Self::Sample> {
+        self.0.note_data()
+    }
+
+    fn note_data_mut(&mut self) -> &mut NoteData<Self::Sample> {
+        self.0.note_data_mut()
+    }
+
+    fn release(&mut self, release_velocity: f32) {
+        self.0.release(release_velocity);
+    }
+
+    fn reuse(&mut self) {
+        self.0.reuse();
+    }
 }
 
 /// Value representing velocity. The square root is precomputed to be used in voices directly.
@@ -124,9 +171,30 @@ pub struct NoteData<T> {
     pub pressure: T,
 }
 
+impl<T: Scalar> NoteData<T> {
+    pub fn from_midi(midi_note: u8, velocity: f32) -> Self {
+        let frequency = midi_to_freq(midi_note);
+        let velocity = Velocity::new(T::from_f64(velocity as _));
+        let gain = Gain::from_linear(T::one());
+        let pan = T::zero();
+        let pressure = T::zero();
+        Self {
+            frequency,
+            velocity,
+            gain,
+            pan,
+            pressure,
+        }
+    }
+}
+
 /// Trait for types which manage voices.
 #[allow(unused_variables)]
-pub trait VoiceManager<V: Voice>: DSPMeta<Sample = V::Sample> {
+pub trait VoiceManager:
+    DSPMeta<Sample = <<Self as VoiceManager>::Voice as DSPMeta>::Sample>
+{
+    /// Type of the inner voice.
+    type Voice: Voice;
     /// Type for the voice ID.
     type ID: Copy;
 
@@ -134,9 +202,9 @@ pub trait VoiceManager<V: Voice>: DSPMeta<Sample = V::Sample> {
     fn capacity(&self) -> usize;
 
     /// Get the voice by its ID
-    fn get_voice(&self, id: Self::ID) -> Option<&V>;
+    fn get_voice(&self, id: Self::ID) -> Option<&Self::Voice>;
     /// Get the voice mutably by its ID
-    fn get_voice_mut(&mut self, id: Self::ID) -> Option<&mut V>;
+    fn get_voice_mut(&mut self, id: Self::ID) -> Option<&mut Self::Voice>;
 
     /// Return true if the voice referred by the given ID is currently active
     fn is_voice_active(&self, id: Self::ID) -> bool {
@@ -153,9 +221,9 @@ pub trait VoiceManager<V: Voice>: DSPMeta<Sample = V::Sample> {
     }
 
     /// Indicate a note on event, with the given note data to instanciate the voice.
-    fn note_on(&mut self, note_data: NoteData<V::Sample>) -> Self::ID;
+    fn note_on(&mut self, note_data: NoteData<Self::Sample>) -> Self::ID;
     /// Indicate a note off event on the given voice ID.
-    fn note_off(&mut self, id: Self::ID);
+    fn note_off(&mut self, id: Self::ID, release_velocity: f32);
     /// Choke the voice, causing all processing on that voice to stop.
     fn choke(&mut self, id: Self::ID);
     /// Choke all the notes.
@@ -177,3 +245,148 @@ pub trait VoiceManager<V: Voice>: DSPMeta<Sample = V::Sample> {
     /// Note gain
     fn gain(&mut self, id: Self::ID, gain: f32) {}
 }
+
+impl<V: VoiceManager> VoiceManager for BlockAdapter<V> {
+    type Voice = V::Voice;
+    type ID = V::ID;
+
+    fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+
+    fn get_voice(&self, id: Self::ID) -> Option<&Self::Voice> {
+        self.0.get_voice(id)
+    }
+
+    fn get_voice_mut(&mut self, id: Self::ID) -> Option<&mut Self::Voice> {
+        self.0.get_voice_mut(id)
+    }
+
+    fn is_voice_active(&self, id: Self::ID) -> bool {
+        self.0.is_voice_active(id)
+    }
+
+    fn all_voices(&self) -> impl Iterator<Item = Self::ID> {
+        self.0.all_voices()
+    }
+
+    fn active(&self) -> usize {
+        self.0.active()
+    }
+
+    fn note_on(&mut self, note_data: NoteData<Self::Sample>) -> Self::ID {
+        self.0.note_on(note_data)
+    }
+
+    fn note_off(&mut self, id: Self::ID, release_velocity: f32) {
+        self.0.note_off(id, release_velocity)
+    }
+
+    fn choke(&mut self, id: Self::ID) {
+        self.0.choke(id)
+    }
+
+    fn panic(&mut self) {
+        self.0.panic()
+    }
+
+    fn pitch_bend(&mut self, amount: f64) {
+        self.0.pitch_bend(amount)
+    }
+
+    fn aftertouch(&mut self, amount: f64) {
+        self.0.aftertouch(amount)
+    }
+
+    fn pressure(&mut self, id: Self::ID, pressure: f32) {
+        self.0.pressure(id, pressure)
+    }
+
+    fn glide(&mut self, id: Self::ID, semitones: f32) {
+        self.0.glide(id, semitones)
+    }
+
+    fn pan(&mut self, id: Self::ID, pan: f32) {
+        self.0.pan(id, pan)
+    }
+
+    fn gain(&mut self, id: Self::ID, gain: f32) {
+        self.0.gain(id, gain)
+    }
+}
+
+impl<V: DSPProcessBlock<I, O> + VoiceManager, const I: usize, const O: usize> VoiceManager
+    for SampleAdapter<V, I, O>
+{
+    type Voice = V::Voice;
+    type ID = V::ID;
+
+    fn capacity(&self) -> usize {
+        self.inner.capacity()
+    }
+
+    fn get_voice(&self, id: Self::ID) -> Option<&Self::Voice> {
+        self.inner.get_voice(id)
+    }
+
+    fn get_voice_mut(&mut self, id: Self::ID) -> Option<&mut Self::Voice> {
+        self.inner.get_voice_mut(id)
+    }
+
+    fn is_voice_active(&self, id: Self::ID) -> bool {
+        self.inner.is_voice_active(id)
+    }
+
+    fn all_voices(&self) -> impl Iterator<Item = Self::ID> {
+        self.inner.all_voices()
+    }
+
+    fn active(&self) -> usize {
+        self.inner.active()
+    }
+
+    fn note_on(&mut self, note_data: NoteData<Self::Sample>) -> Self::ID {
+        self.inner.note_on(note_data)
+    }
+
+    fn note_off(&mut self, id: Self::ID, release_velocity: f32) {
+        self.inner.note_off(id, release_velocity)
+    }
+
+    fn choke(&mut self, id: Self::ID) {
+        self.inner.choke(id)
+    }
+
+    fn panic(&mut self) {
+        self.inner.panic()
+    }
+
+    fn pitch_bend(&mut self, amount: f64) {
+        self.inner.pitch_bend(amount)
+    }
+
+    fn aftertouch(&mut self, amount: f64) {
+        self.inner.aftertouch(amount)
+    }
+
+    fn pressure(&mut self, id: Self::ID, pressure: f32) {
+        self.inner.pressure(id, pressure)
+    }
+
+    fn glide(&mut self, id: Self::ID, semitones: f32) {
+        self.inner.glide(id, semitones)
+    }
+
+    fn pan(&mut self, id: Self::ID, pan: f32) {
+        self.inner.pan(id, pan)
+    }
+
+    fn gain(&mut self, id: Self::ID, gain: f32) {
+        self.inner.gain(id, gain)
+    }
+}
+
+/// Inner voice of the voice manager.
+pub type InnerVoice<V> = <V as VoiceManager>::Voice;
+/// Inner voice ID of the voice manager.
+pub type VoiceId<V> = <V as VoiceManager>::ID;

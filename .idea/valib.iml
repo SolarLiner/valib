@@ -31,6 +31,7 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/valib-oscillators/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/valib-nih-plug/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/valib-wdf/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/examples/polysynth/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/plugins/ts404/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
