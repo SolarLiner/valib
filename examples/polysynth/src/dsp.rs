@@ -190,7 +190,8 @@ impl<T: ConstZero + ConstOne + Scalar> DSPProcess<0, 1> for RawVoice<T> {
             4f64 * self.filter_params.resonance.smoothed.next() as f64,
         ));
         let vca = self.gate.next_sample_as::<T>();
-        self.filter.process(filter_in).map(|x| vca * x)
+        let static_amp = T::from_f64(0.25);
+        self.filter.process(filter_in).map(|x| static_amp * vca * x)
     }
 }
 

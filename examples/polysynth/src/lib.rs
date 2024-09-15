@@ -5,12 +5,14 @@ use nih_plug::params::Params;
 use nih_plug::plugin::ProcessStatus;
 use nih_plug::prelude::*;
 use std::cmp::Ordering;
-use std::sync::Arc;
+use std::sync::{atomic, Arc};
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcessBlock};
+use valib::util::Rms;
 use valib::voice::{NoteData, VoiceId, VoiceManager};
 
 mod dsp;
+mod editor;
 mod params;
 
 const NUM_VOICES: usize = 16;
@@ -158,6 +160,21 @@ impl Plugin for PolysynthPlugin {
         self.dsp.reset();
     }
 
+    fn initialize(
+        &mut self,
+        _: &AudioIOLayout,
+        buffer_config: &BufferConfig,
+        _: &mut impl InitContext<Self>,
+    ) -> bool {
+        let sample_rate = buffer_config.sample_rate;
+        self.dsp.set_samplerate(sample_rate);
+        true
+    }
+
+    fn editor(&mut self, _: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        editor::create(self.params.clone(), self.params.editor_state.clone())
+    }
+
     fn process(
         &mut self,
         buffer: &mut Buffer,
@@ -266,7 +283,7 @@ impl Plugin for PolysynthPlugin {
                                                 .smoothed
                                                 .set_target(sample_rate, target_plain_value);
                                         }
-                                        id => nih_error!("Unknown poly ID {id}"),
+                                        _ => {}
                                     }
                                 }
                             }
