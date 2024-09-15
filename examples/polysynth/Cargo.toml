@@ -1,0 +1,18 @@
+[package]
+name = "polysynth"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[dependencies]
+valib = { path = "../..", features = ["filters", "oversample", "oscillators", "voice", "voice-upsampled", "nih-plug"]}
+nih_plug = { workspace = true, features = ["standalone"] }
+num-traits.workspace = true
