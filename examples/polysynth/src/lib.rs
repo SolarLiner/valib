@@ -1,3 +1,4 @@
+#![feature(generic_const_exprs)]
 use crate::params::PolysynthParams;
 use nih_plug::audio_setup::{AudioIOLayout, AuxiliaryBuffers};
 use nih_plug::buffer::Buffer;
