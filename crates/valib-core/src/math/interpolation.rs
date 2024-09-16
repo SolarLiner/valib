@@ -133,9 +133,12 @@ impl<T: Scalar> Interpolate<T, 2> for Linear {
 #[derive(Debug, Copy, Clone)]
 pub struct MappedLinear<F>(pub F);
 
+pub type Sine<T> = MappedLinear<fn(T) -> T>;
+
 /// Returns an interpolator that performs sine interpolation.
-pub fn sine_interpolation<T: Scalar>() -> MappedLinear<impl Fn(T) -> T> {
-    MappedLinear(|t| T::simd_cos(t * T::simd_pi()))
+#[replace_float_literals(T::from_f64(literal))]
+pub fn sine_interpolation<T: Scalar>() -> Sine<T> {
+    MappedLinear(|t| 0.5 - 0.5 * T::simd_cos(t * T::simd_pi()))
 }
 
 impl<T, F: Fn(T) -> T> Interpolate<T, 2> for MappedLinear<F>
