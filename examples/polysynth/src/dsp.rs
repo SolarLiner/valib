@@ -10,14 +10,54 @@ use std::sync::Arc;
 use valib::dsp::parameter::SmoothedParam;
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, SampleAdapter};
 use valib::filters::ladder::{Ladder, OTA};
+use valib::math::interpolation::{sine_interpolation, Interpolate, Sine};
 use valib::oscillators::polyblep::{SawBLEP, Sawtooth, Square, SquareBLEP, Triangle};
 use valib::oscillators::Phasor;
 use valib::saturators::{bjt, Tanh};
+use valib::simd::SimdBool;
 use valib::util::semitone_to_ratio;
 use valib::voice::polyphonic::Polyphonic;
 use valib::voice::upsample::UpsampledVoice;
 use valib::voice::{NoteData, Voice};
 use valib::Scalar;
+
+struct Drift<T> {
+    rng: Rng,
+    phasor: Phasor<T>,
+    last_value: T,
+    next_value: T,
+    interp: Sine<T>,
+}
+
+impl<T: Scalar> Drift<T> {
+    pub fn new(mut rng: Rng, samplerate: T, frequency: T) -> Self {
+        let phasor = Phasor::new(samplerate, frequency);
+        let last_value = T::from_f64(rng.f64_range(-1.0..1.0));
+        let next_value = T::from_f64(rng.f64_range(-1.0..1.0));
+        Self {
+            rng,
+            phasor,
+            last_value,
+            next_value,
+            interp: sine_interpolation(),
+        }
+    }
+
+    pub fn next_sample(&mut self) -> T {
+        let reset_mask = self.phasor.next_sample_resets();
+        if reset_mask.any() {
+            self.last_value = reset_mask.if_else(|| self.next_value, || self.last_value);
+            self.next_value = reset_mask.if_else(
+                || T::from_f64(self.rng.f64_range(-1.0..1.0)),
+                || self.next_value,
+            );
+        }
+
+        let [t] = self.phasor.process([]);
+        self.interp
+            .interpolate(t, [self.last_value, self.next_value])
+    }
+}
 
 pub enum PolyOsc<T: ConstZero + ConstOne + Scalar> {
     Sine(Phasor<T>),
@@ -121,19 +161,22 @@ impl<T: ConstZero + ConstOne + Scalar> DSPProcess<1, 1> for PolyOsc<T> {
     }
 }
 
+pub(crate) const NUM_OSCILLATORS: usize = 2;
+
 pub struct RawVoice<T: ConstZero + ConstOne + Scalar> {
-    osc: [PolyOsc<T>; 2],
+    osc: [PolyOsc<T>; NUM_OSCILLATORS],
     osc_out_sat: bjt::CommonCollector<T>,
     filter: Ladder<T, OTA<Tanh>>,
     params: Arc<PolysynthParams>,
     gate: SmoothedParam,
     note_data: NoteData<T>,
+    drift: [Drift<f32>; NUM_OSCILLATORS],
     samplerate: T,
     rng: Rng,
 }
 
 impl<T: ConstZero + ConstOne + Scalar> RawVoice<T> {
-    fn create_voice(
+    fn new(
         target_samplerate_f64: f64,
         params: Arc<PolysynthParams>,
         note_data: NoteData<T>,
@@ -171,6 +214,7 @@ impl<T: ConstZero + ConstOne + Scalar> RawVoice<T> {
             params: params.clone(),
             gate: SmoothedParam::exponential(1., target_samplerate_f64 as _, 1.0),
             note_data,
+            drift: std::array::from_fn(|_| Drift::new(rng.fork(), target_samplerate_f64 as _, 0.2)),
             samplerate: target_samplerate,
             rng,
         }
@@ -238,6 +282,7 @@ impl<T: ConstZero + ConstOne + Scalar> DSPMeta for RawVoice<T> {
 
 impl<T: ConstZero + ConstOne + Scalar> DSPProcess<0, 1> for RawVoice<T> {
     fn process(&mut self, []: [Self::Sample; 0]) -> [Self::Sample; 1] {
+        const DRIFT_MAX_ST: f32 = 0.1;
         // Process oscillators
         let frequency = self.note_data.frequency;
         let osc_params = self.params.osc_params.clone();
@@ -246,9 +291,11 @@ impl<T: ConstZero + ConstOne + Scalar> DSPProcess<0, 1> for RawVoice<T> {
         let [osc1, osc2] = std::array::from_fn(|i| {
             let osc = &mut self.osc[i];
             let params = &self.params.osc_params[i];
+            let drift = &mut self.drift[i];
+            let drift = drift.next_sample() * DRIFT_MAX_ST * params.drift.smoothed.next();
             let osc_freq = frequency
                 * T::from_f64(semitone_to_ratio(
-                    params.pitch_coarse.value() + params.pitch_fine.value(),
+                    params.pitch_coarse.value() + params.pitch_fine.value() + drift,
                 ) as _);
             osc.set_pulse_width(T::from_f64(params.pulse_width.smoothed.next() as _));
             let [osc] = osc.process([osc_freq]);
@@ -293,11 +340,7 @@ pub fn create_voice_manager<T: ConstZero + ConstOne + Scalar>(
         SampleAdapter::new(UpsampledVoice::new(
             OVERSAMPLE,
             MAX_BUFFER_SIZE,
-            BlockAdapter(RawVoice::create_voice(
-                target_samplerate,
-                params.clone(),
-                note_data,
-            )),
+            BlockAdapter(RawVoice::new(target_samplerate, params.clone(), note_data)),
         ))
     })
 }
