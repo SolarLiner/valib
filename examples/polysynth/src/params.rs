@@ -8,6 +8,83 @@ use nih_plug_vizia::ViziaState;
 use std::sync::Arc;
 use valib::dsp::parameter::{ParamId, ParamName};
 
+#[derive(Debug, Params)]
+pub struct AdsrParams {
+    #[id = "atk"]
+    pub attack: FloatParam,
+    #[id = "dec"]
+    pub decay: FloatParam,
+    #[id = "sus"]
+    pub sustain: FloatParam,
+    #[id = "rel"]
+    pub release: FloatParam,
+}
+
+fn v2s_f32_ms_then_s(digits: usize) -> Arc<impl 'static + Send + Sync + Fn(f32) -> String> {
+    Arc::new(move |v| {
+        if v < 0.9 {
+            format!("{:1$} ms", v * 1e3, digits)
+        } else {
+            format!("{v:0$} s", digits)
+        }
+    })
+}
+
+fn s2v_f32_ms_then_s() -> Arc<impl 'static + Send + Sync + Fn(&str) -> Option<f32>> {
+    Arc::new(move |input: &str| {
+        let s = input.trim();
+        if s.ends_with("ms") {
+            s[..(s.len() - 2)].parse::<f32>().map(|v| 1e-3 * v).ok()
+        } else {
+            s.parse::<f32>().ok()
+        }
+    })
+}
+
+impl Default for AdsrParams {
+    fn default() -> Self {
+        Self {
+            attack: FloatParam::new(
+                "Attack",
+                0.1,
+                FloatRange::Skewed {
+                    min: 1e-3,
+                    max: 10.,
+                    factor: FloatRange::skew_factor(-2.0),
+                },
+            )
+            .with_value_to_string(v2s_f32_ms_then_s(2))
+            .with_string_to_value(s2v_f32_ms_then_s()),
+            decay: FloatParam::new(
+                "Decay",
+                0.5,
+                FloatRange::Skewed {
+                    min: 1e-3,
+                    max: 10.,
+                    factor: FloatRange::skew_factor(-2.0),
+                },
+            )
+            .with_value_to_string(v2s_f32_ms_then_s(2))
+            .with_string_to_value(s2v_f32_ms_then_s()),
+            sustain: FloatParam::new("Sustain", 0.8, FloatRange::Linear { min: 0., max: 1. })
+                .with_unit(" %")
+                .with_value_to_string(formatters::v2s_f32_percentage(2))
+                .with_string_to_value(formatters::s2v_f32_percentage()),
+            release: FloatParam::new(
+                "Decay",
+                1.,
+                FloatRange::Skewed {
+                    min: 1e-2,
+                    max: 15.,
+                    factor: FloatRange::skew_factor(-2.0),
+                },
+            )
+            .with_value_to_string(v2s_f32_ms_then_s(2))
+            .with_string_to_value(s2v_f32_ms_then_s()),
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, ParamName, Enum)]
 pub enum OscShape {
     Sine,
@@ -40,7 +117,7 @@ impl OscParams {
             shape: EnumParam::new("Shape", OscShape::Saw),
             amplitude: FloatParam::new(
                 "Amplitude",
-                0.8,
+                0.25,
                 FloatRange::Skewed {
                     min: db_to_gain(MINUS_INFINITY_DB),
                     max: 1.0,
@@ -49,6 +126,7 @@ impl OscParams {
             )
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_unit(" dB")
             .with_smoother(SmoothingStyle::OversamplingAware(
                 oversample.clone(),
                 &SmoothingStyle::Exponential(10.),
@@ -114,6 +192,8 @@ pub struct FilterParams {
     pub resonance: FloatParam,
     #[id = "kt"]
     pub keyboard_tracking: FloatParam,
+    #[id = "env"]
+    pub env_amt: FloatParam,
 }
 
 impl FilterParams {
@@ -162,15 +242,33 @@ impl FilterParams {
                 oversample.clone(),
                 &SmoothingStyle::Linear(10.),
             )),
+            env_amt: FloatParam::new(
+                "Env Amt",
+                0.,
+                FloatRange::Linear {
+                    min: -96.,
+                    max: 96.,
+                },
+            )
+            .with_unit(" st")
+            .with_value_to_string(Arc::new(|x| format!("{:.2}", x)))
+            .with_smoother(SmoothingStyle::OversamplingAware(
+                oversample.clone(),
+                &SmoothingStyle::Exponential(50.),
+            )),
         }
     }
 }
 
 #[derive(Debug, Params)]
 pub struct PolysynthParams {
-    #[nested(array)]
+    #[nested(array, group = "Osc")]
     pub osc_params: [Arc<OscParams>; crate::dsp::NUM_OSCILLATORS],
-    #[nested]
+    #[nested(id_prefix = "vca_", group = "Amp Env")]
+    pub vca_env: Arc<AdsrParams>,
+    #[nested(id_prefix = "vcf_", group = "Filter Env")]
+    pub vcf_env: Arc<AdsrParams>,
+    #[nested(group = "Filter")]
     pub filter_params: Arc<FilterParams>,
     #[id = "out"]
     pub output_level: FloatParam,
@@ -185,9 +283,11 @@ impl Default for PolysynthParams {
         Self {
             osc_params: std::array::from_fn(|i| Arc::new(OscParams::new(i, oversample.clone()))),
             filter_params: Arc::new(FilterParams::new(oversample.clone())),
+            vca_env: Arc::default(),
+            vcf_env: Arc::default(),
             output_level: FloatParam::new(
                 "Output Level",
-                0.25,
+                0.5,
                 FloatRange::Skewed {
                     min: 0.0,
                     max: 1.0,
@@ -196,6 +296,7 @@ impl Default for PolysynthParams {
             )
             .with_string_to_value(formatters::s2v_f32_gain_to_db())
             .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_unit(" dB")
             .with_smoother(SmoothingStyle::OversamplingAware(
                 oversample.clone(),
                 &SmoothingStyle::Exponential(50.),
