@@ -127,7 +127,7 @@ impl<V: Voice> VoiceManager for Polyphonic<V> {
         } else {
             // Find first available slot
             while self.voice_pool[self.next_voice].is_some() {
-                self.next_voice += 1;
+                self.next_voice = (self.next_voice + 1) % self.voice_pool.len();
             }
 
             let id = self.next_voice;
