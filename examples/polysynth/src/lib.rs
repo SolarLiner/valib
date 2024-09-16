@@ -19,9 +19,9 @@ const NUM_VOICES: usize = 16;
 const OVERSAMPLE: usize = 8;
 const MAX_BUFFER_SIZE: usize = 64;
 
-const POLYMOD_OSC_AMP: [u32; 2] = [0, 1];
-const POLYMOD_OSC_PITCH_COARSE: [u32; 2] = [2, 3];
-const POLYMOD_OSC_PITCH_FINE: [u32; 2] = [4, 5];
+const POLYMOD_OSC_AMP: [u32; dsp::NUM_OSCILLATORS] = [0, 1];
+const POLYMOD_OSC_PITCH_COARSE: [u32; dsp::NUM_OSCILLATORS] = [2, 3];
+const POLYMOD_OSC_PITCH_FINE: [u32; dsp::NUM_OSCILLATORS] = [4, 5];
 const POLYMOD_FILTER_CUTOFF: u32 = 6;
 
 #[derive(Debug, Copy, Clone)]

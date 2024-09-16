@@ -28,6 +28,8 @@ pub struct OscParams {
     pub pitch_fine: FloatParam,
     #[id = "pw"]
     pub pulse_width: FloatParam,
+    #[id = "drift"]
+    pub drift: FloatParam,
     #[id = "rtrg"]
     pub retrigger: BoolParam,
 }
@@ -94,6 +96,11 @@ impl OscParams {
                 oversample.clone(),
                 &SmoothingStyle::Linear(10.),
             )),
+            drift: FloatParam::new("Drift", 0.1, FloatRange::Linear { min: 0.0, max: 1.0 })
+                .with_unit(" %")
+                .with_string_to_value(formatters::s2v_f32_percentage())
+                .with_value_to_string(formatters::v2s_f32_percentage(1))
+                .with_smoother(SmoothingStyle::Exponential(100.)),
             retrigger: BoolParam::new("Retrigger", false),
         }
     }
@@ -162,7 +169,7 @@ impl FilterParams {
 #[derive(Debug, Params)]
 pub struct PolysynthParams {
     #[nested(array)]
-    pub osc_params: [Arc<OscParams>; 2],
+    pub osc_params: [Arc<OscParams>; crate::dsp::NUM_OSCILLATORS],
     #[nested]
     pub filter_params: Arc<FilterParams>,
     #[id = "out"]

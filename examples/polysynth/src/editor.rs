@@ -14,7 +14,7 @@ impl Model for Data {}
 
 // Makes sense to also define this here, makes it a bit easier to keep track of
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::new(|| (750, 550))
+    ViziaState::new(|| (750, 650))
 }
 
 pub(crate) fn create(
@@ -39,7 +39,7 @@ pub(crate) fn create(
                     .child_top(Stretch(1.0))
                     .child_bottom(Pixels(0.0));
                 HStack::new(cx, |cx| {
-                    for ix in 0..2 {
+                    for ix in 0..crate::dsp::NUM_OSCILLATORS {
                         let p = Data::params.map(move |p| p.osc_params[ix].clone());
                         VStack::new(cx, |cx| {
                             Label::new(cx, &format!("Oscillator {}", ix + 1))
