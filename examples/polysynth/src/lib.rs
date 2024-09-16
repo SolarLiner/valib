@@ -16,7 +16,7 @@ mod editor;
 mod params;
 
 const NUM_VOICES: usize = 16;
-const OVERSAMPLE: usize = 4;
+const OVERSAMPLE: usize = 8;
 const MAX_BUFFER_SIZE: usize = 64;
 
 const POLYMOD_OSC_AMP: [u32; 2] = [0, 1];
