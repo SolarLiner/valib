@@ -63,6 +63,19 @@ impl<T: Scalar> Phasor<T> {
         }
     }
 
+    pub fn phase(&self) -> T {
+        self.phase
+    }
+
+    pub fn set_phase(&mut self, phase: T) {
+        self.phase = phase.simd_fract();
+    }
+
+    pub fn with_phase(mut self, phase: T) -> Self {
+        self.set_phase(phase);
+        self
+    }
+
     /// Sets the frequency of this phasor. Phase is not reset, which means the phase remains
     /// continuous.
     /// # Arguments

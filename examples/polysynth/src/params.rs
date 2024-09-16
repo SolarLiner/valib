@@ -28,6 +28,8 @@ pub struct OscParams {
     pub pitch_fine: FloatParam,
     #[id = "pw"]
     pub pulse_width: FloatParam,
+    #[id = "rtrg"]
+    pub retrigger: BoolParam,
 }
 
 impl OscParams {
@@ -92,6 +94,7 @@ impl OscParams {
                 oversample.clone(),
                 &SmoothingStyle::Linear(10.),
             )),
+            retrigger: BoolParam::new("Retrigger", false),
         }
     }
 }

@@ -185,8 +185,10 @@ impl<T: ConstZero + ConstOne + Scalar> DSPProcess<0, 1> for Triangle<T> {
 }
 
 impl<T: ConstZero + ConstOne + Scalar> Triangle<T> {
-    pub fn new(samplerate: T, frequency: T) -> Self {
-        let square = PolyBLEPDriver::new(samplerate, frequency, SquareBLEP::new(T::from_f64(0.5)));
+    pub fn new(samplerate: T, frequency: T, phase: T) -> Self {
+        let mut square =
+            PolyBLEPDriver::new(samplerate, frequency, SquareBLEP::new(T::from_f64(0.5)));
+        square.phasor.phase = phase;
         let integrator = P1::new(samplerate, frequency);
         Self { square, integrator }
     }
