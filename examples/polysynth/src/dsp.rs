@@ -1,8 +1,11 @@
-use crate::params::{FilterParams, OscParams, OscShape, PolysynthParams};
+use crate::params::{OscShape, PolysynthParams};
 use crate::{MAX_BUFFER_SIZE, NUM_VOICES, OVERSAMPLE};
+use fastrand::Rng;
+use fastrand_contrib::RngExt;
 use nih_plug::nih_log;
 use nih_plug::util::db_to_gain_fast;
 use num_traits::{ConstOne, ConstZero};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use valib::dsp::parameter::SmoothedParam;
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, SampleAdapter};
@@ -24,20 +27,35 @@ pub enum PolyOsc<T: ConstZero + ConstOne + Scalar> {
 }
 
 impl<T: ConstZero + ConstOne + Scalar> PolyOsc<T> {
-    fn new(samplerate: T, shape: OscShape, note_data: NoteData<T>, pulse_width: T) -> Self {
+    fn new(
+        samplerate: T,
+        shape: OscShape,
+        note_data: NoteData<T>,
+        pulse_width: T,
+        phase: T,
+    ) -> Self {
         match shape {
-            OscShape::Sine => Self::Sine(Phasor::new(samplerate, note_data.frequency)),
-            OscShape::Triangle => Self::Triangle(Triangle::new(samplerate, note_data.frequency)),
-            OscShape::Square => Self::Square(Square::new(
-                samplerate,
-                note_data.frequency,
-                SquareBLEP::new(pulse_width),
-            )),
-            OscShape::Saw => Self::Sawtooth(Sawtooth::new(
-                samplerate,
-                note_data.frequency,
-                SawBLEP::default(),
-            )),
+            OscShape::Sine => {
+                Self::Sine(Phasor::new(samplerate, note_data.frequency).with_phase(phase))
+            }
+            OscShape::Triangle => {
+                Self::Triangle(Triangle::new(samplerate, note_data.frequency, phase))
+            }
+            OscShape::Square => {
+                let mut square = Square::new(
+                    samplerate,
+                    note_data.frequency,
+                    SquareBLEP::new(pulse_width),
+                );
+                square.phasor.set_phase(phase);
+                Self::Square(square)
+            }
+            OscShape::Saw => {
+                let mut sawtooth =
+                    Sawtooth::new(samplerate, note_data.frequency, SawBLEP::default());
+                sawtooth.phasor.set_phase(phase);
+                Self::Sawtooth(sawtooth)
+            }
         }
     }
 
@@ -111,17 +129,66 @@ pub struct RawVoice<T: ConstZero + ConstOne + Scalar> {
     gate: SmoothedParam,
     note_data: NoteData<T>,
     samplerate: T,
+    rng: Rng,
 }
 
 impl<T: ConstZero + ConstOne + Scalar> RawVoice<T> {
-    pub(crate) fn update_osc_types(&mut self) {
+    fn create_voice(
+        target_samplerate_f64: f64,
+        params: Arc<PolysynthParams>,
+        note_data: NoteData<T>,
+    ) -> Self {
+        static VOICE_SEED: AtomicU64 = AtomicU64::new(0);
+        let target_samplerate = T::from_f64(target_samplerate_f64);
+        let mut rng = Rng::with_seed(VOICE_SEED.fetch_add(1, Ordering::SeqCst));
+        RawVoice {
+            osc: std::array::from_fn(|i| {
+                let osc_param = &params.osc_params[i];
+                let pulse_width = T::from_f64(osc_param.pulse_width.value() as _);
+                PolyOsc::new(
+                    target_samplerate,
+                    osc_param.shape.value(),
+                    note_data,
+                    pulse_width,
+                    if osc_param.retrigger.value() {
+                        T::zero()
+                    } else {
+                        T::from_f64(rng.f64_range(0.0..1.0))
+                    },
+                )
+            }),
+            filter: Ladder::new(
+                target_samplerate_f64,
+                T::from_f64(params.filter_params.cutoff.value() as _),
+                T::from_f64(params.filter_params.resonance.value() as _),
+            ),
+            osc_out_sat: bjt::CommonCollector {
+                vee: -T::ONE,
+                vcc: T::ONE,
+                xbias: T::from_f64(0.1),
+                ybias: T::from_f64(-0.1),
+            },
+            params: params.clone(),
+            gate: SmoothedParam::exponential(1., target_samplerate_f64 as _, 1.0),
+            note_data,
+            samplerate: target_samplerate,
+            rng,
+        }
+    }
+
+    fn update_osc_types(&mut self) {
         for i in 0..2 {
             let params = &self.params.osc_params[i];
             let shape = params.shape.value();
             let osc = &mut self.osc[i];
             if !osc.is_osc_shape(shape) {
                 let pulse_width = T::from_f64(params.pulse_width.value() as _);
-                *osc = PolyOsc::new(self.samplerate, shape, self.note_data, pulse_width);
+                let phase = if params.retrigger.value() {
+                    T::zero()
+                } else {
+                    T::from_f64(self.rng.f64_range(0.0..1.0))
+                };
+                *osc = PolyOsc::new(self.samplerate, shape, self.note_data, pulse_width, phase);
             }
         }
     }
@@ -221,41 +288,16 @@ pub fn create_voice_manager<T: ConstZero + ConstOne + Scalar>(
     samplerate: f32,
     params: Arc<PolysynthParams>,
 ) -> VoiceManager<T> {
-    let target_samplerate_f64 = OVERSAMPLE as f64 * samplerate as f64;
-    let target_samplerate = T::from_f64(target_samplerate_f64);
-    let osc_params = params.osc_params.clone();
-    let filter_params = params.filter_params.clone();
+    let target_samplerate = OVERSAMPLE as f64 * samplerate as f64;
     Polyphonic::new(samplerate, NUM_VOICES, move |_, note_data| {
         SampleAdapter::new(UpsampledVoice::new(
             2,
             MAX_BUFFER_SIZE,
-            BlockAdapter(RawVoice {
-                osc: std::array::from_fn(|i| {
-                    let osc_param = &osc_params[i];
-                    let pulse_width = T::from_f64(osc_param.pulse_width.value() as _);
-                    PolyOsc::new(
-                        target_samplerate,
-                        osc_param.shape.value(),
-                        note_data,
-                        pulse_width,
-                    )
-                }),
-                filter: Ladder::new(
-                    target_samplerate_f64,
-                    T::from_f64(filter_params.cutoff.value() as _),
-                    T::from_f64(filter_params.resonance.value() as _),
-                ),
-                osc_out_sat: bjt::CommonCollector {
-                    vee: -T::ONE,
-                    vcc: T::ONE,
-                    xbias: T::from_f64(0.1),
-                    ybias: T::from_f64(-0.1),
-                },
-                params: params.clone(),
-                gate: SmoothedParam::exponential(1., target_samplerate_f64 as _, 1.0),
+            BlockAdapter(RawVoice::create_voice(
+                target_samplerate,
+                params.clone(),
                 note_data,
-                samplerate: target_samplerate,
-            }),
+            )),
         ))
     })
 }

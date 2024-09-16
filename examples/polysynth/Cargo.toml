@@ -13,6 +13,8 @@ keywords.workspace = true
 crate-type = ["lib", "cdylib"]
 
 [dependencies]
+fastrand = { version = "2.1.1", default-features = false }
+fastrand-contrib = { version = "0.1.0", default-features = false }
 valib = { path = "../..", features = ["filters", "oversample", "oscillators", "voice", "voice-upsampled", "nih-plug"]}
 nih_plug = { workspace = true, features = ["standalone"] }
 nih_plug_vizia.workspace = true
