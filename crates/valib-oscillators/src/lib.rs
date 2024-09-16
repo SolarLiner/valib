@@ -38,7 +38,7 @@ impl<T: Scalar> DSPProcess<0, 1> for Phasor<T> {
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
         let p = self.phase;
         let new_phase = self.phase + self.step;
-        let gt = new_phase.simd_gt(T::one());
+        let gt = new_phase.simd_ge(T::one());
         self.phase = (new_phase - T::one()).select(gt, new_phase);
         [p]
     }
@@ -74,6 +74,10 @@ impl<T: Scalar> Phasor<T> {
     pub fn with_phase(mut self, phase: T) -> Self {
         self.set_phase(phase);
         self
+    }
+
+    pub fn next_sample_resets(&self) -> T::SimdBool {
+        (self.phase + self.step).simd_ge(T::one())
     }
 
     /// Sets the frequency of this phasor. Phase is not reset, which means the phase remains
