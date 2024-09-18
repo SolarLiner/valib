@@ -1,4 +1,4 @@
-use crate::params::{FilterParams, OscShape, PolysynthParams};
+use crate::params::{FilterParams, FilterType, OscShape, PolysynthParams};
 use crate::{SynthSample, MAX_BUFFER_SIZE, NUM_VOICES, OVERSAMPLE};
 use fastrand::Rng;
 use fastrand_contrib::RngExt;
@@ -8,14 +8,16 @@ use num_traits::{ConstOne, ConstZero};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, SampleAdapter};
-use valib::filters::ladder::{Ladder, Transistor};
+use valib::filters::biquad::Biquad;
+use valib::filters::ladder::{Ladder, Transistor, OTA};
 use valib::filters::specialized::DcBlocker;
+use valib::filters::svf::Svf;
 use valib::math::interpolation::{sine_interpolation, Interpolate, Sine};
 use valib::oscillators::polyblep::{SawBLEP, Sawtooth, Square, SquareBLEP, Triangle};
 use valib::oscillators::Phasor;
-use valib::saturators::{bjt, Tanh};
+use valib::saturators::{bjt, Asinh, Saturator, Tanh};
 use valib::simd::{SimdBool, SimdValue};
-use valib::util::semitone_to_ratio;
+use valib::util::{ratio_to_semitone, semitone_to_ratio};
 use valib::voice::polyphonic::Polyphonic;
 use valib::voice::upsample::UpsampledVoice;
 use valib::voice::{NoteData, Voice};
@@ -377,13 +379,193 @@ impl Noise {
     }
 }
 
+#[derive(Debug, Default, Copy, Clone)]
+struct Sinh;
+
+impl<T: Scalar> Saturator<T> for Sinh {
+    fn saturate(&self, x: T) -> T {
+        x.simd_sinh()
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+enum FilterImpl<T> {
+    Transistor(Ladder<T, Transistor<Tanh>>),
+    Ota(Ladder<T, OTA<Tanh>>),
+    Svf(Svf<T, Sinh>),
+    Biquad(Biquad<T, Asinh>),
+}
+
+impl<T: Scalar> FilterImpl<T> {
+    fn from_type(samplerate: T, ftype: FilterType, cutoff: T, resonance: T) -> FilterImpl<T> {
+        match ftype {
+            FilterType::TransistorLadder => {
+                Self::Transistor(Ladder::new(samplerate, cutoff, T::from_f64(4.) * resonance))
+            }
+            FilterType::OTALadder => {
+                Self::Ota(Ladder::new(samplerate, cutoff, T::from_f64(4.) * resonance))
+            }
+            FilterType::Svf => Self::Svf(Svf::new(samplerate, cutoff, T::one() - resonance)),
+            FilterType::Digital => Self::Biquad(
+                Biquad::lowpass(
+                    cutoff / samplerate,
+                    (T::from_f64(3.) * resonance).simd_exp(),
+                )
+                .with_saturators(Asinh, Asinh),
+            ),
+        }
+    }
+}
+
+impl<T: Scalar> FilterImpl<T> {
+    fn set_params(&mut self, samplerate: T, cutoff: T, resonance: T) {
+        match self {
+            Self::Transistor(p) => {
+                p.set_cutoff(cutoff);
+                p.set_resonance(T::from_f64(4.) * resonance);
+            }
+            Self::Ota(p) => {
+                p.set_cutoff(cutoff);
+                p.set_resonance(T::from_f64(4.) * resonance);
+            }
+            Self::Svf(p) => {
+                p.set_cutoff(cutoff);
+                p.set_r(T::one() - resonance);
+            }
+            Self::Biquad(p) => {
+                p.update_coefficients(&Biquad::lowpass(
+                    cutoff / samplerate,
+                    (T::from_f64(3.) * resonance).simd_exp(),
+                ));
+            }
+        }
+    }
+}
+
+impl<T: Scalar> DSPMeta for FilterImpl<T> {
+    type Sample = T;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        match self {
+            FilterImpl::Transistor(p) => p.set_samplerate(samplerate),
+            FilterImpl::Ota(p) => p.set_samplerate(samplerate),
+            FilterImpl::Svf(p) => p.set_samplerate(samplerate),
+            FilterImpl::Biquad(p) => p.set_samplerate(samplerate),
+        }
+    }
+
+    fn latency(&self) -> usize {
+        match self {
+            FilterImpl::Transistor(p) => p.latency(),
+            FilterImpl::Ota(p) => p.latency(),
+            FilterImpl::Svf(p) => p.latency(),
+            FilterImpl::Biquad(p) => p.latency(),
+        }
+    }
+
+    fn reset(&mut self) {
+        match self {
+            FilterImpl::Transistor(p) => p.reset(),
+            FilterImpl::Ota(p) => p.reset(),
+            FilterImpl::Svf(p) => p.reset(),
+            FilterImpl::Biquad(p) => p.reset(),
+        }
+    }
+}
+
+impl<T: Scalar> DSPProcess<1, 1> for FilterImpl<T> {
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        match self {
+            FilterImpl::Transistor(p) => p.process(x),
+            FilterImpl::Ota(p) => p.process(x),
+            FilterImpl::Svf(p) => [p.process(x)[0]],
+            FilterImpl::Biquad(p) => p.process(x),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct Filter<T> {
+    fimpl: FilterImpl<T>,
+    params: Arc<FilterParams>,
+    samplerate: T,
+}
+
+impl<T: Scalar> Filter<T> {
+    fn new(samplerate: T, params: Arc<FilterParams>) -> Filter<T> {
+        let cutoff = T::from_f64(params.cutoff.value() as _);
+        let resonance = T::from_f64(params.resonance.value() as _);
+        Self {
+            fimpl: FilterImpl::from_type(samplerate, params.filter_type.value(), cutoff, resonance),
+            params,
+            samplerate,
+        }
+    }
+}
+
+impl<T: Scalar> Filter<T> {
+    fn update_filter(&mut self, modulation_st: T) {
+        let cutoff =
+            semitone_to_ratio(modulation_st) * T::from_f64(self.params.cutoff.smoothed.next() as _);
+        let resonance = T::from_f64(self.params.resonance.smoothed.next() as _);
+        self.fimpl = match self.params.filter_type.value() {
+            FilterType::TransistorLadder if !matches!(self.fimpl, FilterImpl::Transistor(..)) => {
+                FilterImpl::Transistor(Ladder::new(
+                    self.samplerate,
+                    cutoff,
+                    T::from_f64(4.) * resonance,
+                ))
+            }
+            FilterType::OTALadder if !matches!(self.fimpl, FilterImpl::Ota(..)) => FilterImpl::Ota(
+                Ladder::new(self.samplerate, cutoff, T::from_f64(4.) * resonance),
+            ),
+            FilterType::Svf if !matches!(self.fimpl, FilterImpl::Svf(..)) => {
+                FilterImpl::Svf(Svf::new(self.samplerate, cutoff, T::one() - resonance))
+            }
+            FilterType::Digital if !matches!(self.fimpl, FilterImpl::Biquad(..)) => {
+                FilterImpl::Biquad(
+                    Biquad::lowpass(cutoff / self.samplerate, resonance)
+                        .with_saturators(Asinh, Asinh),
+                )
+            }
+            _ => {
+                self.fimpl.set_params(self.samplerate, cutoff, resonance);
+                return;
+            }
+        };
+    }
+}
+
+impl<T: Scalar> DSPMeta for Filter<T> {
+    type Sample = T;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.samplerate = T::from_f64(samplerate as _);
+    }
+
+    fn latency(&self) -> usize {
+        self.fimpl.latency()
+    }
+
+    fn reset(&mut self) {
+        self.fimpl.reset();
+    }
+}
+
+impl<T: Scalar> DSPProcess<2, 1> for Filter<T> {
+    fn process(&mut self, [x, mod_st]: [Self::Sample; 2]) -> [Self::Sample; 1] {
+        self.update_filter(mod_st);
+        self.fimpl.process([x])
+    }
+}
+
 pub(crate) const NUM_OSCILLATORS: usize = 2;
 
 pub struct RawVoice<T: ConstZero + ConstOne + Scalar> {
     osc: [PolyOsc<T>; NUM_OSCILLATORS],
     osc_out_sat: bjt::CommonCollector<T>,
     noise: Noise,
-    filter: Ladder<T, Transistor<Tanh>>,
+    filter: Filter<T>,
     params: Arc<PolysynthParams>,
     vca_env: Adsr,
     vcf_env: Adsr,
@@ -418,11 +600,7 @@ impl<T: ConstZero + ConstOne + Scalar> RawVoice<T> {
                     },
                 )
             }),
-            filter: Ladder::new(
-                target_samplerate_f64,
-                T::from_f64(params.filter_params.cutoff.value() as _),
-                T::from_f64(params.filter_params.resonance.value() as _),
-            ),
+            filter: Filter::new(target_samplerate, params.filter_params.clone()),
             noise: Noise::from_rng(rng.fork()),
             osc_out_sat: bjt::CommonCollector {
                 vee: -T::ONE,
@@ -550,7 +728,6 @@ where
 
         // Process oscillators
         let frequency = self.note_data.frequency;
-        let osc_params = self.params.osc_params.clone();
         let filter_params = self.params.filter_params.clone();
         let [osc1, osc2] = std::array::from_fn(|i| {
             let osc = &mut self.osc[i];
@@ -573,28 +750,22 @@ where
             + osc2 * T::from_f64(mixer_params.osc2_amplitude.smoothed.next() as _)
             + noise * T::from_f64(mixer_params.noise_amplitude.smoothed.next() as _)
             + osc1 * osc2 * T::from_f64(mixer_params.rm_amplitude.smoothed.next() as _);
-        let filter_in = self
+        let [filter_in] = self
             .osc_out_sat
             .process([osc_mixer])
             .map(|x| T::from_f64(db_to_gain_fast(9.0) as _) * x);
 
-        let freq_ratio = T::from_f64(filter_params.keyboard_tracking.smoothed.next() as _)
-            * frequency
-            / T::from_f64(440.)
-            + T::from_f64(semitone_to_ratio(
-                filter_params.env_amt.smoothed.next() * self.vcf_env.next_sample(),
-            ) as _);
-        let filter_freq =
-            (T::one() + freq_ratio) * T::from_f64(filter_params.cutoff.smoothed.next() as _);
-
         // Process filter
-        self.filter.set_cutoff(filter_freq);
-        self.filter.set_resonance(T::from_f64(
-            4f64 * filter_params.resonance.smoothed.next() as f64,
-        ));
+        let freq_mod = T::from_f64(filter_params.keyboard_tracking.smoothed.next() as _)
+            * ratio_to_semitone(frequency / T::from_f64(440.))
+            + T::from_f64(
+                (filter_params.env_amt.smoothed.next() * self.vcf_env.next_sample()) as f64,
+            );
         let vca = T::from_f64(self.vca_env.next_sample() as _);
         let static_amp = T::from_f64(self.params.output_level.smoothed.next() as _);
-        self.filter.process(filter_in).map(|x| static_amp * vca * x)
+        self.filter
+            .process([filter_in, freq_mod])
+            .map(|x| static_amp * vca * x)
     }
 }
 

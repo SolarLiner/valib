@@ -199,6 +199,27 @@ pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
     2.0.simd_powf(semi / 12.0)
 }
 
+/// Compute the semitone equivalent change in pitch that would have resulted by multiplying the
+/// input ratio to a frequency value.
+///
+/// # Arguments
+///
+/// * `ratio`: Frequency ratio (unitless)
+///
+/// returns: T
+///
+/// # Examples
+///
+/// ```
+/// use valib_core::util::ratio_to_semitone;
+/// assert_eq!(0., ratio_to_semitone(1.));
+/// assert_eq!(12., ratio_to_semitone(2.));
+/// assert_eq!(-12., ratio_to_semitone(0.5));
+/// ```
+pub fn ratio_to_semitone<T: Scalar>(ratio: T) -> T {
+    T::from_f64(12.) * ratio.simd_log2()
+}
+
 #[cfg(feature = "test-utils")]
 pub mod tests;
 
