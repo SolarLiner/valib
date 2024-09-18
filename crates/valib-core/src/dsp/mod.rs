@@ -87,6 +87,18 @@ impl<P: HasParameters> HasParameters for BlockAdapter<P> {
 
 impl<P: DSPMeta> DSPMeta for BlockAdapter<P> {
     type Sample = P::Sample;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.0.set_samplerate(samplerate);
+    }
+
+    fn latency(&self) -> usize {
+        self.0.latency()
+    }
+
+    fn reset(&mut self) {
+        self.0.reset();
+    }
 }
 
 impl<P: DSPProcess<I, O>, const I: usize, const O: usize> DSPProcess<I, O> for BlockAdapter<P> {
