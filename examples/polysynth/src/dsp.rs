@@ -8,7 +8,7 @@ use num_traits::{ConstOne, ConstZero};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, SampleAdapter};
-use valib::filters::ladder::{Ladder, OTA};
+use valib::filters::ladder::{Ladder, Transistor};
 use valib::filters::specialized::DcBlocker;
 use valib::math::interpolation::{sine_interpolation, Interpolate, Sine};
 use valib::oscillators::polyblep::{SawBLEP, Sawtooth, Square, SquareBLEP, Triangle};
@@ -357,7 +357,7 @@ pub(crate) const NUM_OSCILLATORS: usize = 2;
 pub struct RawVoice<T: ConstZero + ConstOne + Scalar> {
     osc: [PolyOsc<T>; NUM_OSCILLATORS],
     osc_out_sat: bjt::CommonCollector<T>,
-    filter: Ladder<T, OTA<Tanh>>,
+    filter: Ladder<T, Transistor<Tanh>>,
     params: Arc<PolysynthParams>,
     vca_env: Adsr,
     vcf_env: Adsr,
