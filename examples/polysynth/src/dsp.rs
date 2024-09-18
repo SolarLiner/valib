@@ -572,8 +572,8 @@ pub fn create_voice_manager<T: ConstZero + ConstOne + Scalar>(
     samplerate: f32,
     params: Arc<PolysynthParams>,
 ) -> VoiceManager<T> {
-    let target_samplerate = OVERSAMPLE as f64 * samplerate as f64;
-    Polyphonic::new(samplerate, NUM_VOICES, move |_, note_data| {
+    Polyphonic::new(samplerate, NUM_VOICES, move |samplerate, note_data| {
+        let target_samplerate = OVERSAMPLE as f64 * samplerate as f64;
         SampleAdapter::new(UpsampledVoice::new(
             OVERSAMPLE,
             MAX_BUFFER_SIZE,
