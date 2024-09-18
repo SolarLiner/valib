@@ -26,6 +26,7 @@ impl<T: Scalar> DSPMeta for Phasor<T> {
 
     fn set_samplerate(&mut self, samplerate: f32) {
         self.samplerate = T::from_f64(samplerate as _);
+        self.set_frequency(self.frequency);
     }
 
     fn reset(&mut self) {
