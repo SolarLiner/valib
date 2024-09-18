@@ -1,5 +1,5 @@
 use crate::params::{FilterParams, OscShape, PolysynthParams};
-use crate::{MAX_BUFFER_SIZE, NUM_VOICES, OVERSAMPLE};
+use crate::{SynthSample, MAX_BUFFER_SIZE, NUM_VOICES, OVERSAMPLE};
 use fastrand::Rng;
 use fastrand_contrib::RngExt;
 use nih_plug::nih_log;
@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, SampleAdapter};
 use valib::filters::ladder::{Ladder, OTA};
+use valib::filters::specialized::DcBlocker;
 use valib::math::interpolation::{sine_interpolation, Interpolate, Sine};
 use valib::oscillators::polyblep::{SawBLEP, Sawtooth, Square, SquareBLEP, Triangle};
 use valib::oscillators::Phasor;
@@ -581,11 +582,50 @@ pub fn create_voice_manager<T: ConstZero + ConstOne + Scalar>(
     })
 }
 
-pub type Dsp<T> = VoiceManager<T>;
+pub type Voices<T> = VoiceManager<T>;
 
-pub fn create<T: ConstZero + ConstOne + Scalar>(
+pub fn create_voices<T: ConstZero + ConstOne + Scalar>(
     samplerate: f32,
     params: Arc<PolysynthParams>,
-) -> Dsp<T> {
+) -> Voices<T> {
     create_voice_manager(samplerate, params)
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct Effects<T> {
+    dc_blocker: DcBlocker<T>,
+}
+
+impl<T: Scalar> DSPMeta for Effects<T> {
+    type Sample = T;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.dc_blocker.set_samplerate(samplerate);
+    }
+
+    fn latency(&self) -> usize {
+        self.dc_blocker.latency()
+    }
+
+    fn reset(&mut self) {
+        self.dc_blocker.reset();
+    }
+}
+
+impl<T: Scalar> DSPProcess<1, 1> for Effects<T> {
+    fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
+        self.dc_blocker.process(x)
+    }
+}
+
+impl<T: Scalar> Effects<T> {
+    pub fn new(samplerate: f32) -> Self {
+        Self {
+            dc_blocker: DcBlocker::new(samplerate),
+        }
+    }
+}
+
+pub fn create_effects<T: Scalar>(samplerate: f32) -> Effects<T> {
+    Effects::new(samplerate)
 }

@@ -8,7 +8,7 @@ use nih_plug::prelude::*;
 use std::cmp::Ordering;
 use std::sync::{atomic, Arc};
 use valib::dsp::buffer::{AudioBufferMut, AudioBufferRef};
-use valib::dsp::{BlockAdapter, DSPMeta, DSPProcessBlock};
+use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, DSPProcessBlock};
 use valib::util::Rms;
 use valib::voice::{NoteData, VoiceId, VoiceManager};
 
@@ -73,7 +73,7 @@ impl VoiceKey {
 
 #[derive(Debug)]
 struct VoiceIdMap {
-    data: [Option<(VoiceKey, VoiceId<dsp::Dsp<f32>>)>; NUM_VOICES],
+    data: [Option<(VoiceKey, VoiceId<dsp::Voices<f32>>)>; NUM_VOICES],
 }
 
 impl Default for VoiceIdMap {
@@ -85,7 +85,7 @@ impl Default for VoiceIdMap {
 }
 
 impl VoiceIdMap {
-    fn add_voice(&mut self, key: VoiceKey, v: VoiceId<dsp::Dsp<f32>>) -> bool {
+    fn add_voice(&mut self, key: VoiceKey, v: VoiceId<dsp::Voices<f32>>) -> bool {
         let Some(position) = self.data.iter().position(|x| x.is_none()) else {
             return false;
         };
@@ -93,21 +93,21 @@ impl VoiceIdMap {
         true
     }
 
-    fn get_voice(&self, key: VoiceKey) -> Option<VoiceId<dsp::Dsp<f32>>> {
+    fn get_voice(&self, key: VoiceKey) -> Option<VoiceId<dsp::Voices<f32>>> {
         self.data.iter().find_map(|x| {
             x.as_ref()
                 .and_then(|(vkey, id)| (*vkey == key).then_some(*id))
         })
     }
 
-    fn get_voice_by_poly_id(&self, voice_id: i32) -> Option<VoiceId<dsp::Dsp<f32>>> {
+    fn get_voice_by_poly_id(&self, voice_id: i32) -> Option<VoiceId<dsp::Voices<f32>>> {
         self.data
             .iter()
             .flatten()
             .find_map(|(vkey, id)| (vkey.voice_id == Some(voice_id)).then_some(*id))
     }
 
-    fn remove_voice(&mut self, key: VoiceKey) -> Option<(VoiceKey, VoiceId<dsp::Dsp<f32>>)> {
+    fn remove_voice(&mut self, key: VoiceKey) -> Option<(VoiceKey, VoiceId<dsp::Voices<f32>>)> {
         let position = self
             .data
             .iter()
@@ -120,7 +120,8 @@ type SynthSample = f32;
 
 #[derive(Debug)]
 pub struct PolysynthPlugin {
-    dsp: BlockAdapter<dsp::Dsp<SynthSample>>,
+    voices: BlockAdapter<dsp::Voices<SynthSample>>,
+    effects: dsp::Effects<SynthSample>,
     params: Arc<PolysynthParams>,
     voice_id_map: VoiceIdMap,
 }
@@ -130,7 +131,8 @@ impl Default for PolysynthPlugin {
         const DEFAULT_SAMPLERATE: f32 = 44100.;
         let params = Arc::new(PolysynthParams::default());
         Self {
-            dsp: BlockAdapter(dsp::create(DEFAULT_SAMPLERATE, params.clone())),
+            voices: BlockAdapter(dsp::create_voices(DEFAULT_SAMPLERATE, params.clone())),
+            effects: dsp::create_effects(DEFAULT_SAMPLERATE),
             params,
             voice_id_map: VoiceIdMap::default(),
         }
@@ -168,12 +170,12 @@ impl Plugin for PolysynthPlugin {
         _: &mut impl InitContext<Self>,
     ) -> bool {
         let sample_rate = buffer_config.sample_rate;
-        self.dsp.set_samplerate(sample_rate);
+        self.voices.set_samplerate(sample_rate);
         true
     }
 
     fn reset(&mut self) {
-        self.dsp.reset();
+        self.voices.reset();
     }
 
     fn process(
@@ -202,7 +204,7 @@ impl Plugin for PolysynthPlugin {
                         } => {
                             let key = VoiceKey::new(voice_id, channel, note);
                             let note_data = NoteData::from_midi(note, velocity);
-                            let id = self.dsp.note_on(note_data);
+                            let id = self.voices.note_on(note_data);
                             nih_log!("Note on {id} <- {key:?}");
                             self.voice_id_map.add_voice(key, id);
                         }
@@ -216,7 +218,7 @@ impl Plugin for PolysynthPlugin {
                             let key = VoiceKey::new(voice_id, channel, note);
                             if let Some((_, id)) = self.voice_id_map.remove_voice(key) {
                                 nih_log!("Note off {id} <- {key:?}");
-                                self.dsp.note_off(id, velocity);
+                                self.voices.note_off(id, velocity);
                             } else {
                                 nih_log!("Note off {key:?}: ID not found");
                             }
@@ -229,7 +231,7 @@ impl Plugin for PolysynthPlugin {
                         } => {
                             let key = VoiceKey::new(voice_id, channel, note);
                             if let Some((_, id)) = self.voice_id_map.remove_voice(key) {
-                                self.dsp.choke(id);
+                                self.voices.choke(id);
                             }
                         }
                         NoteEvent::PolyModulation { voice_id, .. } => {
@@ -301,13 +303,18 @@ impl Plugin for PolysynthPlugin {
             }
             let dsp_block = AudioBufferMut::from(&mut output[0][block_start..block_end]);
             let input = AudioBufferRef::<SynthSample, 0>::empty(dsp_block.samples());
-            self.dsp.process_block(input, dsp_block);
+            self.voices.process_block(input, dsp_block);
 
             block_start = block_end;
             block_end = (block_start + MAX_BUFFER_SIZE).min(num_samples);
         }
 
-        self.dsp.0.clean_inactive_voices();
+        self.voices.0.clean_inactive_voices();
+
+        // Effects processing
+        for s in &mut output[0][..] {
+            *s = self.effects.process([*s])[0];
+        }
         ProcessStatus::Normal
     }
 }
