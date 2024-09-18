@@ -257,6 +257,30 @@ impl Plugin for PolysynthPlugin {
                                     .smoothed
                                     .set_target(sample_rate, target_plain_value);
                             }
+                            id if id == POLYMOD_OSC_AMP[0] => {
+                                let target_plain_value = self
+                                    .params
+                                    .mixer_params
+                                    .osc1_amplitude
+                                    .preview_plain(normalized_value);
+                                self.params
+                                    .mixer_params
+                                    .osc1_amplitude
+                                    .smoothed
+                                    .set_target(sample_rate, target_plain_value);
+                            }
+                            id if id == POLYMOD_OSC_AMP[1] => {
+                                let target_plain_value = self
+                                    .params
+                                    .mixer_params
+                                    .osc2_amplitude
+                                    .preview_plain(normalized_value);
+                                self.params
+                                    .mixer_params
+                                    .osc2_amplitude
+                                    .smoothed
+                                    .set_target(sample_rate, target_plain_value);
+                            }
                             _ => {
                                 for i in 0..2 {
                                     match poly_modulation_id {
@@ -275,15 +299,6 @@ impl Plugin for PolysynthPlugin {
                                                 .preview_plain(normalized_value);
                                             self.params.osc_params[i]
                                                 .pitch_fine
-                                                .smoothed
-                                                .set_target(sample_rate, target_plain_value);
-                                        }
-                                        id if id == POLYMOD_OSC_AMP[i] => {
-                                            let target_plain_value = self.params.osc_params[i]
-                                                .amplitude
-                                                .preview_plain(normalized_value);
-                                            self.params.osc_params[i]
-                                                .amplitude
                                                 .smoothed
                                                 .set_target(sample_rate, target_plain_value);
                                         }
