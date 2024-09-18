@@ -112,7 +112,7 @@ impl<T: Scalar, C: Default> Svf<T, C> {
     pub fn new(samplerate: T, fc: T, r: T) -> Self {
         let mut this = Self {
             s: [T::zero(); 2],
-            r,
+            r: r + r,
             fc,
             g: T::zero(),
             g1: T::zero(),

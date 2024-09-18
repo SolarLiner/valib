@@ -9,6 +9,7 @@ use valib::oversample::{Oversample, Oversampled};
 use valib::saturators::bjt::CommonCollector;
 use valib::saturators::Tanh;
 use valib::simd::{AutoF32x2, SimdValue};
+use valib::Scalar;
 
 use crate::{MAX_BUFFER_SIZE, OVERSAMPLE};
 
@@ -100,7 +101,7 @@ impl fmt::Display for LadderType {
 }
 
 impl LadderType {
-    fn as_ladder(&self, samplerate: f32, fc: Sample, res: Sample) -> DspLadder {
+    fn as_ladder(&self, samplerate: Sample, fc: Sample, res: Sample) -> DspLadder {
         match self {
             Self::Ideal => DspLadder::Ideal(Ladder::new(samplerate, fc, res)),
             Self::Transistor => DspLadder::Transistor(Ladder::new(samplerate, fc, res)),
@@ -126,7 +127,7 @@ pub struct DspInner {
     resonance: SmoothedParam,
     compensated: bool,
     ladder: DspLadder,
-    samplerate: f32,
+    samplerate: Sample,
 }
 
 impl DspInner {
@@ -210,13 +211,14 @@ impl HasParameters for DspInner {
 pub type Dsp = Oversampled<Sample, BlockAdapter<DspInner>>;
 
 pub fn create(orig_samplerate: f32) -> RemoteControlled<Dsp> {
-    let samplerate = orig_samplerate * OVERSAMPLE as f32;
+    let sr_f32 = orig_samplerate * OVERSAMPLE as f32;
+    let samplerate = Sample::from_f64(sr_f32 as _);
     let dsp = DspInner {
         ladder_type: LadderType::Ideal,
         ladder_type_changed: false,
-        drive: SmoothedParam::exponential(1.0, samplerate, 50.0),
-        cutoff: SmoothedParam::exponential(300.0, samplerate, 10.0),
-        resonance: SmoothedParam::linear(0.5, samplerate, 10.0),
+        drive: SmoothedParam::exponential(1.0, sr_f32, 50.0),
+        cutoff: SmoothedParam::exponential(300.0, sr_f32, 10.0),
+        resonance: SmoothedParam::linear(0.5, sr_f32, 10.0),
         ladder: LadderType::Ideal.as_ladder(samplerate, Sample::splat(300.0), Sample::splat(0.5)),
         compensated: false,
         samplerate,
