@@ -165,6 +165,17 @@ impl OscParams {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Enum)]
+pub enum FilterType {
+    #[name = "Transistor Ladder"]
+    TransistorLadder,
+    #[name = "OTA Ladder"]
+    OTALadder,
+    #[name = "SVF"]
+    Svf,
+    Digital,
+}
+
 #[derive(Debug, Params)]
 pub struct FilterParams {
     #[id = "fc"]
@@ -175,6 +186,8 @@ pub struct FilterParams {
     pub keyboard_tracking: FloatParam,
     #[id = "env"]
     pub env_amt: FloatParam,
+    #[id = "fty"]
+    pub filter_type: EnumParam<FilterType>,
 }
 
 impl FilterParams {
@@ -237,6 +250,7 @@ impl FilterParams {
                 oversample.clone(),
                 &SmoothingStyle::Exponential(50.),
             )),
+            filter_type: EnumParam::new("Filter Type", FilterType::TransistorLadder),
         }
     }
 }
