@@ -23,9 +23,9 @@ pub struct AdsrParams {
 fn v2s_f32_ms_then_s(digits: usize) -> Arc<impl 'static + Send + Sync + Fn(f32) -> String> {
     Arc::new(move |v| {
         if v < 0.9 {
-            format!("{:1$} ms", v * 1e3, digits)
+            format!("{:.1$} ms", v * 1e3, digits)
         } else {
-            format!("{v:0$} s", digits)
+            format!("{v:.0$} s", digits)
         }
     })
 }
