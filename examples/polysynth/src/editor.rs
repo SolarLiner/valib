@@ -71,6 +71,10 @@ pub(crate) fn create(
                 .row_between(Stretch(1.0));
                 HStack::new(cx, |cx| {
                     VStack::new(cx, |cx| {
+                        Label::new(cx, "Mixer").font_size(22.);
+                        GenericUi::new(cx, Data::params.map(|p| p.mixer_params.clone()));
+                    });
+                    VStack::new(cx, |cx| {
                         Label::new(cx, "Amp Env").font_size(22.);
                         GenericUi::new(cx, Data::params.map(|p| p.vca_env.clone()));
                     });
@@ -81,7 +85,7 @@ pub(crate) fn create(
                 })
                 .left(Stretch(1.0))
                 .right(Stretch(1.0))
-                .width(Percentage(50.));
+                .width(Pixels(750.));
             })
             .top(Pixels(16.))
             .width(Percentage(100.))

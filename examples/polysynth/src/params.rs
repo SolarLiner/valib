@@ -97,8 +97,6 @@ pub enum OscShape {
 pub struct OscParams {
     #[id = "shp"]
     pub shape: EnumParam<OscShape>,
-    #[id = "amp"]
-    pub amplitude: FloatParam,
     #[id = "pco"]
     pub pitch_coarse: FloatParam,
     #[id = "pfi"]
@@ -115,23 +113,6 @@ impl OscParams {
     fn new(osc_index: usize, oversample: Arc<AtomicF32>) -> Self {
         Self {
             shape: EnumParam::new("Shape", OscShape::Saw),
-            amplitude: FloatParam::new(
-                "Amplitude",
-                0.25,
-                FloatRange::Skewed {
-                    min: db_to_gain(MINUS_INFINITY_DB),
-                    max: 1.0,
-                    factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, 0.0),
-                },
-            )
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_unit(" dB")
-            .with_smoother(SmoothingStyle::OversamplingAware(
-                oversample.clone(),
-                &SmoothingStyle::Exponential(10.),
-            ))
-            .with_poly_modulation_id(POLYMOD_OSC_AMP[osc_index]),
             pitch_coarse: FloatParam::new(
                 "Pitch (Coarse)",
                 0.0,
@@ -261,9 +242,96 @@ impl FilterParams {
 }
 
 #[derive(Debug, Params)]
+pub struct MixerParams {
+    #[id = "osc1_amp"]
+    pub osc1_amplitude: FloatParam,
+    #[id = "osc2_amp"]
+    pub osc2_amplitude: FloatParam,
+    #[id = "rm_amp"]
+    pub rm_amplitude: FloatParam,
+    #[id = "noise_amp"]
+    pub noise_amplitude: FloatParam,
+}
+
+impl MixerParams {
+    fn new(oversample: Arc<AtomicF32>) -> Self {
+        Self {
+            osc1_amplitude: FloatParam::new(
+                "OSC1 Amplitude",
+                0.25,
+                FloatRange::Skewed {
+                    min: db_to_gain(MINUS_INFINITY_DB),
+                    max: 1.0,
+                    factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, 0.0),
+                },
+            )
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_unit(" dB")
+            .with_smoother(SmoothingStyle::OversamplingAware(
+                oversample.clone(),
+                &SmoothingStyle::Exponential(10.),
+            ))
+            .with_poly_modulation_id(POLYMOD_OSC_AMP[0]),
+            osc2_amplitude: FloatParam::new(
+                "OSC2 Amplitude",
+                0.25,
+                FloatRange::Skewed {
+                    min: db_to_gain(MINUS_INFINITY_DB),
+                    max: 1.0,
+                    factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, 0.0),
+                },
+            )
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_unit(" dB")
+            .with_smoother(SmoothingStyle::OversamplingAware(
+                oversample.clone(),
+                &SmoothingStyle::Exponential(10.),
+            ))
+            .with_poly_modulation_id(POLYMOD_OSC_AMP[1]),
+            rm_amplitude: FloatParam::new(
+                "RM Amplitude",
+                0.,
+                FloatRange::Skewed {
+                    min: db_to_gain(MINUS_INFINITY_DB),
+                    max: 1.0,
+                    factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, 0.0),
+                },
+            )
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_unit(" dB")
+            .with_smoother(SmoothingStyle::OversamplingAware(
+                oversample.clone(),
+                &SmoothingStyle::Exponential(10.),
+            )),
+            noise_amplitude: FloatParam::new(
+                "Noise Amplitude",
+                0.,
+                FloatRange::Skewed {
+                    min: db_to_gain(MINUS_INFINITY_DB),
+                    max: 1.0,
+                    factor: FloatRange::gain_skew_factor(MINUS_INFINITY_DB, 0.0),
+                },
+            )
+            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+            .with_string_to_value(formatters::s2v_f32_gain_to_db())
+            .with_unit(" dB")
+            .with_smoother(SmoothingStyle::OversamplingAware(
+                oversample.clone(),
+                &SmoothingStyle::Exponential(10.),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Params)]
 pub struct PolysynthParams {
     #[nested(array, group = "Osc")]
     pub osc_params: [Arc<OscParams>; crate::dsp::NUM_OSCILLATORS],
+    #[nested]
+    pub mixer_params: Arc<MixerParams>,
     #[nested(id_prefix = "vca_", group = "Amp Env")]
     pub vca_env: Arc<AdsrParams>,
     #[nested(id_prefix = "vcf_", group = "Filter Env")]
@@ -283,6 +351,7 @@ impl Default for PolysynthParams {
         Self {
             osc_params: std::array::from_fn(|i| Arc::new(OscParams::new(i, oversample.clone()))),
             filter_params: Arc::new(FilterParams::new(oversample.clone())),
+            mixer_params: Arc::new(MixerParams::new(oversample.clone())),
             vca_env: Arc::default(),
             vcf_env: Arc::default(),
             output_level: FloatParam::new(

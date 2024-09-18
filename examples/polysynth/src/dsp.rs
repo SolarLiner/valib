@@ -14,7 +14,7 @@ use valib::math::interpolation::{sine_interpolation, Interpolate, Sine};
 use valib::oscillators::polyblep::{SawBLEP, Sawtooth, Square, SquareBLEP, Triangle};
 use valib::oscillators::Phasor;
 use valib::saturators::{bjt, Tanh};
-use valib::simd::SimdBool;
+use valib::simd::{SimdBool, SimdValue};
 use valib::util::semitone_to_ratio;
 use valib::voice::polyphonic::Polyphonic;
 use valib::voice::upsample::UpsampledVoice;
@@ -352,11 +352,37 @@ impl<T: ConstZero + ConstOne + Scalar> DSPProcess<1, 1> for PolyOsc<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+struct Noise {
+    rng: Rng,
+}
+
+impl Noise {
+    pub fn from_rng(rng: Rng) -> Self {
+        Self { rng }
+    }
+
+    pub fn next_value_f32<T: Scalar<Element = f32>>(&mut self) -> T
+    where
+        [(); <T as SimdValue>::LANES]:,
+    {
+        T::from_values(std::array::from_fn(|_| self.rng.f32_range(-1.0..1.0)))
+    }
+
+    pub fn next_value_f64<T: Scalar<Element = f64>>(&mut self) -> T
+    where
+        [(); <T as SimdValue>::LANES]:,
+    {
+        T::from_values(std::array::from_fn(|_| self.rng.f64_range(-1.0..1.0)))
+    }
+}
+
 pub(crate) const NUM_OSCILLATORS: usize = 2;
 
 pub struct RawVoice<T: ConstZero + ConstOne + Scalar> {
     osc: [PolyOsc<T>; NUM_OSCILLATORS],
     osc_out_sat: bjt::CommonCollector<T>,
+    noise: Noise,
     filter: Ladder<T, Transistor<Tanh>>,
     params: Arc<PolysynthParams>,
     vca_env: Adsr,
@@ -397,6 +423,7 @@ impl<T: ConstZero + ConstOne + Scalar> RawVoice<T> {
                 T::from_f64(params.filter_params.cutoff.value() as _),
                 T::from_f64(params.filter_params.resonance.value() as _),
             ),
+            noise: Noise::from_rng(rng.fork()),
             osc_out_sat: bjt::CommonCollector {
                 vee: -T::ONE,
                 vcc: T::ONE,
@@ -512,7 +539,10 @@ impl<T: ConstZero + ConstOne + Scalar> DSPMeta for RawVoice<T> {
     }
 }
 
-impl<T: ConstZero + ConstOne + Scalar> DSPProcess<0, 1> for RawVoice<T> {
+impl<T: ConstZero + ConstOne + Scalar<Element = f32>> DSPProcess<0, 1> for RawVoice<T>
+where
+    [(); <T as SimdValue>::LANES]:,
+{
     fn process(&mut self, []: [Self::Sample; 0]) -> [Self::Sample; 1] {
         const DRIFT_MAX_ST: f32 = 0.1;
         self.update_osc_types();
@@ -535,10 +565,14 @@ impl<T: ConstZero + ConstOne + Scalar> DSPProcess<0, 1> for RawVoice<T> {
             let [osc] = osc.process([osc_freq]);
             osc
         });
+        let noise = self.noise.next_value_f32::<T>();
 
         // Process filter input
-        let osc_mixer = osc1 * T::from_f64(osc_params[0].amplitude.smoothed.next() as _)
-            + osc2 * T::from_f64(osc_params[1].amplitude.smoothed.next() as _);
+        let mixer_params = &self.params.mixer_params;
+        let osc_mixer = osc1 * T::from_f64(mixer_params.osc1_amplitude.smoothed.next() as _)
+            + osc2 * T::from_f64(mixer_params.osc2_amplitude.smoothed.next() as _)
+            + noise * T::from_f64(mixer_params.noise_amplitude.smoothed.next() as _)
+            + osc1 * osc2 * T::from_f64(mixer_params.rm_amplitude.smoothed.next() as _);
         let filter_in = self
             .osc_out_sat
             .process([osc_mixer])
@@ -568,10 +602,13 @@ type SynthVoice<T> = SampleAdapter<UpsampledVoice<BlockAdapter<RawVoice<T>>>, 0,
 
 pub type VoiceManager<T> = Polyphonic<SynthVoice<T>>;
 
-pub fn create_voice_manager<T: ConstZero + ConstOne + Scalar>(
+pub fn create_voice_manager<T: ConstZero + ConstOne + Scalar<Element = f32>>(
     samplerate: f32,
     params: Arc<PolysynthParams>,
-) -> VoiceManager<T> {
+) -> VoiceManager<T>
+where
+    [(); <T as SimdValue>::LANES]:,
+{
     Polyphonic::new(samplerate, NUM_VOICES, move |samplerate, note_data| {
         let target_samplerate = OVERSAMPLE as f64 * samplerate as f64;
         SampleAdapter::new(UpsampledVoice::new(
@@ -584,10 +621,13 @@ pub fn create_voice_manager<T: ConstZero + ConstOne + Scalar>(
 
 pub type Voices<T> = VoiceManager<T>;
 
-pub fn create_voices<T: ConstZero + ConstOne + Scalar>(
+pub fn create_voices<T: ConstZero + ConstOne + Scalar<Element = f32>>(
     samplerate: f32,
     params: Arc<PolysynthParams>,
-) -> Voices<T> {
+) -> Voices<T>
+where
+    [(); <T as SimdValue>::LANES]:,
+{
     create_voice_manager(samplerate, params)
 }
 
