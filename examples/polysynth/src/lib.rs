@@ -171,6 +171,7 @@ impl Plugin for PolysynthPlugin {
     ) -> bool {
         let sample_rate = buffer_config.sample_rate;
         self.voices.set_samplerate(sample_rate);
+        self.effects.set_samplerate(sample_rate);
         true
     }
 
