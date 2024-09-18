@@ -68,9 +68,9 @@ impl Default for Adsr {
             decay: 0.,
             sustain: 0.,
             release: 0.,
-            attack_base: 1. + Self::TARGET_RATIO_A,
-            decay_base: -Self::TARGET_RATIO_DR,
-            release_base: -Self::TARGET_RATIO_DR,
+            attack_base: 1. + Self::TARGET_RATIO_ATTACK,
+            decay_base: -Self::TARGET_RATIO_RELEASE,
+            release_base: -Self::TARGET_RATIO_RELEASE,
             attack_coeff: 0.,
             decay_coeff: 0.,
             release_coeff: 0.,
@@ -84,8 +84,9 @@ impl Default for Adsr {
 }
 
 impl Adsr {
-    const TARGET_RATIO_A: f32 = 0.3;
-    const TARGET_RATIO_DR: f32 = 1e-4;
+    const TARGET_RATIO_ATTACK: f32 = 0.3;
+    const TARGET_RATIO_DECAY: f32 = 0.1;
+    const TARGET_RATIO_RELEASE: f32 = 1e-3;
     pub fn new(
         samplerate: f32,
         attack: f32,
@@ -120,8 +121,8 @@ impl Adsr {
         }
         self.attack = attack;
         self.attack_rate = self.samplerate * attack;
-        self.attack_coeff = Self::calc_coeff(self.attack_rate, Self::TARGET_RATIO_A);
-        self.attack_base = (1. + Self::TARGET_RATIO_A) * (1.0 - self.attack_coeff);
+        self.attack_coeff = Self::calc_coeff(self.attack_rate, Self::TARGET_RATIO_ATTACK);
+        self.attack_base = (1. + Self::TARGET_RATIO_ATTACK) * (1.0 - self.attack_coeff);
     }
 
     pub fn set_decay(&mut self, decay: f32) {
@@ -130,8 +131,8 @@ impl Adsr {
         }
         self.decay = decay;
         self.decay_rate = self.samplerate * decay;
-        self.decay_coeff = Self::calc_coeff(self.decay_rate, Self::TARGET_RATIO_DR);
-        self.decay_base = (self.sustain - Self::TARGET_RATIO_DR) * (1. - self.decay_coeff);
+        self.decay_coeff = Self::calc_coeff(self.decay_rate, Self::TARGET_RATIO_DECAY);
+        self.decay_base = (self.sustain - Self::TARGET_RATIO_DECAY) * (1. - self.decay_coeff);
     }
 
     pub fn set_sustain(&mut self, sustain: f32) {
@@ -144,8 +145,8 @@ impl Adsr {
         }
         self.release = release;
         self.release_rate = self.samplerate * release;
-        self.release_coeff = Self::calc_coeff(self.release_rate, Self::TARGET_RATIO_DR);
-        self.release_base = -Self::TARGET_RATIO_DR * (1. - self.release_coeff);
+        self.release_coeff = Self::calc_coeff(self.release_rate, Self::TARGET_RATIO_RELEASE);
+        self.release_base = -Self::TARGET_RATIO_RELEASE * (1. - self.release_coeff);
     }
 
     pub fn gate(&mut self, gate: bool) {
