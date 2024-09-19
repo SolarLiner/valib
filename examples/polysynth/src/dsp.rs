@@ -388,16 +388,26 @@ impl<T: Scalar> Saturator<T> for Sinh {
     }
 }
 
+fn svf_clipper<T: Scalar>() -> bjt::CommonCollector<T> {
+    bjt::CommonCollector {
+        vee: T::from_f64(-1.),
+        vcc: T::from_f64(1.),
+        xbias: T::from_f64(-0.1),
+        ybias: T::from_f64(0.1),
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 enum FilterImpl<T> {
     Transistor(Ladder<T, Transistor<Tanh>>),
     Ota(Ladder<T, OTA<Tanh>>),
-    Svf(Svf<T, Sinh>),
+    Svf(bjt::CommonCollector<T>, Svf<T, Sinh>),
     Biquad(Biquad<T, Clipper<T>>),
 }
 
 impl<T: Scalar> FilterImpl<T> {
     fn from_type(samplerate: T, ftype: FilterType, cutoff: T, resonance: T) -> FilterImpl<T> {
+        let cutoff = cutoff.simd_clamp(T::zero(), samplerate / T::from_f64(12.));
         match ftype {
             FilterType::TransistorLadder => {
                 let mut ladder = Ladder::new(samplerate, cutoff, T::from_f64(4.) * resonance);
@@ -409,13 +419,13 @@ impl<T: Scalar> FilterImpl<T> {
                 ladder.compensated = true;
                 Self::Ota(ladder)
             }
-            FilterType::Svf => Self::Svf(Svf::new(samplerate, cutoff, T::one() - resonance)),
+            FilterType::Svf => Self::Svf(
+                svf_clipper(),
+                Svf::new(samplerate, cutoff, T::one() - resonance),
+            ),
             FilterType::Digital => Self::Biquad(
-                Biquad::lowpass(
-                    cutoff / samplerate,
-                    (T::from_f64(3.) * resonance).simd_exp(),
-                )
-                .with_saturators(Default::default(), Default::default()),
+                Biquad::lowpass(cutoff / samplerate, T::one())
+                    .with_saturators(Default::default(), Default::default()),
             ),
         }
     }
@@ -430,14 +440,14 @@ impl<T: Scalar> FilterImpl<T> {
                 p.set_cutoff(cutoff);
                 p.set_resonance(T::from_f64(4.) * resonance);
             }
-            Self::Svf(p) => {
+            Self::Svf(_, p) => {
                 p.set_cutoff(cutoff);
-                p.set_r(T::one() - resonance);
+                p.set_r(T::one() - resonance.simd_sqrt());
             }
             Self::Biquad(p) => {
                 p.update_coefficients(&Biquad::lowpass(
                     cutoff / samplerate,
-                    (T::from_f64(3.) * resonance).simd_exp(),
+                    T::from_f64(4.7) * (T::from_f64(2.) * resonance - T::one()).simd_exp(),
                 ));
             }
         }
@@ -448,7 +458,7 @@ impl<T: Scalar> FilterImpl<T> {
             Self::Transistor(..) => T::from_f64(0.5),
             Self::Ota(..) => T::from_f64(db_to_gain(9.) as _),
             Self::Svf(..) => T::from_f64(db_to_gain(9.) as _),
-            Self::Biquad(..) => T::from_f64(db_to_gain(6.) as _),
+            Self::Biquad(..) => T::from_f64(db_to_gain(12.) as _),
         }
     }
 }
@@ -460,7 +470,7 @@ impl<T: Scalar> DSPMeta for FilterImpl<T> {
         match self {
             FilterImpl::Transistor(p) => p.set_samplerate(samplerate),
             FilterImpl::Ota(p) => p.set_samplerate(samplerate),
-            FilterImpl::Svf(p) => p.set_samplerate(samplerate),
+            FilterImpl::Svf(_, p) => p.set_samplerate(samplerate),
             FilterImpl::Biquad(p) => p.set_samplerate(samplerate),
         }
     }
@@ -469,7 +479,7 @@ impl<T: Scalar> DSPMeta for FilterImpl<T> {
         match self {
             FilterImpl::Transistor(p) => p.latency(),
             FilterImpl::Ota(p) => p.latency(),
-            FilterImpl::Svf(p) => p.latency(),
+            FilterImpl::Svf(_, p) => p.latency(),
             FilterImpl::Biquad(p) => p.latency(),
         }
     }
@@ -478,7 +488,7 @@ impl<T: Scalar> DSPMeta for FilterImpl<T> {
         match self {
             FilterImpl::Transistor(p) => p.reset(),
             FilterImpl::Ota(p) => p.reset(),
-            FilterImpl::Svf(p) => p.reset(),
+            FilterImpl::Svf(_, p) => p.reset(),
             FilterImpl::Biquad(p) => p.reset(),
         }
     }
@@ -492,7 +502,7 @@ impl<T: Scalar> DSPProcess<1, 1> for FilterImpl<T> {
         let y = match self {
             FilterImpl::Transistor(p) => p.process(x),
             FilterImpl::Ota(p) => p.process(x),
-            FilterImpl::Svf(p) => [p.process(x)[0]],
+            FilterImpl::Svf(bjt, p) => [p.process(bjt.process(x))[0]],
             FilterImpl::Biquad(p) => p.process(x),
         };
         y.map(|x| drive_out * x)
@@ -522,6 +532,7 @@ impl<T: Scalar> Filter<T> {
     fn update_filter(&mut self, modulation_st: T) {
         let cutoff =
             semitone_to_ratio(modulation_st) * T::from_f64(self.params.cutoff.smoothed.next() as _);
+        let cutoff = cutoff.simd_clamp(T::zero(), self.samplerate / T::from_f64(12.));
         let resonance = T::from_f64(self.params.resonance.smoothed.next() as _);
         self.fimpl = match self.params.filter_type.value() {
             FilterType::TransistorLadder if !matches!(self.fimpl, FilterImpl::Transistor(..)) => {
@@ -534,10 +545,13 @@ impl<T: Scalar> Filter<T> {
                 ladder.compensated = true;
                 FilterImpl::Ota(ladder)
             }
-            FilterType::Svf if !matches!(self.fimpl, FilterImpl::Svf(..)) => {
-                FilterImpl::Svf(Svf::new(self.samplerate, cutoff, T::one() - resonance))
-            }
+            FilterType::Svf if !matches!(self.fimpl, FilterImpl::Svf(..)) => FilterImpl::Svf(
+                svf_clipper(),
+                Svf::new(self.samplerate, cutoff, T::one() - resonance),
+            ),
             FilterType::Digital if !matches!(self.fimpl, FilterImpl::Biquad(..)) => {
+                let resonance =
+                    T::from_f64(4.7) * (T::from_f64(2.) * resonance - T::one()).simd_exp();
                 FilterImpl::Biquad(
                     Biquad::lowpass(cutoff / self.samplerate, resonance)
                         .with_saturators(Default::default(), Default::default()),
@@ -838,7 +852,8 @@ impl<T: Scalar> DSPMeta for Effects<T> {
 
 impl<T: Scalar> DSPProcess<1, 1> for Effects<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.bjt.process(self.dc_blocker.process(x))
+        let y = self.bjt.process(self.dc_blocker.process(x));
+        y.map(|x| T::from_f64(0.5) * x)
     }
 }
 
@@ -847,8 +862,8 @@ impl<T: Scalar> Effects<T> {
         Self {
             dc_blocker: DcBlocker::new(samplerate),
             bjt: bjt::CommonCollector {
-                vee: T::from_f64(-2.5),
-                vcc: T::from_f64(2.5),
+                vee: T::from_f64(-2.),
+                vcc: T::from_f64(2.),
                 xbias: T::from_f64(0.1),
                 ybias: T::from_f64(-0.1),
             },
