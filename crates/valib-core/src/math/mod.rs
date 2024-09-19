@@ -8,6 +8,7 @@ use simba::simd::{SimdBool, SimdComplexField};
 
 use crate::Scalar;
 
+pub mod fast;
 pub mod interpolation;
 pub mod lut;
 pub mod nr;
@@ -86,6 +87,7 @@ pub fn bilinear_prewarming_bounded<T: Scalar>(samplerate: T, wc: T) -> T {
 #[inline]
 pub fn smooth_min<T: Scalar>(t: T, a: T, b: T) -> T {
     let r = (-a / t).simd_exp2() + (-b / t).simd_exp2();
+    // let r = fast::pow2(-a / t) + fast::pow2(-b / t);
     -t * r.simd_log2()
 }
 
