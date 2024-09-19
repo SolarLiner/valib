@@ -14,6 +14,7 @@ use std::ops;
 use clippers::DiodeClipperModel;
 
 use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::math::fast;
 use valib_core::Scalar;
 
 pub mod adaa;
@@ -146,13 +147,14 @@ pub struct Tanh;
 impl<S: Scalar> Saturator<S> for Tanh {
     #[inline(always)]
     fn saturate(&self, x: S) -> S {
-        x.simd_tanh()
+        fast::tanh(x)
     }
 
     #[inline(always)]
     #[replace_float_literals(S::from_f64(literal))]
     fn sat_diff(&self, x: S) -> S {
-        1. - x.simd_tanh().simd_powi(2)
+        let tanh = fast::tanh(x);
+        1. - tanh * tanh
     }
 }
 
