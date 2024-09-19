@@ -3,7 +3,7 @@ use crate::{SynthSample, MAX_BUFFER_SIZE, NUM_VOICES, OVERSAMPLE};
 use fastrand::Rng;
 use fastrand_contrib::RngExt;
 use nih_plug::nih_log;
-use nih_plug::util::db_to_gain_fast;
+use nih_plug::util::{db_to_gain, db_to_gain_fast};
 use num_traits::{ConstOne, ConstZero};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -419,9 +419,7 @@ impl<T: Scalar> FilterImpl<T> {
             ),
         }
     }
-}
 
-impl<T: Scalar> FilterImpl<T> {
     fn set_params(&mut self, samplerate: T, cutoff: T, resonance: T) {
         match self {
             Self::Transistor(p) => {
@@ -442,6 +440,15 @@ impl<T: Scalar> FilterImpl<T> {
                     (T::from_f64(3.) * resonance).simd_exp(),
                 ));
             }
+        }
+    }
+
+    fn filter_drive(&self) -> T {
+        match self {
+            Self::Transistor(..) => T::from_f64(0.5),
+            Self::Ota(..) => T::from_f64(db_to_gain(9.) as _),
+            Self::Svf(..) => T::from_f64(db_to_gain(9.) as _),
+            Self::Biquad(..) => T::from_f64(db_to_gain(6.) as _),
         }
     }
 }
@@ -479,12 +486,16 @@ impl<T: Scalar> DSPMeta for FilterImpl<T> {
 
 impl<T: Scalar> DSPProcess<1, 1> for FilterImpl<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        match self {
+        let drive_in = self.filter_drive();
+        let drive_out = drive_in.simd_asinh().simd_recip();
+        let x = x.map(|x| drive_in * x);
+        let y = match self {
             FilterImpl::Transistor(p) => p.process(x),
             FilterImpl::Ota(p) => p.process(x),
             FilterImpl::Svf(p) => [p.process(x)[0]],
             FilterImpl::Biquad(p) => p.process(x),
-        }
+        };
+        y.map(|x| drive_out * x)
     }
 }
 
@@ -726,7 +737,7 @@ where
     [(); <T as SimdValue>::LANES]:,
 {
     fn process(&mut self, []: [Self::Sample; 0]) -> [Self::Sample; 1] {
-        const DRIFT_MAX_ST: f32 = 0.1;
+        const DRIFT_MAX_ST: f32 = 0.15;
         self.update_osc_types();
         self.update_envelopes();
 
