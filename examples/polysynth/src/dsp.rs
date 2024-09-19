@@ -15,7 +15,7 @@ use valib::filters::svf::Svf;
 use valib::math::interpolation::{sine_interpolation, Interpolate, Sine};
 use valib::oscillators::polyblep::{SawBLEP, Sawtooth, Square, SquareBLEP, Triangle};
 use valib::oscillators::Phasor;
-use valib::saturators::{bjt, Asinh, Saturator, Tanh};
+use valib::saturators::{bjt, Asinh, Clipper, Saturator, Tanh};
 use valib::simd::{SimdBool, SimdValue};
 use valib::util::{ratio_to_semitone, semitone_to_ratio};
 use valib::voice::polyphonic::Polyphonic;
@@ -393,17 +393,21 @@ enum FilterImpl<T> {
     Transistor(Ladder<T, Transistor<Tanh>>),
     Ota(Ladder<T, OTA<Tanh>>),
     Svf(Svf<T, Sinh>),
-    Biquad(Biquad<T, Asinh>),
+    Biquad(Biquad<T, Clipper<T>>),
 }
 
 impl<T: Scalar> FilterImpl<T> {
     fn from_type(samplerate: T, ftype: FilterType, cutoff: T, resonance: T) -> FilterImpl<T> {
         match ftype {
             FilterType::TransistorLadder => {
-                Self::Transistor(Ladder::new(samplerate, cutoff, T::from_f64(4.) * resonance))
+                let mut ladder = Ladder::new(samplerate, cutoff, T::from_f64(4.) * resonance);
+                ladder.compensated = true;
+                Self::Transistor(ladder)
             }
             FilterType::OTALadder => {
-                Self::Ota(Ladder::new(samplerate, cutoff, T::from_f64(4.) * resonance))
+                let mut ladder = Ladder::new(samplerate, cutoff, T::from_f64(4.) * resonance);
+                ladder.compensated = true;
+                Self::Ota(ladder)
             }
             FilterType::Svf => Self::Svf(Svf::new(samplerate, cutoff, T::one() - resonance)),
             FilterType::Digital => Self::Biquad(
@@ -411,7 +415,7 @@ impl<T: Scalar> FilterImpl<T> {
                     cutoff / samplerate,
                     (T::from_f64(3.) * resonance).simd_exp(),
                 )
-                .with_saturators(Asinh, Asinh),
+                .with_saturators(Default::default(), Default::default()),
             ),
         }
     }
@@ -510,22 +514,22 @@ impl<T: Scalar> Filter<T> {
         let resonance = T::from_f64(self.params.resonance.smoothed.next() as _);
         self.fimpl = match self.params.filter_type.value() {
             FilterType::TransistorLadder if !matches!(self.fimpl, FilterImpl::Transistor(..)) => {
-                FilterImpl::Transistor(Ladder::new(
-                    self.samplerate,
-                    cutoff,
-                    T::from_f64(4.) * resonance,
-                ))
+                let mut ladder = Ladder::new(self.samplerate, cutoff, T::from_f64(4.) * resonance);
+                ladder.compensated = true;
+                FilterImpl::Transistor(ladder)
             }
-            FilterType::OTALadder if !matches!(self.fimpl, FilterImpl::Ota(..)) => FilterImpl::Ota(
-                Ladder::new(self.samplerate, cutoff, T::from_f64(4.) * resonance),
-            ),
+            FilterType::OTALadder if !matches!(self.fimpl, FilterImpl::Ota(..)) => {
+                let mut ladder = Ladder::new(self.samplerate, cutoff, T::from_f64(4.) * resonance);
+                ladder.compensated = true;
+                FilterImpl::Ota(ladder)
+            }
             FilterType::Svf if !matches!(self.fimpl, FilterImpl::Svf(..)) => {
                 FilterImpl::Svf(Svf::new(self.samplerate, cutoff, T::one() - resonance))
             }
             FilterType::Digital if !matches!(self.fimpl, FilterImpl::Biquad(..)) => {
                 FilterImpl::Biquad(
                     Biquad::lowpass(cutoff / self.samplerate, resonance)
-                        .with_saturators(Asinh, Asinh),
+                        .with_saturators(Default::default(), Default::default()),
                 )
             }
             _ => {
@@ -750,10 +754,7 @@ where
             + osc2 * T::from_f64(mixer_params.osc2_amplitude.smoothed.next() as _)
             + noise * T::from_f64(mixer_params.noise_amplitude.smoothed.next() as _)
             + osc1 * osc2 * T::from_f64(mixer_params.rm_amplitude.smoothed.next() as _);
-        let [filter_in] = self
-            .osc_out_sat
-            .process([osc_mixer])
-            .map(|x| T::from_f64(db_to_gain_fast(9.0) as _) * x);
+        let [filter_in] = self.osc_out_sat.process([osc_mixer]);
 
         // Process filter
         let freq_mod = T::from_f64(filter_params.keyboard_tracking.smoothed.next() as _)
@@ -805,6 +806,7 @@ where
 #[derive(Debug, Copy, Clone)]
 pub struct Effects<T> {
     dc_blocker: DcBlocker<T>,
+    bjt: bjt::CommonCollector<T>,
 }
 
 impl<T: Scalar> DSPMeta for Effects<T> {
@@ -825,7 +827,7 @@ impl<T: Scalar> DSPMeta for Effects<T> {
 
 impl<T: Scalar> DSPProcess<1, 1> for Effects<T> {
     fn process(&mut self, x: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.dc_blocker.process(x)
+        self.bjt.process(self.dc_blocker.process(x))
     }
 }
 
@@ -833,6 +835,12 @@ impl<T: Scalar> Effects<T> {
     pub fn new(samplerate: f32) -> Self {
         Self {
             dc_blocker: DcBlocker::new(samplerate),
+            bjt: bjt::CommonCollector {
+                vee: T::from_f64(-2.5),
+                vcc: T::from_f64(2.5),
+                xbias: T::from_f64(0.1),
+                ybias: T::from_f64(-0.1),
+            },
         }
     }
 }
