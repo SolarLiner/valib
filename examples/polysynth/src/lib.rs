@@ -118,7 +118,6 @@ impl VoiceIdMap {
 
 type SynthSample = f32;
 
-#[derive(Debug)]
 pub struct PolysynthPlugin {
     voices: BlockAdapter<dsp::Voices<SynthSample>>,
     effects: dsp::Effects<SynthSample>,

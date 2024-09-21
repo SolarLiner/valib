@@ -18,6 +18,7 @@ use valib::oscillators::Phasor;
 use valib::saturators::{bjt, Asinh, Clipper, Saturator, Tanh};
 use valib::simd::{SimdBool, SimdValue};
 use valib::util::{ratio_to_semitone, semitone_to_ratio};
+use valib::voice::dynamic::DynamicVoice;
 use valib::voice::polyphonic::Polyphonic;
 use valib::voice::upsample::UpsampledVoice;
 use valib::voice::{NoteData, Voice};
@@ -798,7 +799,7 @@ where
 
 type SynthVoice<T> = SampleAdapter<UpsampledVoice<BlockAdapter<RawVoice<T>>>, 0, 1>;
 
-pub type VoiceManager<T> = Polyphonic<SynthVoice<T>>;
+pub type VoiceManager<T> = DynamicVoice<SynthVoice<T>>;
 
 pub fn create_voice_manager<T: ConstZero + ConstOne + Scalar<Element = f32>>(
     samplerate: f32,
@@ -807,14 +808,19 @@ pub fn create_voice_manager<T: ConstZero + ConstOne + Scalar<Element = f32>>(
 where
     [(); <T as SimdValue>::LANES]:,
 {
-    Polyphonic::new(samplerate, NUM_VOICES, move |samplerate, note_data| {
-        let target_samplerate = OVERSAMPLE as f64 * samplerate as f64;
-        SampleAdapter::new(UpsampledVoice::new(
-            OVERSAMPLE,
-            MAX_BUFFER_SIZE,
-            BlockAdapter(RawVoice::new(target_samplerate, params.clone(), note_data)),
-        ))
-    })
+    DynamicVoice::new_poly(
+        samplerate,
+        NUM_VOICES,
+        true,
+        move |samplerate, note_data| {
+            let target_samplerate = OVERSAMPLE as f64 * samplerate as f64;
+            SampleAdapter::new(UpsampledVoice::new(
+                OVERSAMPLE,
+                MAX_BUFFER_SIZE,
+                BlockAdapter(RawVoice::new(target_samplerate, params.clone(), note_data)),
+            ))
+        },
+    )
 }
 
 pub type Voices<T> = VoiceManager<T>;
