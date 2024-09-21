@@ -4,9 +4,10 @@
 //! This crate provides abstractions around voice processing and voice management.
 use valib_core::dsp::{BlockAdapter, DSPMeta, DSPProcessBlock, SampleAdapter};
 use valib_core::simd::SimdRealField;
-use valib_core::util::midi_to_freq;
+use valib_core::util::{midi_to_freq, semitone_to_ratio};
 use valib_core::Scalar;
 
+pub mod dynamic;
 pub mod monophonic;
 pub mod polyphonic;
 #[cfg(feature = "resampled")]
@@ -161,6 +162,8 @@ impl<T: Scalar> Gain<T> {
 pub struct NoteData<T> {
     /// Note frequency
     pub frequency: T,
+    /// Frequency modulation (pitch bend, glide)
+    pub modulation_st: T,
     /// Note velocity
     pub velocity: Velocity<T>,
     /// Note gain
@@ -180,11 +183,16 @@ impl<T: Scalar> NoteData<T> {
         let pressure = T::zero();
         Self {
             frequency,
+            modulation_st: T::zero(),
             velocity,
             gain,
             pan,
             pressure,
         }
+    }
+
+    pub fn resolve_frequency(&self) -> T {
+        semitone_to_ratio(self.modulation_st) * self.frequency
     }
 }
 

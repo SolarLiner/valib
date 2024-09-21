@@ -4,17 +4,23 @@
 
 use crate::{NoteData, Voice, VoiceManager};
 use num_traits::zero;
+use numeric_literals::replace_float_literals;
 use std::fmt;
 use std::fmt::Formatter;
+use std::ops::Range;
 use valib_core::dsp::{DSPMeta, DSPProcess};
+use valib_core::util::lerp;
+use valib_core::Scalar;
 
 /// Polyphonic voice manager with rotating voice allocation
 pub struct Polyphonic<V: Voice> {
+    pub pitch_bend_st: Range<V::Sample>,
     create_voice: Box<dyn 'static + Send + Sync + Fn(f32, NoteData<V::Sample>) -> V>,
     voice_pool: Box<[Option<V>]>,
     active_voices: usize,
     next_voice: usize,
     samplerate: f32,
+    pitch_bend: V::Sample,
 }
 
 impl<V: Voice> fmt::Debug for Polyphonic<V> {
@@ -47,11 +53,13 @@ impl<V: Voice> Polyphonic<V> {
         create_voice: impl 'static + Send + Sync + Fn(f32, NoteData<V::Sample>) -> V + 'static,
     ) -> Self {
         Self {
+            pitch_bend_st: V::Sample::from_f64(-2.)..V::Sample::from_f64(2.),
             create_voice: Box::new(create_voice),
             next_voice: 0,
             voice_pool: (0..voice_capacity).map(|_| None).collect(),
             active_voices: 0,
             samplerate,
+            pitch_bend: zero(),
         }
     }
 
@@ -63,6 +71,19 @@ impl<V: Voice> Polyphonic<V> {
                 self.active_voices -= 1;
             }
         }
+    }
+
+    fn update_voices_pitchmod(&mut self) {
+        let mod_st = self.get_pitch_bend();
+        for voice in self.voice_pool.iter_mut().filter_map(|opt| opt.as_mut()) {
+            voice.note_data_mut().modulation_st = mod_st;
+        }
+    }
+
+    #[replace_float_literals(V::Sample::from_f64(literal))]
+    fn get_pitch_bend(&self) -> V::Sample {
+        let t = 0.5 * self.pitch_bend + 0.5;
+        lerp(t, self.pitch_bend_st.start, self.pitch_bend_st.end)
     }
 }
 
@@ -152,6 +173,31 @@ impl<V: Voice> VoiceManager for Polyphonic<V> {
     fn panic(&mut self) {
         self.voice_pool.fill_with(|| None);
         self.active_voices = 0;
+    }
+
+    fn pitch_bend(&mut self, amount: f64) {
+        self.pitch_bend = V::Sample::from_f64(amount);
+        self.update_voices_pitchmod();
+    }
+
+    fn aftertouch(&mut self, amount: f64) {
+        let pressure = V::Sample::from_f64(amount);
+        for voice in self.voice_pool.iter_mut().filter_map(|x| x.as_mut()) {
+            voice.note_data_mut().pressure = pressure;
+        }
+    }
+
+    fn pressure(&mut self, id: Self::ID, pressure: f32) {
+        if let Some(voice) = &mut self.voice_pool[id] {
+            voice.note_data_mut().pressure = V::Sample::from_f64(pressure as _);
+        }
+    }
+
+    fn glide(&mut self, id: Self::ID, semitones: f32) {
+        let mod_st = V::Sample::from_f64(semitones as _);
+        if let Some(voice) = &mut self.voice_pool[id] {
+            voice.note_data_mut().modulation_st = mod_st;
+        }
     }
 }
 
