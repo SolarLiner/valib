@@ -186,6 +186,8 @@ pub struct FilterParams {
     pub keyboard_tracking: FloatParam,
     #[id = "env"]
     pub env_amt: FloatParam,
+    #[id = "fm"]
+    pub freq_mod: FloatParam,
     #[id = "fty"]
     pub filter_type: EnumParam<FilterType>,
 }
@@ -249,6 +251,20 @@ impl FilterParams {
             .with_smoother(SmoothingStyle::OversamplingAware(
                 oversample.clone(),
                 &SmoothingStyle::Exponential(50.),
+            )),
+            freq_mod: FloatParam::new(
+                "Freq. Modulation",
+                0.0,
+                FloatRange::Linear {
+                    min: -24.,
+                    max: 24.,
+                },
+            )
+            .with_unit(" st")
+            .with_value_to_string(Arc::new(|x| format!("{:.2}", x)))
+            .with_smoother(SmoothingStyle::OversamplingAware(
+                oversample.clone(),
+                &SmoothingStyle::Linear(10.),
             )),
             filter_type: EnumParam::new("Filter Type", FilterType::TransistorLadder),
         }
