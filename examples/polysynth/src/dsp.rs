@@ -529,9 +529,10 @@ impl<T: Scalar> Filter<T> {
 }
 
 impl<T: Scalar> Filter<T> {
-    fn update_filter(&mut self, modulation_st: T) {
-        let cutoff =
-            semitone_to_ratio(modulation_st) * T::from_f64(self.params.cutoff.smoothed.next() as _);
+    fn update_filter(&mut self, modulation_st: T, input: T) {
+        let fm = semitone_to_ratio(T::from_f64(self.params.freq_mod.smoothed.next() as _) * input);
+        let modulation = semitone_to_ratio(modulation_st);
+        let cutoff = modulation * fm * T::from_f64(self.params.cutoff.smoothed.next() as _);
         let cutoff = cutoff.simd_clamp(T::zero(), self.samplerate / T::from_f64(12.));
         let resonance = T::from_f64(self.params.resonance.smoothed.next() as _);
         self.fimpl = match self.params.filter_type.value() {
@@ -583,7 +584,7 @@ impl<T: Scalar> DSPMeta for Filter<T> {
 
 impl<T: Scalar> DSPProcess<2, 1> for Filter<T> {
     fn process(&mut self, [x, mod_st]: [Self::Sample; 2]) -> [Self::Sample; 1] {
-        self.update_filter(mod_st);
+        self.update_filter(mod_st, x);
         self.fimpl.process([x])
     }
 }
