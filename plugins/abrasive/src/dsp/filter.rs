@@ -163,6 +163,7 @@ pub struct FilterModule<T> {
     input_clip: bjt::CommonCollector<T>,
     svf: Svf<T, Sinh>,
     mixer: FilterMixer<T>,
+    scale: T,
 }
 
 impl<T: Scalar> DSPMeta for FilterModule<T> {
@@ -185,7 +186,7 @@ impl<T: Scalar> DSPMeta for FilterModule<T> {
 impl<T: Scalar> DSPProcess<1, 1> for FilterModule<T> {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         self.mixer.filter_type = self.params.ftype.value();
-        self.mixer.amp = T::from_f64(self.params.amp.smoothed.next() as _);
+        self.mixer.amp = self.scale * T::from_f64(self.params.amp.smoothed.next() as _);
         self.svf.set_cutoff(self.params.cutoff.value_as());
         self.svf.set_r(T::one() - self.params.q.value_as::<T>());
 
@@ -214,7 +215,12 @@ impl<T: Scalar> FilterModule<T> {
             input_clip: Default::default(),
             svf,
             mixer,
+            scale: T::one(),
         }
+    }
+
+    pub fn set_scale(&mut self, scale: T) {
+        self.scale = scale;
     }
 
     pub fn use_param_values(&mut self, use_modulated: bool) {

@@ -80,6 +80,10 @@ impl<T: Scalar> DSPMeta for Equalizer<T> {
 impl<T: Scalar> DSPProcess<1, 1> for Equalizer<T> {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
         let drive = T::from_f64(self.params.drive.smoothed.next() as _);
+        let scale = T::from_f64(self.params.scale.smoothed.next() as _);
+        for filter in &mut self.dsp.0 {
+            filter.set_scale(scale);
+        }
         let [y] = self.dsp.process([drive * x]);
         [y / drive.simd_asinh()]
     }
