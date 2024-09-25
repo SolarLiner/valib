@@ -1,66 +1,34 @@
-#![feature(array_methods)]
-#![feature(const_trait_impl)]
-
 extern crate core;
 
-use crate::{
-    filter::{Filter, FilterParams},
-    spectrum::Analyzer,
-};
+use crate::spectrum::Analyzer;
 use atomic_float::AtomicF32;
 use nih_plug::{params::persist::PersistentField, prelude::*};
 use std::sync::{Arc, Mutex};
-use valib::dsp::blocks::Series;
-use valib::dsp::buffer::AudioBuffer;
+use valib::contrib::nih_plug::process_buffer_simd;
+use valib::Scalar;
 
-use valib::dsp::{DSPMeta, DSPProcessBlock};
-use valib::simd::{AutoF32x2, SimdValue};
+use crate::dsp::DspParams;
+use valib::dsp::{BlockAdapter, DSPMeta};
+use valib::simd::AutoF32x2;
 
-pub mod editor;
-mod filter;
+mod dsp;
+mod editor;
 mod spectrum;
 
-pub const NUM_BANDS: usize = 5;
-pub const OVERSAMPLE: usize = 2;
+pub const MAX_BLOCK_SIZE: usize = 64;
 
-type Sample = AutoF32x2;
-
-#[cfg(not(feature = "example"))]
 #[derive(Debug, Params)]
-struct AbrasiveParams<const N: usize> {
-    #[id = "drive"]
-    drive: FloatParam,
-    #[id = "scale"]
-    scale: FloatParam,
-    #[nested(array)]
-    params: [Arc<FilterParams>; N],
+struct AbrasiveParams {
+    #[nested]
+    dsp_params: Arc<DspParams>,
     #[id = "spsm"]
     analyzer_smooth: FloatParam,
 }
 
-#[cfg(not(feature = "example"))]
-impl<const N: usize> Default for AbrasiveParams<N> {
+impl Default for AbrasiveParams {
     fn default() -> Self {
         Self {
-            drive: FloatParam::new(
-                "Drive",
-                1.,
-                FloatRange::Skewed {
-                    min: 1e-2,
-                    max: 100.,
-                    factor: FloatRange::gain_skew_factor(-40., 40.),
-                },
-            )
-            .with_string_to_value(formatters::s2v_f32_gain_to_db())
-            .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            .with_unit("dB")
-            .with_smoother(SmoothingStyle::Exponential(100.)),
-            scale: FloatParam::new("Scale", 1., FloatRange::Linear { min: -1., max: 1. })
-                .with_string_to_value(formatters::s2v_f32_percentage())
-                .with_value_to_string(formatters::v2s_f32_percentage(2))
-                .with_smoother(SmoothingStyle::Exponential(100.))
-                .with_unit("%"),
-            params: std::array::from_fn(|_| Default::default()),
+            dsp_params: Arc::default(),
             analyzer_smooth: FloatParam::new(
                 "UI Analyzer smoothing",
                 2500.,
@@ -75,10 +43,11 @@ impl<const N: usize> Default for AbrasiveParams<N> {
     }
 }
 
-#[cfg(not(feature = "example"))]
-pub struct Abrasive<const N: usize> {
-    params: Arc<AbrasiveParams<N>>,
-    filters: Series<[Filter; N]>,
+type Sample = AutoF32x2;
+
+pub struct Abrasive {
+    params: Arc<AbrasiveParams>,
+    dsp: dsp::Dsp<Sample>,
     samplerate: Arc<AtomicF32>,
     analyzer_in: Analyzer,
     analyzer_input: editor::SpectrumUI,
@@ -86,22 +55,19 @@ pub struct Abrasive<const N: usize> {
     analyzer_output: editor::SpectrumUI,
 }
 
-#[cfg(not(feature = "example"))]
-impl<const N: usize> Default for Abrasive<N> {
+impl Default for Abrasive {
     fn default() -> Self {
+        const DEFAULT_SAMPLERATE: f64 = 44100.0;
         let params = AbrasiveParams::default();
-        let filters = params
-            .params
-            .each_ref()
-            .map(|p| Filter::new(44.1e3, p.clone()));
-        let (analyzer_in, spectrum_in) = spectrum::Analyzer::new(44.1e3, 2, 2048);
+        let dsp = dsp::create(DEFAULT_SAMPLERATE as _, params.dsp_params.clone());
+        let (analyzer_in, spectrum_in) = Analyzer::new(44.1e3, 2, 2048);
         let analyzer_input = Arc::new(Mutex::new(spectrum_in));
-        let (analyzer_out, spectrum_out) = spectrum::Analyzer::new(44.1e3, 2, 2048);
+        let (analyzer_out, spectrum_out) = Analyzer::new(44.1e3, 2, 2048);
         let analyzer_output = Arc::new(Mutex::new(spectrum_out));
         let samplerate = Arc::new(AtomicF32::new(44.1e3));
         Self {
             params: Arc::new(params),
-            filters: Series(filters),
+            dsp,
             samplerate,
             analyzer_in,
             analyzer_input,
@@ -111,15 +77,22 @@ impl<const N: usize> Default for Abrasive<N> {
     }
 }
 
-#[cfg(not(feature = "example"))]
-impl Plugin for Abrasive<NUM_BANDS> {
+impl Plugin for Abrasive {
     const NAME: &'static str = "Abrasive";
     const VENDOR: &'static str = "SolarLiner";
     const URL: &'static str = "https://github.com/solarliner/abrasive";
     const EMAIL: &'static str = "me@solarliner.dev";
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
-    type BackgroundTask = ();
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
+        main_input_channels: NonZeroU32::new(2),
+        main_output_channels: NonZeroU32::new(2),
+        aux_input_ports: &[],
+        aux_output_ports: &[],
+        names: PortNames::const_default(),
+    }];
     type SysExMessage = ();
+
+    type BackgroundTask = ();
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
@@ -145,6 +118,7 @@ impl Plugin for Abrasive<NUM_BANDS> {
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         let sr = buffer_config.sample_rate;
+        self.dsp.set_samplerate(sr);
         self.samplerate.set(sr);
         self.analyzer_in.set_samplerate(sr);
         self.analyzer_out.set_samplerate(sr);
@@ -152,7 +126,6 @@ impl Plugin for Abrasive<NUM_BANDS> {
             .set_decay(self.params.analyzer_smooth.value());
         self.analyzer_out
             .set_decay(self.params.analyzer_smooth.value());
-        self.set_filterbank_samplerate(sr);
         true
     }
 
@@ -162,73 +135,19 @@ impl Plugin for Abrasive<NUM_BANDS> {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        _context.set_latency_samples(self.filters.latency() as _);
+        _context.set_latency_samples(self.dsp.latency() as _);
         self.analyzer_in
             .set_decay(self.params.analyzer_smooth.value());
         self.analyzer_out
             .set_decay(self.params.analyzer_smooth.value());
         self.analyzer_in.process_buffer(buffer);
-        self.process_filter_bank::<256>(buffer);
+        process_buffer_simd::<_, _, MAX_BLOCK_SIZE>(&mut self.dsp, buffer);
         self.analyzer_out.process_buffer(buffer);
         ProcessStatus::Normal
     }
-
-    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
-        main_input_channels: NonZeroU32::new(2),
-        main_output_channels: NonZeroU32::new(2),
-        aux_input_ports: &[],
-        aux_output_ports: &[],
-        names: PortNames::const_default(),
-    }];
 }
 
-#[cfg(not(feature = "example"))]
-impl Abrasive<NUM_BANDS> {
-    fn set_filterbank_samplerate(&mut self, _sr: f32) {
-        for filter in self.filters.0.iter_mut() {
-            filter.reset();
-            filter.set_samplerate(_sr);
-        }
-    }
-
-    fn process_filter_bank<const BLOCK_SIZE: usize>(&mut self, buffer: &mut Buffer) {
-        let mut drive = [0.; BLOCK_SIZE];
-        let mut scale = drive;
-
-        for (_, mut block) in buffer.iter_blocks(BLOCK_SIZE) {
-            let len = block.samples();
-
-            self.params
-                .drive
-                .smoothed
-                .next_block_exact(&mut drive[..len]);
-            self.params
-                .scale
-                .smoothed
-                .next_block_exact(&mut scale[..len]);
-            let mut simd_input = AudioBuffer::zeroed(BLOCK_SIZE);
-            let mut simd_output = simd_input.clone();
-            for (i, mut samples) in block.iter_samples().enumerate() {
-                simd_input[0][i] =
-                    Sample::from([*samples.get_mut(0).unwrap(), *samples.get_mut(1).unwrap()]);
-                simd_input[0][i] *= Sample::splat(drive[i]);
-            }
-
-            self.filters
-                .process_block(simd_input.as_ref(), simd_output.as_mut());
-
-            for (i, mut samples) in block.iter_samples().enumerate() {
-                let drive = Sample::splat(drive[i]);
-                simd_output[0][i] /= drive;
-                *samples.get_mut(0).unwrap() = simd_output[0][i].extract(0);
-                *samples.get_mut(1).unwrap() = simd_output[0][i].extract(1);
-            }
-        }
-    }
-}
-
-#[cfg(not(feature = "example"))]
-impl ClapPlugin for Abrasive<NUM_BANDS> {
+impl ClapPlugin for Abrasive {
     const CLAP_ID: &'static str = "com.github.SolarLiner.valib.Abrasive";
     const CLAP_DESCRIPTION: Option<&'static str> =
         Some("Configurable colorful parametric equalizer");
@@ -243,8 +162,7 @@ impl ClapPlugin for Abrasive<NUM_BANDS> {
     ];
 }
 
-#[cfg(not(feature = "example"))]
-impl Vst3Plugin for Abrasive<NUM_BANDS> {
+impl Vst3Plugin for Abrasive {
     const VST3_CLASS_ID: [u8; 16] = *b"ValibAbrasiveSLN";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] = &[
         Vst3SubCategory::Fx,
@@ -255,7 +173,5 @@ impl Vst3Plugin for Abrasive<NUM_BANDS> {
     ];
 }
 
-#[cfg(not(feature = "example"))]
-nih_export_clap!(Abrasive<NUM_BANDS>);
-#[cfg(not(feature = "example"))]
-nih_export_vst3!(Abrasive<NUM_BANDS>);
+nih_export_clap!(Abrasive);
+nih_export_vst3!(Abrasive);

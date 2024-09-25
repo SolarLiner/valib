@@ -106,7 +106,7 @@ impl<T: Scalar, S: Saturator<T>> DspAnalysis<1, 3> for Svf<T, S> {
     }
 }
 
-impl<T: Scalar, C: Default> Svf<T, C> {
+impl<T: Scalar> Svf<T, Linear> {
     /// Create a new SVF filter with the provided sample rate, frequency cutoff (in Hz) and resonance amount
     /// (in 0..1 for stable filters, otherwise use bounded nonlinearities).
     pub fn new(samplerate: T, fc: T, r: T) -> Self {
@@ -119,7 +119,7 @@ impl<T: Scalar, C: Default> Svf<T, C> {
             d: T::zero(),
             samplerate,
             w_step: T::simd_pi() / samplerate,
-            saturator: C::default(),
+            saturator: Linear,
         };
         this.update_coefficients();
         this
@@ -156,9 +156,29 @@ impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
     }
 
     /// Replace the saturators in this Biquad instance with the provided values.
-    pub fn with_saturator(mut self, sat: S) -> Self {
-        self.set_saturator(sat);
-        self
+    pub fn with_saturator<S2: Saturator<T>>(self, saturator: S2) -> Svf<T, S2> {
+        let Self {
+            s,
+            r,
+            fc,
+            g,
+            g1,
+            d,
+            w_step,
+            samplerate,
+            ..
+        } = self;
+        Svf {
+            s,
+            r,
+            fc,
+            g,
+            g1,
+            d,
+            w_step,
+            samplerate,
+            saturator,
+        }
     }
 }
 

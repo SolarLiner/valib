@@ -4,7 +4,7 @@ use atomic_float::AtomicF32;
 use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::{prelude::*, vg};
 
-use crate::filter::FilterParams;
+use crate::dsp::filter::FilterParams;
 
 pub struct SpectrumAnalyzer {
     spectrum: super::SpectrumUI,
