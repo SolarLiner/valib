@@ -4,12 +4,11 @@ use atomic_float::AtomicF32;
 use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::{prelude::*, vg};
 
-use crate::dsp::filter::FilterParams;
+use crate::editor::eq::LogRange;
 
 pub struct SpectrumAnalyzer {
     spectrum: super::SpectrumUI,
     samplerate: Arc<AtomicF32>,
-    frange: FloatRange,
 }
 
 impl SpectrumAnalyzer {
@@ -21,12 +20,13 @@ impl SpectrumAnalyzer {
         Self {
             spectrum,
             samplerate,
-            frange: FilterParams::cutoff_range(),
         }
         .build(cx, |_cx| ())
     }
 
     fn draw_analyzer(&self, cx: &mut DrawContext, canvas: &mut Canvas, bounds: BoundingBox) {
+        let samplerate = self.samplerate.load(Ordering::Relaxed);
+        let range = LogRange::new(2.0, 20.0, samplerate.min(24e3));
         let line_width = cx.scale_factor() * 1.5;
         let line_paint = vg::Paint::color(cx.font_color().into()).with_line_width(line_width);
 
@@ -43,7 +43,7 @@ impl SpectrumAnalyzer {
 
             let freq_norm = i as f32 / spectrum.data.len() as f32;
             let frequency = freq_norm * nyquist;
-            let x = self.frange.normalize(frequency);
+            let x = range.normalize(frequency);
             let slope = 3.;
             let octavediff = frequency.log2() - 1000f32.log2();
             let octavegain = slope * octavediff;

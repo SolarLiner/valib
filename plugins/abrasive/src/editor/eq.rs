@@ -9,6 +9,32 @@ use crate::AbrasiveParams;
 use valib::dsp::analysis::DspAnalysis;
 use valib::simd::SimdComplexField;
 
+pub struct LogRange {
+    base: f32,
+    log_min: f32,
+    log_max: f32,
+}
+
+impl LogRange {
+    pub fn new(base: f32, min: f32, max: f32) -> Self {
+        Self {
+            base,
+            log_min: min.log(base),
+            log_max: max.log(base),
+        }
+    }
+
+    pub fn normalize(&self, x: f32) -> f32 {
+        let x = x.log(self.base);
+        (x - self.log_min) / (self.log_max - self.log_min)
+    }
+
+    pub fn unnormalize(&self, x: f32) -> f32 {
+        let x = self.log_min + x * (self.log_max - self.log_min);
+        self.base.powf(x)
+    }
+}
+
 #[derive(Debug, Clone)]
 struct EqData {
     samplerate: Arc<AtomicF32>,
@@ -25,6 +51,8 @@ impl View for EqData {
 
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
         let samplerate = self.samplerate.load(Ordering::Relaxed);
+        let range = LogRange::new(2.0, 20., samplerate.min(24e3));
+
         let mut dsp = Equalizer::new(samplerate, self.params.dsp_params.clone());
         dsp.use_param_values(self.modulated);
         let bounds = cx.bounds();
@@ -33,7 +61,7 @@ impl View for EqData {
 
         for j in 0..4 * bounds.w as usize {
             let x = j as f32 / (4. * bounds.w);
-            let freq = self.frequency_range.unnormalize(x);
+            let freq = range.unnormalize(x);
             let [[y]] = dsp.freq_response(samplerate, freq);
             let y = (util::gain_to_db(y.simd_abs()) + 24.) / 48.;
             if j == 0 {

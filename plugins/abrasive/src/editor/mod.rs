@@ -1,3 +1,4 @@
+use crate::editor::background::Background;
 use crate::spectrum::Spectrum;
 use analyzer::SpectrumAnalyzer;
 use atomic_float::AtomicF32;
@@ -48,7 +49,7 @@ pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Edito
 
         ResizeHandle::new(cx);
         VStack::new(cx, |cx| {
-            analyzer(cx).class("analyzer");
+            analyzer(cx, data.samplerate.clone()).class("analyzer");
             HStack::new(cx, |cx| {
                 for i in 0..super::dsp::NUM_BANDS {
                     band::band_knobs(cx, i);
@@ -62,9 +63,10 @@ pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Edito
     })
 }
 
-fn analyzer(cx: &mut Context) -> Handle<impl View> {
+fn analyzer(cx: &mut Context, samplerate: Arc<AtomicF32>) -> Handle<impl View> {
     nih_log!("Creating analyzer");
-    ZStack::new(cx, |cx| {
+    ZStack::new(cx, move |cx| {
+        Background::new(cx, samplerate).class("bg");
         SpectrumAnalyzer::new(cx, Data::spectrum_in.get(cx), Data::samplerate.get(cx))
             .class("input");
         SpectrumAnalyzer::new(cx, Data::spectrum_out.get(cx), Data::samplerate.get(cx))

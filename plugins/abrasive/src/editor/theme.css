@@ -7,6 +7,10 @@
   color: #fff;
 }
 
+.analyzer .bg {
+  color: #444444;
+}
+
 spectrum {
   stroke-width: 1px;
 }

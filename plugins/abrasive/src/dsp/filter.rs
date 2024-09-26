@@ -200,8 +200,8 @@ impl<T: Scalar> DspAnalysis<1, 1> for FilterModule<T> {
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
         let h = SMatrix::<_, 3, 1>::from(self.svf.h_z(z));
         let h = h.insert_row(0, Complex::one());
-        let y = h * SMatrix::<_, 1, 4>::from(self.mixer.h_z(z));
-        [[y.sum()]]
+        let y = SMatrix::<_, 1, 4>::from(self.mixer.h_z(z)) * h;
+        [[y[0]]]
     }
 }
 
