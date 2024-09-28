@@ -14,7 +14,10 @@ where
     na::DefaultAllocator:
         na::allocator::Allocator<Self::Dim> + na::allocator::Allocator<Self::Dim, Self::Dim>,
 {
+    /// Scalar type of the equation
     type Scalar: Scalar;
+
+    /// Equation dimension, typed using [`nalgebra`] dimensions.
     type Dim: Dim;
 
     /// Evaluate the equation at the given input vector.
@@ -53,14 +56,18 @@ where
     }
 }
 
+/// Perform root-finding over an implicit equation with the Newton-Rhapson method.
 #[derive(Debug)]
 pub struct NewtonRhapson<Equ: RootEq>
 where
     na::DefaultAllocator:
         na::allocator::Allocator<Equ::Dim> + na::allocator::Allocator<Equ::Dim, Equ::Dim>,
 {
+    /// Maximum tolerance accepted to terminate iteration
     pub tolerance: Option<Equ::Scalar>,
+    /// Maximum number of iterations allowed to find the root
     pub max_iterations: Option<NonZeroUsize>,
+    /// Implicit equation type
     pub equation: Equ,
 }
 
@@ -71,6 +78,15 @@ where
         + nalgebra::allocator::Allocator<Equ::Dim, Equ::Dim>,
     OVector<Equ::Scalar, Equ::Dim>: Copy,
 {
+    /// Create a new solver, given the equation and settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `equation`: Implicit equation to solve
+    /// * `tolerance`: Maximum tolerance allowed to terminate the iteration
+    /// * `max_iterations`: Maximum number of iterations allowed
+    ///
+    /// returns: NewtonRhapson<Equ>
     pub fn new(
         equation: Equ,
         tolerance: Option<Equ::Scalar>,
@@ -83,15 +99,34 @@ where
         }
     }
 
-    pub fn run(&self, mut input: OVector<Equ::Scalar, Equ::Dim>) -> OVector<Equ::Scalar, Equ::Dim> {
-        let view = input.as_view_mut();
+    /// Run the root-finding algorithm, given the initial guess.
+    ///
+    /// # Arguments
+    ///
+    /// * `initial_guess`: Initial guess to use as first value into the iteration scheme.
+    ///     Performance depends a lot on this value being a good guess for a root of the equation.
+    ///
+    /// returns: Matrix<<Equ as RootEq>::Scalar, <Equ as RootEq>::Dim, Const<1>, <DefaultAllocator as Allocator<<Equ as RootEq>::Dim, Const<1>>>::Buffer<<Equ as RootEq>::Scalar>>
+    pub fn run(
+        &self,
+        mut initial_guess: OVector<Equ::Scalar, Equ::Dim>,
+    ) -> OVector<Equ::Scalar, Equ::Dim> {
+        let view = initial_guess.as_view_mut();
         self.run_in_place(view);
-        input
+        initial_guess
     }
 
+    /// Run the root-finding algorithm, using the provided view as initial guess and result.
+    ///
+    /// # Arguments
+    ///
+    /// * `value`:  Initial guess to use as first value into the iteration scheme.
+    ///     Performance depends a lot on this value being a good guess for a root of the equation.
+    ///
+    /// returns: usize
     pub fn run_in_place(
         &self,
-        mut input: VectorViewMut<Equ::Scalar, Equ::Dim, impl Dim, impl Dim>,
+        mut value: VectorViewMut<Equ::Scalar, Equ::Dim, impl Dim, impl Dim>,
     ) -> usize {
         debug_assert!(
             self.tolerance.is_some() || self.max_iterations.is_some(),
@@ -101,8 +136,8 @@ where
         for i in self.iterations_iter() {
             let Some(ret) = self
                 .equation
-                .j_inv(input.as_view())
-                .map(|jinv| jinv * self.equation.eval(input.as_view()))
+                .j_inv(value.as_view())
+                .map(|jinv| jinv * self.equation.eval(value.as_view()))
             else {
                 return i;
             };
@@ -112,7 +147,7 @@ where
                 .flat_map(|v| v.into_iter())
                 .all(|v| v.is_finite());
 
-            input -= ret;
+            value -= ret;
             if !all_finite || self.check_tolerance(ret.as_view()) {
                 return i;
             }

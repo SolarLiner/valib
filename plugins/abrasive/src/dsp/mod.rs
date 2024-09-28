@@ -4,17 +4,15 @@ use crate::{
 };
 use nalgebra::Complex;
 use nih_plug::prelude::*;
-use num_traits::Float;
 use std::sync::Arc;
 use valib::Scalar;
 use valib::{
-    contrib::nih_plug::ValueAs,
-    dsp::{DSPMeta, DSPProcess},
-    simd::SimdComplexField,
-};
-use valib::{
     dsp::{analysis::DspAnalysis, blocks::Series, BlockAdapter},
     oversample::{Oversample, Oversampled},
+};
+use valib::{
+    dsp::{DSPMeta, DSPProcess},
+    simd::SimdComplexField,
 };
 
 pub mod filter;

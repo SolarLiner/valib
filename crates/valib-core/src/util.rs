@@ -202,6 +202,12 @@ pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
     2.0.simd_powf(semi / 12.0)
 }
 
+/// Create a new matrix referencing this one as storage. The resulting matrix will have the same
+/// shape and same strides as the input one.
+///
+/// # Arguments
+///
+/// * `m`: Source matrix
 pub fn matrix_view<T: Scalar, R: Dim, C: Dim, S: Storage<T, R, C>>(
     m: &Matrix<T, R, C, S>,
 ) -> MatrixView<T, R, C, S::RStride, S::CStride> {
@@ -211,6 +217,12 @@ pub fn matrix_view<T: Scalar, R: Dim, C: Dim, S: Storage<T, R, C>>(
     })
 }
 
+/// Create a new matrix mutably referencing this one as storage. The resulting matrix will have the
+/// same shape and same strides as the input one.
+///
+/// # Arguments
+///
+/// * `m`: Source matrix
 pub fn matrix_view_mut<T: Scalar, R: Dim, C: Dim, S: StorageMut<T, R, C>>(
     m: &mut Matrix<T, R, C, S>,
 ) -> MatrixViewMut<T, R, C, S::RStride, S::CStride> {
@@ -220,6 +232,12 @@ pub fn matrix_view_mut<T: Scalar, R: Dim, C: Dim, S: StorageMut<T, R, C>>(
     })
 }
 
+/// Create a new vector referencing this one as storage. The resulting vector will have the same
+/// shape and same strides as the input one.
+///
+/// # Arguments
+///
+/// * `v`: Source vector
 pub fn vector_view<T: Scalar, D: Dim, S: Storage<T, D>>(
     v: &Vector<T, D, S>,
 ) -> VectorView<T, D, S::RStride, S::CStride> {
@@ -229,6 +247,12 @@ pub fn vector_view<T: Scalar, D: Dim, S: Storage<T, D>>(
     })
 }
 
+/// Create a new vector mutably referencing this one as storage. The resulting vector will have the
+/// same shape and same strides as the input one.
+///
+/// # Arguments
+///
+/// * `v`: Source vector
 pub fn vector_view_mut<T: Scalar, D: Dim, S: StorageMut<T, D>>(
     v: &mut Vector<T, D, S>,
 ) -> VectorViewMut<T, D, S::RStride, S::CStride> {
