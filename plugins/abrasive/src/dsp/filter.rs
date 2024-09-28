@@ -230,9 +230,9 @@ impl<T: Scalar> FilterModule<T> {
             self.params.cutoff.unmodulated_plain_value() as _
         }));
         self.svf.set_r(T::from_f64(if use_modulated {
-            self.params.q.modulated_plain_value() as _
+            1.0 - self.params.q.modulated_plain_value() as f64
         } else {
-            self.params.q.unmodulated_plain_value() as _
+            1.0 - self.params.q.unmodulated_plain_value() as f64
         }));
     }
 }

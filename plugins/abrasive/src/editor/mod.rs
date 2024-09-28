@@ -6,6 +6,7 @@ use nih_plug::prelude::*;
 use nih_plug_vizia::widgets::ResizeHandle;
 use nih_plug_vizia::{create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
 use resource::resource;
+use std::fs;
 use std::sync::{Arc, Mutex};
 use triple_buffer::Output;
 
@@ -17,6 +18,7 @@ mod band;
 pub mod components;
 
 mod eq;
+mod util;
 
 pub type SpectrumUI = Arc<Mutex<Output<Spectrum>>>;
 
@@ -41,8 +43,17 @@ pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Edito
         cx.emit(EnvironmentEvent::SetThemeMode(AppTheme::BuiltIn(
             ThemeMode::DarkMode,
         )));
-        cx.add_font_mem(resource!("src/assets/Metrophobic-Regular.ttf"));
-        if let Err(err) = cx.add_stylesheet(include_style!("src/editor/theme.css")) {
+        match fs::read(util::resolve_asset_file(
+            "fonts/Metrophobic-Regular.ttf".as_ref(),
+        )) {
+            Ok(data) => {
+                cx.add_font_mem(data);
+            }
+            Err(err) => {
+                nih_error!("Cannot load font: {err}");
+            }
+        }
+        if let Err(err) = cx.add_stylesheet(util::resolve_asset_file("styles/theme.css".as_ref())) {
             nih_error!("Cannot read CSS: {err}");
         }
         data.clone().build(cx);
@@ -67,10 +78,8 @@ fn analyzer(cx: &mut Context, samplerate: Arc<AtomicF32>) -> Handle<impl View> {
     nih_log!("Creating analyzer");
     ZStack::new(cx, move |cx| {
         Background::new(cx, samplerate).class("bg");
-        SpectrumAnalyzer::new(cx, Data::spectrum_in.get(cx), Data::samplerate.get(cx))
-            .class("input");
-        SpectrumAnalyzer::new(cx, Data::spectrum_out.get(cx), Data::samplerate.get(cx))
-            .class("output");
+        SpectrumAnalyzer::new(cx, Data::spectrum_in.get(cx)).class("input");
+        SpectrumAnalyzer::new(cx, Data::spectrum_out.get(cx)).class("output");
         eq::build(cx, Data::samplerate, Data::params).id("eq");
     })
 }
