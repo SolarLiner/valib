@@ -1,0 +1,14 @@
+version = 1
+
+[metadata]
+title = "Default"
+author = "valib"
+revision = 1
+tags = ["default","init"]
+extra_1 = "Hello"
+extra_2 = 20
+
+[metadata.extra_table]
+test = true
+
+[data]

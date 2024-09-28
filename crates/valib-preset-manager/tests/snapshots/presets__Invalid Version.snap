@@ -1,0 +1,22 @@
+---
+source: crates/valib-preset-manager/tests/presets.rs
+expression: preset
+---
+TomlError(
+    Error {
+        inner: Error {
+            inner: TomlError {
+                message: "Presets from PresetV1 can only have version = 1 (not 2)",
+                raw: Some(
+                    "version = 2\r\n\r\n[metadata]\r\ntitle = \"Invalid Version\"\r\nauthor = \"valib\"\r\nrevision = 1\r\ntags = [\"default\",\"init\"]\r\n\r\n[data]",
+                ),
+                keys: [
+                    "version",
+                ],
+                span: Some(
+                    10..11,
+                ),
+            },
+        },
+    },
+)

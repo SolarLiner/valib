@@ -33,6 +33,8 @@
       <sourceFolder url="file://$MODULE_DIR$/crates/valib-wdf/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/crates/clogbox-core/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/examples/polysynth/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/valib-preset-manager/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/crates/valib-preset-manager/tests" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/plugins/ts404/src" isTestSource="false" />
       <excludeFolder url="file://$MODULE_DIR$/.venv" />
       <excludeFolder url="file://$MODULE_DIR$/target" />

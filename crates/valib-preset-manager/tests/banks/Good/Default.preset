@@ -1,0 +1,9 @@
+version = 1
+
+[metadata]
+title = "Default"
+author = "valib"
+revision = 1
+tags = ["default","init"]
+
+[data]

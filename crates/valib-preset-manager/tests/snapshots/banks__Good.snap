@@ -1,0 +1,6 @@
+---
+source: crates/valib-preset-manager/tests/banks.rs
+expression: "&data"
+---
+Default.preset
+Extra Metadata.preset

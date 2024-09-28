@@ -1,0 +1,5 @@
+---
+source: crates/valib-preset-manager/tests/banks.rs
+expression: "&data"
+---
+Invalid Version.preset

@@ -1,0 +1,34 @@
+---
+source: crates/valib-preset-manager/tests/presets.rs
+expression: preset
+---
+PresetV1 {
+    version: PresetV1Version,
+    metadata: PresetMeta {
+        title: "Default",
+        author: "valib",
+        tags: {
+            "default",
+            "init",
+        },
+        revision: 1,
+        other: {
+            "extra_1": String(
+                "Hello",
+            ),
+            "extra_2": Integer(
+                20,
+            ),
+            "extra_table": Table(
+                {
+                    "test": Boolean(
+                        true,
+                    ),
+                },
+            ),
+        },
+    },
+    data: Table(
+        {},
+    ),
+}

@@ -1,0 +1,25 @@
+[package]
+name = "valib-preset-manager"
+version.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+keywords.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+
+directories = "5.0.1"
+futures = "0.3.30"
+smol = "2.0.2"
+toml = "0.8.19"
+thiserror = "1.0.64"
+
+[dev-dependencies]
+insta.workspace = true
+macro_rules_attribute = "0.2.0"
+rstest.workspace = true
+smol-macros = "0.1.1"
