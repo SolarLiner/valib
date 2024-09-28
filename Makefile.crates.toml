@@ -1,0 +1,2 @@
+[tasks.test]
+args = ["insta", "test", "--all-features"]

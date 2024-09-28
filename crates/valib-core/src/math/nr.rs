@@ -234,7 +234,7 @@ mod tests {
     #[test]
     fn test_solve() {
         let equ = SqrtNumerical { squared: 4.0 };
-        let nr = NewtonRhapson::new(equ, None, None);
+        let nr = NewtonRhapson::new(equ, Some(1e-4), None);
         let mut actual: SVector<_, 1> = na::zero();
         let iters = nr.run_in_place(vector_view_mut(&mut actual));
         let expected = 2.0;
