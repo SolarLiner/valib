@@ -2,7 +2,7 @@
 //!
 //! Functions implementing mathematical constructs, as used by the rest of `valib`.
 
-use nalgebra::{Complex, Dim, OVector};
+use nalgebra::{Complex, Dim, VectorView};
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdBool, SimdComplexField};
 
@@ -33,9 +33,9 @@ where
 }
 
 #[inline]
-fn rms<T: SimdComplexField, D: Dim>(value: &OVector<T, D>) -> T
+fn rms<T: SimdComplexField, D: Dim>(value: VectorView<T, D, impl Dim, impl Dim>) -> T
 where
-    nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<T, D>,
+    nalgebra::DefaultAllocator: nalgebra::allocator::Allocator<D>,
 {
     value.map(|v| v.simd_powi(2)).sum().simd_sqrt()
 }

@@ -1,6 +1,10 @@
 //! Utilities for all of `valib`.
 
 use crate::Scalar;
+use nalgebra::{
+    Dim, Matrix, MatrixView, MatrixViewMut, Storage, StorageMut, Vector, VectorView, VectorViewMut,
+    ViewStorage, ViewStorageMut,
+};
 use num_traits::{AsPrimitive, Float, Zero};
 use numeric_literals::replace_float_literals;
 use simba::simd::SimdValue;
@@ -196,6 +200,42 @@ pub fn midi_to_freq<T: Scalar>(midi_note: u8) -> T {
 #[replace_float_literals(T::from_f64(literal))]
 pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
     2.0.simd_powf(semi / 12.0)
+}
+
+pub fn matrix_view<T: Scalar, R: Dim, C: Dim, S: Storage<T, R, C>>(
+    m: &Matrix<T, R, C, S>,
+) -> MatrixView<T, R, C, S::RStride, S::CStride> {
+    MatrixView::from_data(unsafe {
+        let shape = m.shape_generic();
+        ViewStorage::new_unchecked(&m.data, (0, 0), shape)
+    })
+}
+
+pub fn matrix_view_mut<T: Scalar, R: Dim, C: Dim, S: StorageMut<T, R, C>>(
+    m: &mut Matrix<T, R, C, S>,
+) -> MatrixViewMut<T, R, C, S::RStride, S::CStride> {
+    MatrixViewMut::from_data(unsafe {
+        let shape = m.shape_generic();
+        ViewStorageMut::new_unchecked(&mut m.data, (0, 0), shape)
+    })
+}
+
+pub fn vector_view<T: Scalar, D: Dim, S: Storage<T, D>>(
+    v: &Vector<T, D, S>,
+) -> VectorView<T, D, S::RStride, S::CStride> {
+    VectorView::from_data(unsafe {
+        let shape = v.shape_generic();
+        ViewStorage::new_unchecked(&v.data, (0, 0), shape)
+    })
+}
+
+pub fn vector_view_mut<T: Scalar, D: Dim, S: StorageMut<T, D>>(
+    v: &mut Vector<T, D, S>,
+) -> VectorViewMut<T, D, S::RStride, S::CStride> {
+    VectorViewMut::from_data(unsafe {
+        let shape = v.shape_generic();
+        ViewStorageMut::new_unchecked(&mut v.data, (0, 0), shape)
+    })
 }
 
 #[cfg(feature = "test-utils")]

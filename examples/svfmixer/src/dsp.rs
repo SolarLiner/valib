@@ -51,11 +51,12 @@ impl DspInner {
             DspParam::BpGain => SmoothedParam::linear(0.0, samplerate, 10.0),
             DspParam::HpGain => SmoothedParam::linear(0.0, samplerate, 10.0),
         });
-        let filter = Filter::new(
+        let filter = Svf::new(
             Sample::splat(samplerate),
             Sample::splat(3000.0),
             Sample::splat(0.5),
-        );
+        )
+        .with_saturator(Sinh);
         let mod_matrix = ModMatrix {
             weights: SMatrix::<_, 1, 3>::new(
                 Sample::splat(1.0),
