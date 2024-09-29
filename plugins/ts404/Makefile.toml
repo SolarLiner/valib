@@ -20,6 +20,10 @@ dependencies = ["generate"]
 [tasks.pre-build]
 run_task = "generate"
 
+[tasks.test]
+env = { TRACY_NO_INVARIANT_CHECK = 1 }
+dependencies = ["pre-build"]
+
 [tasks.run]
 command = "cargo"
 args = ["run", "-p", "ts404", "${@}"]

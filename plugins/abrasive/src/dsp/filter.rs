@@ -1,8 +1,7 @@
-use nalgebra::{Complex, SMatrix, SVector};
+use nalgebra::{Complex, SMatrix};
 use nih_plug::formatters;
 use nih_plug::params::{EnumParam, FloatParam, Params};
 use nih_plug::prelude::*;
-use num_traits::Float;
 use numeric_literals::replace_float_literals;
 use realfft::num_traits::One;
 use std::sync::Arc;
@@ -10,7 +9,7 @@ use valib::contrib::nih_plug::ValueAs;
 use valib::dsp::analysis::DspAnalysis;
 use valib::dsp::{DSPMeta, DSPProcess};
 use valib::filters::svf::Svf;
-use valib::saturators::{bjt, Asinh, Saturator};
+use valib::saturators::{bjt, Saturator};
 use valib::Scalar;
 
 #[derive(Debug, Copy, Clone, Enum, Eq, PartialEq)]

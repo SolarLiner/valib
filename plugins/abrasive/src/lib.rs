@@ -3,12 +3,12 @@ extern crate core;
 use crate::spectrum::Analyzer;
 use atomic_float::AtomicF32;
 use nih_plug::{params::persist::PersistentField, prelude::*};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use valib::contrib::nih_plug::process_buffer_simd;
-use valib::Scalar;
 
 use crate::dsp::{DspParams, OVERSAMPLE};
-use valib::dsp::{BlockAdapter, DSPMeta};
+use valib::dsp::DSPMeta;
 use valib::simd::AutoF32x2;
 
 mod dsp;
@@ -119,7 +119,8 @@ impl Plugin for Abrasive {
     ) -> bool {
         let sr = buffer_config.sample_rate;
         self.dsp.set_samplerate(sr);
-        self.samplerate.set(OVERSAMPLE as f32 * sr);
+        self.samplerate
+            .store(OVERSAMPLE as f32 * sr, Ordering::SeqCst);
         self.analyzer_in.set_samplerate(sr);
         self.analyzer_out.set_samplerate(sr);
         self.analyzer_in
