@@ -23,3 +23,7 @@ insta.workspace = true
 macro_rules_attribute = "0.2.0"
 rstest.workspace = true
 smol-macros = "0.1.1"
+
+[features]
+default = []
+distribution = []

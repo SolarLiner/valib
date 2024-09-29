@@ -8,7 +8,7 @@ TomlError(
             inner: TomlError {
                 message: "Presets from PresetV1 can only have version = 1 (not 2)",
                 raw: Some(
-                    "version = 2\r\n\r\n[metadata]\r\ntitle = \"Invalid Version\"\r\nauthor = \"valib\"\r\nrevision = 1\r\ntags = [\"default\",\"init\"]\r\n\r\n[data]",
+                    "version = 2\ndata_revision = 0\n\n[metadata]\ntitle = \"Invalid Version\"\nauthor = \"valib\"\nrevision = 1\ntags = [\"default\",\"init\"]\n\n[data]",
                 ),
                 keys: [
                     "version",

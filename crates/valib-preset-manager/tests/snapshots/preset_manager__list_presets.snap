@@ -1,0 +1,8 @@
+---
+source: crates/valib-preset-manager/tests/preset_manager.rs
+expression: "&vec"
+---
+[
+    "Extra Metadata",
+    "Default",
+]

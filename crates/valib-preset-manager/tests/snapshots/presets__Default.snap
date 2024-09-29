@@ -4,6 +4,7 @@ expression: preset
 ---
 PresetV1 {
     version: PresetV1Version,
+    data_revision: 0,
     metadata: PresetMeta {
         title: "Default",
         author: "valib",
