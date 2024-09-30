@@ -205,7 +205,6 @@ impl Plugin for PolysynthPlugin {
                             let key = VoiceKey::new(voice_id, channel, note);
                             let note_data = NoteData::from_midi(note, velocity);
                             let id = self.voices.note_on(note_data);
-                            nih_log!("Note on {id} <- {key:?}");
                             self.voice_id_map.add_voice(key, id);
                         }
                         NoteEvent::NoteOff {
@@ -217,10 +216,7 @@ impl Plugin for PolysynthPlugin {
                         } => {
                             let key = VoiceKey::new(voice_id, channel, note);
                             if let Some((_, id)) = self.voice_id_map.remove_voice(key) {
-                                nih_log!("Note off {id} <- {key:?}");
                                 self.voices.note_off(id, velocity);
-                            } else {
-                                nih_log!("Note off {key:?}: ID not found");
                             }
                         }
                         NoteEvent::Choke {

@@ -1,9 +1,8 @@
 use crate::params::{FilterParams, FilterType, OscShape, PolysynthParams};
-use crate::{SynthSample, MAX_BUFFER_SIZE, NUM_VOICES, OVERSAMPLE};
+use crate::{MAX_BUFFER_SIZE, NUM_VOICES, OVERSAMPLE};
 use fastrand::Rng;
 use fastrand_contrib::RngExt;
-use nih_plug::nih_log;
-use nih_plug::util::{db_to_gain, db_to_gain_fast};
+use nih_plug::util::db_to_gain;
 use num_traits::{ConstOne, ConstZero};
 use numeric_literals::replace_float_literals;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -16,11 +15,10 @@ use valib::filters::svf::Svf;
 use valib::math::interpolation::{sine_interpolation, Interpolate, Sine};
 use valib::oscillators::polyblep::{SawBLEP, Sawtooth, Square, SquareBLEP, Triangle};
 use valib::oscillators::Phasor;
-use valib::saturators::{bjt, Asinh, Clipper, Saturator, Tanh};
+use valib::saturators::{bjt, Clipper, Saturator, Tanh};
 use valib::simd::{SimdBool, SimdValue};
 use valib::util::{ratio_to_semitone, semitone_to_ratio};
 use valib::voice::dynamic::DynamicVoice;
-use valib::voice::polyphonic::Polyphonic;
 use valib::voice::upsample::UpsampledVoice;
 use valib::voice::{NoteData, Voice};
 use valib::Scalar;
@@ -716,7 +714,6 @@ impl<T: ConstZero + ConstOne + Scalar> Voice for RawVoice<T> {
     }
 
     fn release(&mut self, _: f32) {
-        nih_log!("RawVoice: release(_)");
         self.vca_env.gate(false);
         self.vcf_env.gate(false);
     }
