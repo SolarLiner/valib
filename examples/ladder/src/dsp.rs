@@ -156,7 +156,7 @@ impl DSPMeta for DspInner {
     type Sample = Sample;
 
     fn set_samplerate(&mut self, samplerate: f32) {
-        self.samplerate = samplerate;
+        self.samplerate = Sample::from_f64(samplerate as f64);
         self.drive.set_samplerate(samplerate);
         self.cutoff.set_samplerate(samplerate);
         self.resonance.set_samplerate(samplerate);

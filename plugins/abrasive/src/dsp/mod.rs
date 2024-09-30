@@ -83,7 +83,7 @@ impl<T: Scalar> DSPProcess<1, 1> for Equalizer<T> {
             filter.set_scale(scale);
         }
         let [y] = self.dsp.process([drive * x]);
-        [y / drive.simd_asinh()]
+        [y / drive]
     }
 }
 

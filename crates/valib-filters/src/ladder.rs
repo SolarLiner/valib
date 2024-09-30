@@ -368,7 +368,7 @@ mod tests {
             bode: true,
             series: &[Series {
                 label: "Frequency response",
-                samplerate,
+                samplerate: samplerate as f32,
                 series: &responsef32,
                 color: &BLUE,
             }],
