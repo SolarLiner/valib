@@ -422,7 +422,7 @@ impl<T: Scalar> FilterImpl<T> {
             }
             FilterType::Svf => Self::Svf(
                 svf_clipper(),
-                Svf::new(samplerate, cutoff, T::one() - resonance),
+                Svf::new(samplerate, cutoff, T::one() - resonance).with_saturator(Sinh),
             ),
             FilterType::Digital => Self::Biquad(
                 Biquad::lowpass(cutoff / samplerate, T::one())
@@ -549,7 +549,7 @@ impl<T: Scalar> Filter<T> {
             }
             FilterType::Svf if !matches!(self.fimpl, FilterImpl::Svf(..)) => FilterImpl::Svf(
                 svf_clipper(),
-                Svf::new(self.samplerate, cutoff, T::one() - resonance),
+                Svf::new(self.samplerate, cutoff, T::one() - resonance).with_saturator(Sinh),
             ),
             FilterType::Digital if !matches!(self.fimpl, FilterImpl::Biquad(..)) => {
                 let resonance =
