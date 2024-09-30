@@ -1,40 +1,26 @@
-use std::sync::{atomic::Ordering, Arc};
-
-use atomic_float::AtomicF32;
+use crate::editor::eq::LogRange;
 use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::{prelude::*, vg};
 
-use crate::editor::eq::LogRange;
-
 pub struct SpectrumAnalyzer {
     spectrum: super::SpectrumUI,
-    samplerate: Arc<AtomicF32>,
 }
 
 impl SpectrumAnalyzer {
-    pub fn new(
-        cx: &mut Context,
-        spectrum: super::SpectrumUI,
-        samplerate: Arc<AtomicF32>,
-    ) -> Handle<Self> {
-        Self {
-            spectrum,
-            samplerate,
-        }
-        .build(cx, |_cx| ())
+    pub fn new(cx: &mut Context, spectrum: super::SpectrumUI) -> Handle<Self> {
+        Self { spectrum }.build(cx, |_cx| ())
     }
 
     fn draw_analyzer(&self, cx: &mut DrawContext, canvas: &mut Canvas, bounds: BoundingBox) {
-        let samplerate = self.samplerate.load(Ordering::Relaxed);
-        let range = LogRange::new(2.0, 20.0, samplerate.min(24e3));
-        let line_width = cx.scale_factor() * 1.5;
-        let line_paint = vg::Paint::color(cx.font_color().into()).with_line_width(line_width);
+        let mut spectrum = self.spectrum.lock().unwrap();
+        let spectrum = spectrum.read();
+        let samplerate = spectrum.samplerate;
+        let nyquist = samplerate / 2.0;
+        let range = LogRange::new(2.0, 20.0, 24e3);
+        let line_paint = vg::Paint::color(cx.font_color().into());
 
         let mut path = vg::Path::new();
 
-        let mut spectrum = self.spectrum.lock().unwrap();
-        let spectrum = spectrum.read();
-        let nyquist = self.samplerate.load(Ordering::Relaxed) / 2.0;
         for (i, y) in spectrum.data.iter().copied().enumerate() {
             if i == 0 {
                 path.move_to(bounds.x - 100., bounds.y + bounds.h);

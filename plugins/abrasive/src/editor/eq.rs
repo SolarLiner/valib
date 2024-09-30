@@ -4,7 +4,7 @@ use atomic_float::AtomicF32;
 use nih_plug::prelude::*;
 use nih_plug_vizia::vizia::{context::DrawContext, prelude::*, vg};
 
-use crate::dsp::{filter::FilterParams, Equalizer};
+use crate::dsp::{Equalizer, OVERSAMPLE};
 use crate::AbrasiveParams;
 use valib::dsp::analysis::DspAnalysis;
 use valib::simd::SimdComplexField;
@@ -39,8 +39,6 @@ impl LogRange {
 struct EqData {
     samplerate: Arc<AtomicF32>,
     params: Arc<AbrasiveParams>,
-    frequency_range: FloatRange,
-    // gain_range: FloatRange,
     modulated: bool,
 }
 
@@ -50,8 +48,9 @@ impl View for EqData {
     }
 
     fn draw(&self, cx: &mut DrawContext, canvas: &mut Canvas) {
-        let samplerate = self.samplerate.load(Ordering::Relaxed);
-        let range = LogRange::new(2.0, 20., samplerate.min(24e3));
+        let samplerate = OVERSAMPLE as f32 * self.samplerate.load(Ordering::Relaxed);
+        let freq_range = LogRange::new(2.0, 20., 24e3);
+        let gain_range = |x| /* -24..24 */ (util::gain_to_db(x) + 24.) / 48.;
 
         let mut dsp = Equalizer::new(samplerate, self.params.dsp_params.clone());
         dsp.use_param_values(self.modulated);
@@ -61,9 +60,9 @@ impl View for EqData {
 
         for j in 0..4 * bounds.w as usize {
             let x = j as f32 / (4. * bounds.w);
-            let freq = range.unnormalize(x);
+            let freq = freq_range.unnormalize(x);
             let [[y]] = dsp.freq_response(samplerate, freq);
-            let y = (util::gain_to_db(y.simd_abs()) + 24.) / 48.;
+            let y = gain_range(y.simd_abs());
             if j == 0 {
                 path.move_to(bounds.x + bounds.w * x, bounds.y + bounds.h * (1. - y));
             } else {
@@ -81,12 +80,6 @@ impl EqData {
         Self {
             samplerate,
             params,
-            frequency_range: FilterParams::cutoff_range(),
-            // gain_range: FloatRange::Skewed {
-            //     min: util::db_to_gain(-24.),
-            //     max: util::db_to_gain(24.),
-            //     factor: FloatRange::gain_skew_factor(-24., 24.),
-            // },
             modulated,
         }
     }

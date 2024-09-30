@@ -7,6 +7,7 @@ name = "abrasive"
 version = "0.1.0"
 dependencies = [
  "atomic_float 1.1.0",
+ "directories",
  "morphorm",
  "nalgebra",
  "nih_plug",
@@ -1374,6 +1375,15 @@ dependencies = [
  "nih_plug",
  "num-traits",
  "valib",
+]
+
+[[package]]
+name = "directories"
+version = "5.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9a49173b84e034382284f27f1af4dcbbd231ffa358c0fe316541a7337f376a35"
+dependencies = [
+ "dirs-sys",
 ]
 
 [[package]]
