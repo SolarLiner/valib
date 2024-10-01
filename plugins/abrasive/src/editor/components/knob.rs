@@ -1,10 +1,13 @@
 use std::f32::consts::{FRAC_PI_2, TAU};
 
+use crate::dsp::filter::FilterParams;
+use nih_plug::prelude::Params;
 use nih_plug::{nih_log, prelude::Param};
 use nih_plug_vizia::{
     vizia::{prelude::*, vg},
     widgets::param_base::ParamWidgetBase,
 };
+use std::sync;
 
 enum KnobEvents {
     SetValueNormalized(f32),
@@ -278,4 +281,25 @@ impl View for Knob {
             self.widget_base.end_set_parameter(cx);
         });
     }
+}
+
+pub fn labelled_node_float<PS: Params, P: Param>(
+    cx: &mut Context,
+    bipolar: bool,
+    params: impl Lens<Target = sync::Arc<PS>>,
+    get_param: impl 'static + Copy + Fn(&sync::Arc<PS>) -> &P,
+) -> Handle<'_, impl View> {
+    VStack::new(cx, move |cx| {
+        Knob::new(cx, bipolar, params, get_param);
+        Label::new(
+            cx,
+            params.map(move |params| get_param(params).name().to_string()),
+        )
+        .text_align(TextAlign::Center)
+        .width(Percentage(100.0));
+    })
+    .class("param")
+    .child_space(Stretch(1.0))
+    .col_between(Pixels(8.0))
+    .text_align(TextAlign::Center)
 }

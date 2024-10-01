@@ -8,6 +8,7 @@ use smol::{fs, io};
 use std::any;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use thiserror::Error;
 
 /// Extension used by preset files
@@ -68,6 +69,19 @@ impl PresetData for toml::Value {
     }
 }
 
+impl<T: PresetData> PresetData for Arc<T>
+where
+    Arc<T>: Serialize + DeserializeOwned,
+{
+    const CURRENT_REVISION: u64 = 0;
+    type PreviousRevision = T::PreviousRevision;
+
+    fn upgrade(previous: &PresetV1<Self::PreviousRevision>) -> Option<PresetV1<Self>> {
+        let raw = T::upgrade(previous)?;
+        Some(raw.map(Arc::new))
+    }
+}
+
 /// Preset metadata type. Contains data related to the preset itself, and contains both hardcoded
 /// fields as well as [`Self::other`] which can be used to store arbitrary data.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,6 +128,86 @@ pub struct PresetV1<Data> {
     pub data: Data,
 }
 
+impl<Data> PresetV1<Data> {
+    /// Map the inner data into a new type.
+    ///
+    /// The output type needs to have [`PresetData`] implemented so that the data revision can be
+    /// updated accordingly.
+    ///
+    /// # Arguments
+    ///
+    /// * `func`: Mapping function
+    ///
+    /// returns: PresetV1<D2>
+    pub fn map<D2: PresetData>(self, func: impl FnOnce(Data) -> D2) -> PresetV1<D2> {
+        let Self {
+            version,
+            data,
+            metadata,
+            ..
+        } = self;
+        PresetV1 {
+            version,
+            data_revision: D2::CURRENT_REVISION,
+            data: func(data),
+            metadata,
+        }
+    }
+
+    /// Drop the preset data, returning the unwrapped data, and the empty preset container.
+    pub fn drop_data(self) -> (PresetV1<()>, Data) {
+        let Self {
+            version,
+            metadata,
+            data,
+            ..
+        } = self;
+        let preset = PresetV1 {
+            version,
+            data_revision: <() as PresetData>::CURRENT_REVISION,
+            data: (),
+            metadata,
+        };
+        (preset, data)
+    }
+}
+
+impl<Data> PresetV1<Option<Data>> {
+    /// Transposes the optional data into an optional preset.
+    pub fn transpose(self) -> Option<PresetV1<Data>> {
+        let Self {
+            version,
+            data_revision,
+            metadata,
+            data,
+        } = self;
+        data.map(|data| PresetV1 {
+            version,
+            data_revision,
+            metadata,
+            data,
+        })
+    }
+}
+
+impl<Data, E> PresetV1<Result<Data, E>> {
+    /// Transposes the data result into a preset result.
+    pub fn transpose(self) -> Result<PresetV1<Data>, E> {
+        let Self {
+            version,
+            data_revision,
+            metadata,
+            data,
+        } = self;
+        data.map(|data| PresetV1 {
+            version,
+            data_revision,
+            metadata,
+            data,
+        })
+    }
+}
+
 impl<Data: PresetData> PresetV1<Data> {
     /// Creates a new preset.
     ///
@@ -130,6 +224,22 @@ impl<Data: PresetData> PresetV1<Data> {
             metadata,
             data,
         }
+    }
+
+    /// Transform the preset data into generic toml::Value
+    pub fn into_value(self) -> Result<PresetV1<toml::Value>, toml::ser::Error> {
+        let Self {
+            version,
+            data_revision,
+            metadata,
+            data,
+        } = self;
+        Ok(PresetV1 {
+            version,
+            data_revision,
+            metadata,
+            data: toml::Value::try_from(data)?,
+        })
     }
 }
 

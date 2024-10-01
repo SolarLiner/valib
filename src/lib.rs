@@ -12,6 +12,8 @@ pub use valib_filters as filters;
 pub use valib_oscillators as oscillators;
 #[cfg(feature = "oversample")]
 pub use valib_oversample as oversample;
+#[cfg(feature = "preset-manager")]
+pub use valib_preset_manager as preset_manager;
 #[cfg(feature = "saturators")]
 pub use valib_saturators as saturators;
 #[cfg(feature = "voice")]

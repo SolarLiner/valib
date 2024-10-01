@@ -2,10 +2,11 @@
 //!
 //! Banks are containers of presets, and are represented on disk by folders of preset files.
 use crate::data::{PresetData, PresetDeserializeError, PresetSerializeError, PresetV1, EXTENSION};
-use futures::lock::Mutex;
-use futures::{StreamExt, TryStreamExt};
-use smol::stream::Stream;
-use smol::{fs, future, stream};
+use dashmap::DashMap;
+use futures::TryStreamExt;
+use smol::lock::Mutex;
+use smol::stream::{Stream, StreamExt as _};
+use smol::{fs, pin, stream};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -22,7 +23,7 @@ pub struct Bank<Data> {
     preset_cache: Mutex<HashMap<String, PresetV1<Data>>>,
 }
 
-impl<Data> Bank<Data> {
+impl<Data: 'static> Bank<Data> {
     /// Create a new bank representing the specified bank folder on disk.
     ///
     /// # Arguments
@@ -30,16 +31,16 @@ impl<Data> Bank<Data> {
     /// * `base_dir`: Folder containing the bank's presets on disk.
     ///
     /// returns: Bank<Data>
-    pub fn new(base_dir: impl Into<PathBuf>) -> Self {
-        Self {
+    pub fn new(base_dir: impl Into<PathBuf>) -> Arc<Self> {
+        Arc::new(Self {
             base_dir: base_dir.into(),
             preset_cache: Mutex::default(),
-        }
+        })
     }
 
     /// Lists all the preset files available in the bank folder
-    pub fn list_files(&self) -> impl '_ + Stream<Item = PathBuf> {
-        stream::once_future(fs::read_dir(&self.base_dir))
+    pub fn list_files(self: &Arc<Self>) -> impl Stream<Item = PathBuf> {
+        stream::once_future(fs::read_dir(self.base_dir.clone()))
             .try_flatten_unordered(None)
             .try_filter_map(|entry| async move {
                 if entry.metadata().await?.is_file() {
@@ -48,28 +49,26 @@ impl<Data> Bank<Data> {
                     Ok(None)
                 }
             })
-            .filter_map(|res| {
-                future::ready({
-                    match res {
-                        Ok(path) => Some(path),
-                        Err(err) => {
-                            eprintln!("Cannot read bank path: {err}");
-                            None
-                        }
-                    }
-                })
+            .filter_map(|res| match res {
+                Ok(path) => Some(path),
+                Err(err) => {
+                    eprintln!("Cannot read bank path: {err}");
+                    None
+                }
             })
             .filter(|path| {
-                future::ready(
-                    path.extension()
-                        .is_some_and(|ext| ext.eq_ignore_ascii_case(EXTENSION)),
-                )
+                path.extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case(EXTENSION))
             })
     }
 
+    pub async fn num_presets(self: &Arc<Self>) -> usize {
+        self.list_files().count().await
+    }
+
     /// List the preset names (file stems) in this bank.
-    pub fn preset_names(&self) -> impl '_ + Stream<Item = String> {
-        self.list_files().filter_map(|path| async move {
+    pub fn preset_names(self: &Arc<Self>) -> impl Stream<Item = String> {
+        self.list_files().filter_map(|path| {
             path.file_stem()
                 .map(|oss| oss.to_string_lossy().into_owned())
         })
@@ -101,19 +100,15 @@ impl<Data: PresetData> Bank<Data> {
     /// Load all presets in this bank, returning an unordered stream of loaded presets.
     ///
     /// Failed presets are logged to stderr.
-    pub async fn load_all_presets(&self) -> impl '_ + Stream<Item = PresetV1<Data>> {
+    pub async fn load_all_presets(self: &Arc<Self>) -> impl Stream<Item = PresetV1<Data>> {
         self.list_files()
             .flat_map(|path| stream::once_future(async move { PresetV1::from_file(&path).await }))
-            .filter_map(|res| {
-                future::ready({
-                    match res {
-                        Ok(data) => Some(data),
-                        Err(err) => {
-                            eprintln!("Error loading preset: {err}");
-                            None
-                        }
-                    }
-                })
+            .filter_map(|res| match res {
+                Ok(data) => Some(data),
+                Err(err) => {
+                    eprintln!("Error loading preset: {err}");
+                    None
+                }
             })
     }
 
@@ -129,6 +124,45 @@ impl<Data: PresetData> Bank<Data> {
         preset_cache.insert(preset.metadata.title.clone(), preset);
         Ok(())
     }
+
+    /// Retrieve the preset name N position away from the current preset as given by its name.
+    ///
+    /// # Arguments
+    ///
+    /// * `current_name`: Name of the "current preset"
+    /// * `offset`: Offset to navigate by
+    ///
+    /// returns: Option<String>
+    pub async fn navigate_by_offset(
+        self: &Arc<Self>,
+        current_name: impl ToString,
+        offset: isize,
+    ) -> Option<String> {
+        let current_name = current_name.to_string();
+        let names_stream = self.clone().preset_names();
+        pin!(names_stream);
+        let pos = names_stream
+            .position(move |name| name == current_name)
+            .await?;
+        self.preset_at_position((pos as isize + offset) as usize)
+            .await
+    }
+
+    pub async fn preset_at_position(self: &Arc<Self>, pos: usize) -> Option<String> {
+        let names_stream = self.preset_names();
+        pin!(names_stream);
+        names_stream.nth(pos).await
+    }
+
+    #[inline]
+    pub async fn previous_preset(self: &Arc<Self>, current_name: impl ToString) -> Option<String> {
+        self.navigate_by_offset(current_name, -1).await
+    }
+
+    #[inline]
+    pub async fn next_preset(self: &Arc<Self>, current_name: impl ToString) -> Option<String> {
+        self.navigate_by_offset(current_name, 1).await
+    }
 }
 
 /// The bank group groups banks. (duh)
@@ -136,13 +170,13 @@ impl<Data: PresetData> Bank<Data> {
 /// Banks being folders of presets, a bank group is a folder of bank folders.
 #[derive(Debug, Clone)]
 pub struct BankGroup<Data> {
-    banks: HashMap<PathBuf, Arc<Bank<Data>>>,
+    banks: DashMap<PathBuf, Arc<Bank<Data>>>,
 }
 
 impl<Data> Default for BankGroup<Data> {
     fn default() -> Self {
         Self {
-            banks: HashMap::default(),
+            banks: DashMap::default(),
         }
     }
 }
@@ -167,7 +201,10 @@ impl<Data> BankGroup<Data> {
     ///   instance.
     ///
     /// returns: BankGroup<Data>
-    pub async fn from_parent_dir(parent_dir: &Path) -> Self {
+    pub async fn from_parent_dir(parent_dir: &Path) -> Self
+    where
+        Data: 'static,
+    {
         let banks = stream::once_future(fs::read_dir(parent_dir))
             .try_flatten_unordered(None)
             .try_filter_map(|entry| async move {
@@ -177,17 +214,18 @@ impl<Data> BankGroup<Data> {
                     Ok(None)
                 }
             })
-            .filter_map(|res| {
-                future::ready(match res {
-                    Ok(path) => Some(path),
-                    Err(err) => {
-                        eprintln!("Cannot read bank directory: {err}");
-                        None
-                    }
-                })
+            .filter_map(|res| match res {
+                Ok(path) => Some(path),
+                Err(err) => {
+                    eprintln!("Cannot read bank directory: {err}");
+                    None
+                }
             })
-            .map(|path| (path.clone(), Arc::new(Bank::new(path))))
-            .collect()
+            .map(|path| (path.clone(), Bank::new(path)))
+            .fold(DashMap::default(), |acc, (path, bank)| {
+                acc.insert(path, bank);
+                acc
+            })
             .await;
         Self { banks }
     }
@@ -202,13 +240,16 @@ impl<Data> BankGroup<Data> {
     /// * `parent_dirs`: Stream of parent directories to group into this instance.
     ///
     /// returns: BankGroup<Data>
-    pub async fn from_parent_dirs(parent_dirs: impl Stream<Item = &Path>) -> Self {
+    pub async fn from_parent_dirs(parent_dirs: impl Stream<Item = &Path>) -> Self
+    where
+        Data: 'static,
+    {
         parent_dirs
             .map(|path| stream::once_future(Self::from_parent_dir(path)))
             .flatten()
-            .fold(Self::default(), |mut acc, x| {
+            .fold(Self::default(), |acc, x| {
                 acc.combine(&x);
-                future::ready(acc)
+                acc
             })
             .await
     }
@@ -221,9 +262,14 @@ impl<Data> BankGroup<Data> {
     /// * `other`: Other bank group to merge with.
     ///
     /// returns: ()
-    pub fn combine(&mut self, other: &BankGroup<Data>) {
-        self.banks
-            .extend(other.banks.iter().map(|(k, v)| (k.clone(), v.clone())));
+    pub fn combine(&self, other: &BankGroup<Data>) {
+        for (path, bank) in other
+            .banks
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+        {
+            self.banks.insert(path, bank);
+        }
     }
 
     /// Add a single bank from its folder on disk.
@@ -233,8 +279,11 @@ impl<Data> BankGroup<Data> {
     /// * `bank_dir`: Bank directory on disk
     ///
     /// returns: ()
-    pub fn add_bank(&mut self, bank_dir: &Path) -> Arc<Bank<Data>> {
-        let bank = Arc::new(Bank::new(bank_dir));
+    pub fn add_bank(&self, bank_dir: &Path) -> Arc<Bank<Data>>
+    where
+        Data: 'static,
+    {
+        let bank = Bank::new(bank_dir);
         self.banks.insert(bank_dir.to_owned(), bank.clone());
         bank
     }
@@ -248,14 +297,18 @@ impl<Data> BankGroup<Data> {
     /// * `parent_dir`: Parent directory for the new group
     ///
     /// returns: ()
-    pub async fn add_group(&mut self, parent_dir: &Path) {
+    pub async fn add_group(&mut self, parent_dir: &Path)
+    where
+        Data: 'static,
+    {
         self.combine(&Self::from_parent_dir(parent_dir).await);
     }
 
     /// List all the banks this group knows about.
     pub fn banks(&self) -> impl '_ + Iterator<Item = String> {
         self.banks
-            .keys()
+            .iter()
+            .map(|entry| entry.key().clone())
             .filter_map(|k| k.file_stem().map(|p| p.to_string_lossy().to_string()))
     }
 
@@ -266,14 +319,16 @@ impl<Data> BankGroup<Data> {
     /// * `name`: Name of the bank
     ///
     /// returns: Option<&Arc<Bank<Data>, Global>>
-    pub fn get_bank(&self, name: &str) -> Option<&Arc<Bank<Data>>> {
+    pub fn get_bank(&self, name: &str) -> Option<Arc<Bank<Data>>> {
         self.banks
-            .keys()
-            .filter(|key| {
+            .iter()
+            .filter_map(|entry| {
+                let key = entry.key();
                 let filename = key.file_name().map(|p| p.to_string_lossy().to_string());
-                filename.is_some_and(|filename| name == filename)
+                filename
+                    .is_some_and(|filename| name == filename)
+                    .then_some(entry.value().clone())
             })
-            .map(|p| &self.banks[Path::new(&p)])
             .next()
     }
 }

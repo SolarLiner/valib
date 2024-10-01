@@ -17,6 +17,8 @@ dependencies = [
  "once_cell",
  "realfft",
  "resource",
+ "serde",
+ "smol",
  "triple_buffer",
  "valib",
 ]
@@ -1358,6 +1360,20 @@ dependencies = [
  "darling_core",
  "quote",
  "syn 2.0.77",
+]
+
+[[package]]
+name = "dashmap"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -5169,6 +5185,7 @@ dependencies = [
  "valib-nih-plug",
  "valib-oscillators",
  "valib-oversample",
+ "valib-preset-manager",
  "valib-saturators",
  "valib-voice",
  "valib-wdf",
@@ -5283,6 +5300,7 @@ dependencies = [
 name = "valib-preset-manager"
 version = "0.1.0"
 dependencies = [
+ "dashmap",
  "directories",
  "futures",
  "insta",

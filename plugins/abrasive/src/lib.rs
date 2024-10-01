@@ -3,12 +3,15 @@ extern crate core;
 use crate::spectrum::Analyzer;
 use atomic_float::AtomicF32;
 use nih_plug::{params::persist::PersistentField, prelude::*};
+use serde::{Deserializer, Serialize, Serializer};
+use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use valib::contrib::nih_plug::process_buffer_simd;
 
 use crate::dsp::{DspParams, OVERSAMPLE};
 use valib::dsp::DSPMeta;
+use valib::preset_manager::data::PresetData;
 use valib::simd::AutoF32x2;
 
 mod dsp;
@@ -41,6 +44,14 @@ impl Default for AbrasiveParams {
             .with_unit("ms"),
         }
     }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct AbrasiveParamsSerialized(BTreeMap<String, String>);
+
+impl PresetData for AbrasiveParamsSerialized {
+    const CURRENT_REVISION: u64 = 0;
+    type PreviousRevision = ();
 }
 
 type Sample = AutoF32x2;
@@ -106,6 +117,7 @@ impl Plugin for Abrasive {
                 samplerate: self.samplerate.clone(),
                 params: self.params.clone(),
                 selected: None,
+                show_save_dialog: false,
             },
             editor::default_state(),
         )

@@ -54,13 +54,13 @@
 #![warn(missing_docs)]
 
 use crate::bank::{Bank, BankGroup};
-use crate::data::{PresetData, PresetSerializeError, PresetV1};
+use crate::data::{PresetData, PresetDeserializeError, PresetSerializeError, PresetV1};
 #[cfg(feature = "distribution")]
 use directories::ProjectDirs;
 use directories::UserDirs;
 use futures::future::join;
 use smol::stream::{Stream, StreamExt};
-use smol::{fs, stream};
+use smol::{fs, pin, stream};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -75,7 +75,7 @@ pub struct PresetManager<Data> {
     user_parent_dir: PathBuf,
 }
 
-impl<Data> PresetManager<Data> {
+impl<Data: 'static> PresetManager<Data> {
     /// Create a new preset manager following standard directories.
     ///
     /// Most OSes now expect applications to have a reverse-domain ID split into 3 parts:
@@ -160,7 +160,7 @@ impl<Data> PresetManager<Data> {
     /// * `bank`: Name of the bank to retrieve
     ///
     /// returns: Option<&Arc<Bank<Data>, Global>>
-    pub fn bank(&self, bank: &str) -> Option<&Arc<Bank<Data>>> {
+    pub fn bank(&self, bank: &str) -> Option<Arc<Bank<Data>>> {
         self.factory_group
             .get_bank(bank)
             .or_else(|| self.user_group.get_bank(bank))
@@ -209,7 +209,7 @@ impl<Data: PresetData + Clone> PresetManager<Data> {
     ///
     /// returns: Result<(), PresetSerializeError>
     pub async fn save_into_bank(
-        &mut self,
+        &self,
         bank: &str,
         preset: PresetV1<Data>,
     ) -> Result<(), PresetSerializeError> {
@@ -223,5 +223,82 @@ impl<Data: PresetData + Clone> PresetManager<Data> {
         };
         bank.save_preset(preset).await?;
         Ok(())
+    }
+
+    /// Load preset at the offset of the current one.
+    ///
+    /// # Arguments
+    ///
+    /// * `current_preset_name`: Name of the current preset
+    /// * `offset`: Offset to navigate by
+    ///
+    /// returns: Result<Option<PresetV1<Data>>, PresetDeserializeError>
+    pub async fn load_with_offset(
+        &self,
+        current_preset_name: &str,
+        offset: isize,
+    ) -> Result<Option<PresetV1<Data>>, PresetDeserializeError> {
+        let flat_map = stream::iter(self.banks()).flat_map(|bank| {
+            stream::once_future(async move {
+                let bank = self.bank(&bank)?;
+                let new_preset = bank.navigate_by_offset(current_preset_name, offset).await?;
+                Some((bank.clone(), new_preset))
+            })
+        });
+        pin!(flat_map);
+        let Some((bank, preset_name)) = flat_map.next().await.flatten() else {
+            return Ok(None);
+        };
+        match bank.load_preset(&preset_name).await {
+            Ok(preset) => Ok(Some(preset)),
+            Err(PresetDeserializeError::IoError(err))
+                if err.kind() == std::io::ErrorKind::NotFound =>
+            {
+                Ok(None)
+            }
+            Err(err) => Err(err),
+        }
+    }
+
+    /// Load the preset preceeding the current one.
+    ///
+    /// # Arguments
+    ///
+    /// * `current_preset_name`: Name of the current preset
+    ///
+    /// returns: Result<Option<PresetV1<Data>>, PresetDeserializeError>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///
+    /// ```
+    #[inline]
+    pub async fn load_previous_preset(
+        &self,
+        current_preset_name: &str,
+    ) -> Result<Option<PresetV1<Data>>, PresetDeserializeError> {
+        self.load_with_offset(current_preset_name, -1).await
+    }
+
+    /// Load the preset preceeding the current one.
+    ///
+    /// # Arguments
+    ///
+    /// * `current_preset_name`: Name of the current preset
+    ///
+    /// returns: Result<Option<PresetV1<Data>>, PresetDeserializeError>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///
+    /// ```
+    #[inline]
+    pub async fn load_next_preset(
+        &self,
+        current_preset_name: &str,
+    ) -> Result<Option<PresetV1<Data>>, PresetDeserializeError> {
+        self.load_with_offset(current_preset_name, 1).await
     }
 }

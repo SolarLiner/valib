@@ -13,18 +13,19 @@ repository = "https://github.com/SolarLiner/valib"
 keywords = ["virtual-analog", "audio", "plugin", "va-modeling", "dsp"]
 
 [workspace.dependencies]
+nalgebra = "0.33.0"
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 num-complex = "0.4.6"
 num-traits = "0.2.18"
 numeric_literals = "0.2.0"
-nalgebra = "0.33.0"
 profiling = "1.0.15"
+smol = "2.0.2"
 # Dev dependencies
 insta = { version = "1.34.0", features = ["csv", "redactions"] }
+plotters = "0.3.6"
 rstest = "0.22.0"
 serde = "*"
-plotters = "0.3.6"
 
 [package]
 name = "valib"
@@ -40,23 +41,26 @@ keywords.workspace = true
 [dependencies]
 valib-core = { path = "crates/valib-core" }
 valib-filters = { path = "crates/valib-filters", optional = true }
-valib-saturators = { path = "crates/valib-saturators", optional = true }
-valib-oscillators = { path = "crates/valib-oscillators", optional = true }
-valib-oversample = { path = "crates/valib-oversample", optional = true }
-valib-voice = { path = "crates/valib-voice", optional = true }
-valib-wdf = { path = "crates/valib-wdf", optional = true }
 valib-fundsp = { path = "crates/valib-fundsp", optional = true }
 valib-nih-plug = { path = "crates/valib-nih-plug", optional = true }
+valib-oscillators = { path = "crates/valib-oscillators", optional = true }
+valib-oversample = { path = "crates/valib-oversample", optional = true }
+valib-preset-manager = { path = "crates/valib-preset-manager", optional = true }
+valib-saturators = { path = "crates/valib-saturators", optional = true }
+valib-voice = { path = "crates/valib-voice", optional = true }
+valib-wdf = { path = "crates/valib-wdf", optional = true }
 
 [features]
-saturators = ["dep:valib-saturators"]
+distribution = ["valib-preset-manager/distribution"]
 filters = ["saturators", "dep:valib-filters"]
-oscillators = ["dep:valib-oscillators"]
-oversample = ["filters", "dep:valib-oversample"]
-voice = ["dep:valib-voice"]
-wdf = ["filters", "dep:valib-wdf"]
 fundsp = ["dep:valib-fundsp"]
 nih-plug = ["dep:valib-nih-plug"]
+oscillators = ["dep:valib-oscillators"]
+oversample = ["filters", "dep:valib-oversample"]
+preset-manager = ["dep:valib-preset-manager"]
+saturators = ["dep:valib-saturators"]
+voice = ["dep:valib-voice"]
+wdf = ["filters", "dep:valib-wdf"]
 
 [profile.dev]
 opt-level = 1

@@ -6,11 +6,8 @@ use nih_plug_vizia::{
     widgets::param_base::ParamWidgetBase,
 };
 
+use crate::editor::components::knob;
 use crate::{dsp::filter::FilterParams, editor::Data, AbrasiveParams};
-
-// use nih_plug::prelude::*;
-use super::components::knob::Knob;
-
 #[derive(Lens)]
 struct BandSelector {
     ctrl: ParamWidgetBase,
@@ -87,35 +84,16 @@ pub fn band_knobs(cx: &mut Context, selected: usize) {
             cx,
             Data::params.map(move |p: &Arc<AbrasiveParams>| p.dsp_params.filters[selected].clone()),
             move |cx, fparams| {
-                labelled_node_float(cx, false, fparams, |params| &params.cutoff);
+                knob::labelled_node_float(cx, false, fparams, |params| &params.cutoff);
                 HStack::new(cx, move |cx| {
-                    labelled_node_float(cx, false, fparams, |params| &params.q).class("small");
-                    labelled_node_float(cx, true, fparams, |params| &params.amp).class("small");
+                    knob::labelled_node_float(cx, false, fparams, |params| &params.q)
+                        .class("small");
+                    knob::labelled_node_float(cx, true, fparams, |params| &params.amp)
+                        .class("small");
                 })
                 .child_space(Stretch(1.0))
                 .col_between(Pixels(16.0));
             },
         );
     });
-}
-
-fn labelled_node_float<P: Param>(
-    cx: &mut Context,
-    bipolar: bool,
-    params: impl Lens<Target = Arc<FilterParams>>,
-    get_param: impl 'static + Copy + Fn(&Arc<FilterParams>) -> &P,
-) -> Handle<'_, impl View> {
-    VStack::new(cx, move |cx| {
-        Knob::new(cx, bipolar, params, get_param);
-        Label::new(
-            cx,
-            params.map(move |params| get_param(params).name().to_string()),
-        )
-        .text_align(TextAlign::Center)
-        .width(Percentage(100.0));
-    })
-    .class("param")
-    .child_space(Stretch(1.0))
-    .col_between(Pixels(8.0))
-    .text_align(TextAlign::Center)
 }
