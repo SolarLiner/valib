@@ -1,10 +1,10 @@
 use crate::params::{FilterParams, FilterType, OscShape, PolysynthParams};
-use crate::{SynthSample, MAX_BUFFER_SIZE, NUM_VOICES, OVERSAMPLE};
+use crate::{MAX_BUFFER_SIZE, NUM_VOICES, OVERSAMPLE};
 use fastrand::Rng;
 use fastrand_contrib::RngExt;
-use nih_plug::nih_log;
-use nih_plug::util::{db_to_gain, db_to_gain_fast};
+use nih_plug::util::db_to_gain;
 use num_traits::{ConstOne, ConstZero};
+use numeric_literals::replace_float_literals;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use valib::dsp::{BlockAdapter, DSPMeta, DSPProcess, SampleAdapter};
@@ -15,7 +15,7 @@ use valib::filters::svf::Svf;
 use valib::math::interpolation::{sine_interpolation, Interpolate, Sine};
 use valib::oscillators::polyblep::{SawBLEP, Sawtooth, Square, SquareBLEP, Triangle};
 use valib::oscillators::Phasor;
-use valib::saturators::{bjt, Asinh, Clipper, Saturator, Tanh};
+use valib::saturators::{bjt, Clipper, Saturator, Tanh};
 use valib::simd::{SimdBool, SimdValue};
 use valib::util::{ratio_to_semitone, semitone_to_ratio};
 use valib::voice::dynamic::DynamicVoice;
@@ -422,7 +422,7 @@ impl<T: Scalar> FilterImpl<T> {
             }
             FilterType::Svf => Self::Svf(
                 svf_clipper(),
-                Svf::new(samplerate, cutoff, T::one() - resonance),
+                Svf::new(samplerate, cutoff, T::one() - resonance).with_saturator(Sinh),
             ),
             FilterType::Digital => Self::Biquad(
                 Biquad::lowpass(cutoff / samplerate, T::one())
@@ -431,15 +431,16 @@ impl<T: Scalar> FilterImpl<T> {
         }
     }
 
+    #[replace_float_literals(T::from_f64(literal))]
     fn set_params(&mut self, samplerate: T, cutoff: T, resonance: T) {
         match self {
             Self::Transistor(p) => {
                 p.set_cutoff(cutoff);
-                p.set_resonance(T::from_f64(4.) * resonance);
+                p.set_resonance(4. * resonance);
             }
             Self::Ota(p) => {
                 p.set_cutoff(cutoff);
-                p.set_resonance(T::from_f64(4.) * resonance);
+                p.set_resonance(4. * resonance);
             }
             Self::Svf(_, p) => {
                 p.set_cutoff(cutoff);
@@ -448,7 +449,7 @@ impl<T: Scalar> FilterImpl<T> {
             Self::Biquad(p) => {
                 p.update_coefficients(&Biquad::lowpass(
                     cutoff / samplerate,
-                    T::from_f64(4.7) * (T::from_f64(2.) * resonance - T::one()).simd_exp(),
+                    0.1 + 4.7 * (2. * resonance - 1.).simd_exp() * resonance,
                 ));
             }
         }
@@ -549,11 +550,11 @@ impl<T: Scalar> Filter<T> {
             }
             FilterType::Svf if !matches!(self.fimpl, FilterImpl::Svf(..)) => FilterImpl::Svf(
                 svf_clipper(),
-                Svf::new(self.samplerate, cutoff, T::one() - resonance),
+                Svf::new(self.samplerate, cutoff, T::one() - resonance).with_saturator(Sinh),
             ),
             FilterType::Digital if !matches!(self.fimpl, FilterImpl::Biquad(..)) => {
-                let resonance =
-                    T::from_f64(4.7) * (T::from_f64(2.) * resonance - T::one()).simd_exp();
+                let resonance = T::from_f64(0.1)
+                    + T::from_f64(4.7) * (T::from_f64(2.) * resonance - T::one()).simd_exp();
                 FilterImpl::Biquad(
                     Biquad::lowpass(cutoff / self.samplerate, resonance)
                         .with_saturators(Default::default(), Default::default()),

@@ -1,73 +1,68 @@
-#[cfg(not(feature = "example"))]
-use std::sync::{Arc, Mutex};
-
-#[cfg(not(feature = "example"))]
+use crate::editor::background::Background;
+use crate::spectrum::Spectrum;
+use analyzer::SpectrumAnalyzer;
 use atomic_float::AtomicF32;
-#[cfg(not(feature = "example"))]
 use nih_plug::prelude::*;
-#[cfg(not(feature = "example"))]
 use nih_plug_vizia::widgets::ResizeHandle;
-#[cfg(not(feature = "example"))]
 use nih_plug_vizia::{create_vizia_editor, vizia::prelude::*, ViziaState, ViziaTheming};
-#[cfg(not(feature = "example"))]
 use resource::resource;
-#[cfg(not(feature = "example"))]
+use std::fs;
+use std::sync::{Arc, Mutex};
 use triple_buffer::Output;
 
-#[cfg(not(feature = "example"))]
-use analyzer::SpectrumAnalyzer;
-
-use crate::spectrum::Spectrum;
-
-#[cfg(not(feature = "example"))]
 mod analyzer;
-#[cfg(not(feature = "example"))]
+
 mod background;
-#[cfg(not(feature = "example"))]
+
 mod band;
 pub mod components;
-#[cfg(not(feature = "example"))]
-mod eq;
 
-#[cfg(not(feature = "example"))]
+mod eq;
+mod util;
+
 pub type SpectrumUI = Arc<Mutex<Output<Spectrum>>>;
 
-#[cfg(not(feature = "example"))]
 #[derive(Lens, Clone)]
 pub(crate) struct Data {
-    pub(crate) params: Arc<crate::AbrasiveParams<{ super::NUM_BANDS }>>,
+    pub(crate) params: Arc<crate::AbrasiveParams>,
     pub(crate) samplerate: Arc<AtomicF32>,
     pub(crate) spectrum_in: SpectrumUI,
     pub(crate) spectrum_out: SpectrumUI,
     pub(crate) selected: Option<usize>,
 }
 
-#[cfg(not(feature = "example"))]
 impl Model for Data {}
 
-#[cfg(not(feature = "example"))]
 pub(crate) fn default_state() -> Arc<ViziaState> {
     // ViziaState::from_size(683, 500)
     ViziaState::new(|| (683, 500))
 }
 
-#[cfg(not(feature = "example"))]
 pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Editor>> {
     create_vizia_editor(state, ViziaTheming::Custom, move |cx, _| {
         cx.emit(EnvironmentEvent::SetThemeMode(AppTheme::BuiltIn(
             ThemeMode::DarkMode,
         )));
-        cx.add_font_mem(resource!("src/assets/Metrophobic-Regular.ttf"));
-        if let Err(err) = cx.add_stylesheet(include_style!("src/editor/theme.css")) {
+        match fs::read(util::resolve_asset_file(
+            "fonts/Metrophobic-Regular.ttf".as_ref(),
+        )) {
+            Ok(data) => {
+                cx.add_font_mem(data);
+            }
+            Err(err) => {
+                nih_error!("Cannot load font: {err}");
+            }
+        }
+        if let Err(err) = cx.add_stylesheet(util::resolve_asset_file("styles/theme.css".as_ref())) {
             nih_error!("Cannot read CSS: {err}");
         }
         data.clone().build(cx);
 
         ResizeHandle::new(cx);
         VStack::new(cx, |cx| {
-            analyzer(cx).class("analyzer");
+            analyzer(cx, data.samplerate.clone()).class("analyzer");
             HStack::new(cx, |cx| {
-                for i in 0..super::NUM_BANDS {
+                for i in 0..super::dsp::NUM_BANDS {
                     band::band_knobs(cx, i);
                 }
             })
@@ -79,14 +74,12 @@ pub(crate) fn create(data: Data, state: Arc<ViziaState>) -> Option<Box<dyn Edito
     })
 }
 
-#[cfg(not(feature = "example"))]
-fn analyzer(cx: &mut Context) -> Handle<impl View> {
+fn analyzer(cx: &mut Context, samplerate: Arc<AtomicF32>) -> Handle<impl View> {
     nih_log!("Creating analyzer");
-    ZStack::new(cx, |cx| {
-        SpectrumAnalyzer::new(cx, Data::spectrum_in.get(cx), Data::samplerate.get(cx))
-            .class("input");
-        SpectrumAnalyzer::new(cx, Data::spectrum_out.get(cx), Data::samplerate.get(cx))
-            .class("output");
+    ZStack::new(cx, move |cx| {
+        Background::new(cx, samplerate).class("bg");
+        SpectrumAnalyzer::new(cx, Data::spectrum_in.get(cx)).class("input");
+        SpectrumAnalyzer::new(cx, Data::spectrum_out.get(cx)).class("output");
         eq::build(cx, Data::samplerate, Data::params).id("eq");
     })
 }

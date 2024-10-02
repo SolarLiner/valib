@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/*", "examples/*", "plugins/ts404", "xtask"]
+members = ["crates/*", "examples/*", "plugins/*", "xtask"]
 
 [workspace.package]
 version = "0.1.0"
@@ -18,11 +18,11 @@ nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 num-complex = "0.4.6"
 num-traits = "0.2.18"
 numeric_literals = "0.2.0"
-nalgebra = "0.32.3"
+nalgebra = "0.33.0"
 profiling = "1.0.15"
 # Dev dependencies
 insta = { version = "1.34.0", features = ["csv", "redactions"] }
-rstest = "0.21.0"
+rstest = "0.22.0"
 serde = "*"
 plotters = "0.3.6"
 

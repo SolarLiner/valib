@@ -1,12 +1,16 @@
 //! # WDF Diode
 //!
 //! Implementations of arbitrary-count parallel diode setups in forward-backward configurations.
+
 use crate::unadapted::WdfDsp;
 use crate::{Wave, Wdf};
-use nalgebra::{SMatrix, SVector};
+use nalgebra as na;
+use nalgebra::{Dim, OMatrix, OVector, SVector, VectorView};
 use num_traits::{Float, Num, Zero};
 use numeric_literals::replace_float_literals;
-use valib_core::math::nr::{newton_rhapson_tol_max_iter, RootEq};
+use std::num::NonZeroUsize;
+use valib_core::math::nr::{NewtonRhapson, RootEq};
+use valib_core::util::vector_view_mut;
 use valib_core::Scalar;
 use valib_saturators::clippers::{DiodeClipper, DiodeClipperModel};
 
@@ -168,9 +172,15 @@ pub struct DiodeRootEq<T: Scalar> {
     a: T,
 }
 
-impl<T: Scalar> RootEq<T, 1> for DiodeRootEq<T> {
+impl<T: Scalar> RootEq for DiodeRootEq<T> {
+    type Scalar = T;
+    type Dim = na::U1;
+
     #[replace_float_literals(T::from_f64(literal))]
-    fn eval(&self, input: &SVector<T, 1>) -> SVector<T, 1> {
+    fn eval(
+        &self,
+        input: VectorView<Self::Scalar, Self::Dim, impl Dim, impl Dim>,
+    ) -> OVector<Self::Scalar, Self::Dim> {
         let b = input[0];
         let r2 = 2. * self.r;
         let log_r2isat = r2.simd_ln() + self.isat.simd_ln();
@@ -179,11 +189,14 @@ impl<T: Scalar> RootEq<T, 1> for DiodeRootEq<T> {
         let e1 = log_r2isat - exp_op / self.nb;
         let x0 = e0.simd_exp() - e1.simd_exp();
         let inner = (x0 + -self.a + b) / r2;
-        SVector::<_, 1>::new(inner)
+        [inner].into()
     }
 
     #[replace_float_literals(T::from_f64(literal))]
-    fn j_inv(&self, input: &SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
+    fn j_inv(
+        &self,
+        input: VectorView<Self::Scalar, Self::Dim, impl Dim, impl Dim>,
+    ) -> Option<OMatrix<Self::Scalar, Self::Dim, Self::Dim>> {
         let b = input[0];
         let log_risat = self.r.simd_ln() + self.isat.simd_ln();
         let log_m = self.nf.simd_ln();
@@ -193,8 +206,34 @@ impl<T: Scalar> RootEq<T, 1> for DiodeRootEq<T> {
         let e1 = log_n + log_risat + exp_op / self.nb;
         let mnnvt = self.nf * self.nb * self.n * self.vt;
         let inner = 2.0 * self.r * mnnvt / (mnnvt + e0.simd_exp() + e1.simd_exp());
-        Some(SMatrix::<_, 1, 1>::new(inner))
+        Some([inner].into())
     }
+    // #[replace_float_literals(T::from_f64(literal))]
+    // fn eval(&self, input: &SVector<T, 1>) -> SVector<T, 1> {
+    //     let b = input[0];
+    //     let r2 = 2. * self.r;
+    //     let log_r2isat = r2.simd_ln() + self.isat.simd_ln();
+    //     let exp_op = (self.a + b) / (2.0 * self.n * self.vt);
+    //     let e0 = log_r2isat + exp_op / self.nf;
+    //     let e1 = log_r2isat - exp_op / self.nb;
+    //     let x0 = e0.simd_exp() - e1.simd_exp();
+    //     let inner = (x0 + -self.a + b) / r2;
+    //     SVector::<_, 1>::new(inner)
+    // }
+    //
+    // #[replace_float_literals(T::from_f64(literal))]
+    // fn j_inv(&self, input: &SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
+    //     let b = input[0];
+    //     let log_risat = self.r.simd_ln() + self.isat.simd_ln();
+    //     let log_m = self.nf.simd_ln();
+    //     let log_n = self.nb.simd_ln();
+    //     let exp_op = (self.a + b) / (2.0 * self.n * self.vt);
+    //     let e0 = log_m + log_risat - exp_op / self.nf;
+    //     let e1 = log_n + log_risat + exp_op / self.nb;
+    //     let mnnvt = self.nf * self.nb * self.n * self.vt;
+    //     let inner = 2.0 * self.r * mnnvt / (mnnvt + e0.simd_exp() + e1.simd_exp());
+    //     Some(SMatrix::<_, 1, 1>::new(inner))
+    // }
 }
 
 /// Diode clipper WDF node using the implicit wave equation and Newton's method to solve it.
@@ -288,7 +327,12 @@ impl<T: Scalar<Element: Float>> Wdf for DiodeNR<T> {
 
     fn reflected(&mut self) -> Self::Scalar {
         let mut value = SVector::<_, 1>::new(-self.root_eq.a);
-        newton_rhapson_tol_max_iter(&self.root_eq, &mut value, T::from_f64(1e-4), 1000);
+        NewtonRhapson::new(
+            &self.root_eq,
+            Some(self.max_tolerance),
+            NonZeroUsize::new(self.max_iter),
+        )
+        .run_in_place(vector_view_mut(&mut value));
         self.b = value[0];
         self.b
     }

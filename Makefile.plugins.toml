@@ -1,3 +1,5 @@
+extend = "./Makefile.crates.toml"
+
 [tasks.xtask-build]
 command = "cargo"
 args = ["build", "-p", "xtask", "--release"]

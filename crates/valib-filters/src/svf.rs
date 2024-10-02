@@ -95,18 +95,18 @@ impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 3> for Svf<T, S> {
 impl<T: Scalar, S: Saturator<T>> DspAnalysis<1, 3> for Svf<T, S> {
     #[replace_float_literals(T::from_f64(literal))]
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 3]; 1] {
-        let omega_c = self.samplerate * self.fc;
+        let omega_c = 2.0 * self.fc * self.w_step;
         let x0 = z + Complex::one();
         let x1 = x0.powi(2) * omega_c.simd_powi(2);
         let x2 = z - Complex::one();
-        let x3 = x2.powi(2) * 4.0 * self.samplerate.simd_powi(2);
-        let x4 = x0 * x2 * self.samplerate * omega_c;
+        let x3 = x2.powi(2) * 4.0;
+        let x4 = x0 * x2 * omega_c;
         let x5 = Complex::<T>::one() / (-x4 * 4.0 * self.r + x1 + x3);
         [[x1 * x5, -x4 * x5 * 2.0, x3 * x5]]
     }
 }
 
-impl<T: Scalar, C: Default> Svf<T, C> {
+impl<T: Scalar> Svf<T, Linear> {
     /// Create a new SVF filter with the provided sample rate, frequency cutoff (in Hz) and resonance amount
     /// (in 0..1 for stable filters, otherwise use bounded nonlinearities).
     pub fn new(samplerate: T, fc: T, r: T) -> Self {
@@ -119,7 +119,7 @@ impl<T: Scalar, C: Default> Svf<T, C> {
             d: T::zero(),
             samplerate,
             w_step: T::simd_pi() / samplerate,
-            saturator: C::default(),
+            saturator: Linear,
         };
         this.update_coefficients();
         this
@@ -156,23 +156,74 @@ impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
     }
 
     /// Replace the saturators in this Biquad instance with the provided values.
-    pub fn with_saturator(mut self, sat: S) -> Self {
-        self.set_saturator(sat);
-        self
+    pub fn with_saturator<S2: Saturator<T>>(self, saturator: S2) -> Svf<T, S2> {
+        let Self {
+            s,
+            r,
+            fc,
+            g,
+            g1,
+            d,
+            w_step,
+            samplerate,
+            ..
+        } = self;
+        Svf {
+            s,
+            r,
+            fc,
+            g,
+            g1,
+            d,
+            w_step,
+            samplerate,
+            saturator,
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::ComplexField;
-
     use super::*;
+    use nalgebra::ComplexField;
+    use plotters::prelude::*;
+    use valib_core::util::tests::*;
 
     #[test]
     fn test_svf_hz() {
-        let filter = Svf::<_, Linear>::new(1024.0, 10.0, 0.5);
+        const SAMPLERATE: f64 = 1024.0;
+        const FC: f64 = 10.0;
+        let filter = Svf::<_, Linear>::new(SAMPLERATE, FC, 0.15);
         let hz: [_; 512] = std::array::from_fn(|i| i as f64)
-            .map(|f| filter.freq_response(1024.0, f)[0].map(|c| c.abs()));
+            .map(|f| filter.freq_response(SAMPLERATE, f)[0].map(|c| c.abs()));
+        let lp = hz.map(|[lp, _, _]| lp as _);
+        let bp = hz.map(|[_, bp, _]| bp as _);
+        let hp = hz.map(|[_, _, hp]| hp as _);
+        Plot {
+            title: "SVF Frequency Response",
+            bode: true,
+            series: &[
+                Series {
+                    label: "Low pass",
+                    color: &BLUE,
+                    samplerate: SAMPLERATE as _,
+                    series: &lp,
+                },
+                Series {
+                    label: "Band pass",
+                    color: &GREEN,
+                    samplerate: SAMPLERATE as _,
+                    series: &bp,
+                },
+                Series {
+                    label: "High pass",
+                    color: &full_palette::ORANGE,
+                    samplerate: SAMPLERATE as _,
+                    series: &hp,
+                },
+            ],
+        }
+        .create_svg("plots/svf/freq_response_hz.svg");
         insta::assert_csv_snapshot!(&hz as &[_], { "[][]" => insta::rounded_redaction(3)})
     }
 }

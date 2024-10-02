@@ -70,6 +70,26 @@ impl<E: 'static + PartialEq + Enum, P: 'static + Send + Sync + ParamName> BindTo
     }
 }
 
+/// Extension trait for casting the output of a `value()` method through the [`Scalar`] trait.
+pub trait ValueAs {
+    /// Get the current value, cast to `T`.
+    fn value_as<T: Scalar>(&self) -> T;
+}
+
+impl ValueAs for FloatParam {
+    #[inline]
+    fn value_as<T: Scalar>(&self) -> T {
+        T::from_f64(self.value() as _)
+    }
+}
+
+impl ValueAs for IntParam {
+    #[inline]
+    fn value_as<T: Scalar>(&self) -> T {
+        T::from_f64(self.value() as _)
+    }
+}
+
 /// Processes a [`nih-plug`] buffer in its entirety with a [`DSPBlock`] instance, where inputs in
 /// the dsp instance correspond to channels in the buffer.
 ///

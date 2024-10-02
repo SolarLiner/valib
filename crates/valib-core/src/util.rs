@@ -1,6 +1,10 @@
 //! Utilities for all of `valib`.
 
 use crate::Scalar;
+use nalgebra::{
+    Dim, Matrix, MatrixView, MatrixViewMut, Storage, StorageMut, Vector, VectorView, VectorViewMut,
+    ViewStorage, ViewStorageMut,
+};
 use num_traits::{AsPrimitive, Float, Zero};
 use numeric_literals::replace_float_literals;
 use simba::simd::{SimdComplexField, SimdValue};
@@ -218,6 +222,66 @@ pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
 /// ```
 pub fn ratio_to_semitone<T: Scalar>(ratio: T) -> T {
     T::from_f64(12.) * ratio.simd_log2()
+}
+
+/// Create a new matrix referencing this one as storage. The resulting matrix will have the same
+/// shape and same strides as the input one.
+///
+/// # Arguments
+///
+/// * `m`: Source matrix
+pub fn matrix_view<T: Scalar, R: Dim, C: Dim, S: Storage<T, R, C>>(
+    m: &Matrix<T, R, C, S>,
+) -> MatrixView<T, R, C, S::RStride, S::CStride> {
+    MatrixView::from_data(unsafe {
+        let shape = m.shape_generic();
+        ViewStorage::new_unchecked(&m.data, (0, 0), shape)
+    })
+}
+
+/// Create a new matrix mutably referencing this one as storage. The resulting matrix will have the
+/// same shape and same strides as the input one.
+///
+/// # Arguments
+///
+/// * `m`: Source matrix
+pub fn matrix_view_mut<T: Scalar, R: Dim, C: Dim, S: StorageMut<T, R, C>>(
+    m: &mut Matrix<T, R, C, S>,
+) -> MatrixViewMut<T, R, C, S::RStride, S::CStride> {
+    MatrixViewMut::from_data(unsafe {
+        let shape = m.shape_generic();
+        ViewStorageMut::new_unchecked(&mut m.data, (0, 0), shape)
+    })
+}
+
+/// Create a new vector referencing this one as storage. The resulting vector will have the same
+/// shape and same strides as the input one.
+///
+/// # Arguments
+///
+/// * `v`: Source vector
+pub fn vector_view<T: Scalar, D: Dim, S: Storage<T, D>>(
+    v: &Vector<T, D, S>,
+) -> VectorView<T, D, S::RStride, S::CStride> {
+    VectorView::from_data(unsafe {
+        let shape = v.shape_generic();
+        ViewStorage::new_unchecked(&v.data, (0, 0), shape)
+    })
+}
+
+/// Create a new vector mutably referencing this one as storage. The resulting vector will have the
+/// same shape and same strides as the input one.
+///
+/// # Arguments
+///
+/// * `v`: Source vector
+pub fn vector_view_mut<T: Scalar, D: Dim, S: StorageMut<T, D>>(
+    v: &mut Vector<T, D, S>,
+) -> VectorViewMut<T, D, S::RStride, S::CStride> {
+    VectorViewMut::from_data(unsafe {
+        let shape = v.shape_generic();
+        ViewStorageMut::new_unchecked(&mut v.data, (0, 0), shape)
+    })
 }
 
 #[cfg(feature = "test-utils")]

@@ -107,6 +107,12 @@ impl_multisat_tuples!(10; A, B, C, D, E, F, G, H, I, J);
 impl_multisat_tuples!(11; A, B, C, D, E, F, G, H, I, J, K);
 impl_multisat_tuples!(12; A, B, C, D, E, F, G, H, I, J, K, L);
 
+impl<T: Scalar, F: Fn(T) -> T> Saturator<T> for F {
+    fn saturate(&self, x: T) -> T {
+        self(x)
+    }
+}
+
 /// Linear "saturator", a noop saturator which can be used when wanting no saturation.
 #[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct Linear;

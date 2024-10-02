@@ -1,16 +1,20 @@
 //! # Diode clipper
 //!
 //! Saturators for emulating a diode clipper.
+
 use super::adaa::Antiderivative;
 use crate::MultiSaturator;
 use crate::Saturator;
-use nalgebra::{SMatrix, SVector};
+use nalgebra as na;
+use nalgebra::{Dim, OMatrix, OVector, SVector, VectorView};
 use num_traits::Float;
 use numeric_literals::replace_float_literals;
+use std::num::NonZeroUsize;
 use valib_core::dsp::DSPMeta;
 use valib_core::dsp::DSPProcess;
-use valib_core::math::nr::{newton_rhapson_tol_max_iter, RootEq};
+use valib_core::math::nr::{NewtonRhapson, RootEq};
 use valib_core::simd::SimdBool;
+use valib_core::util::vector_view_mut;
 use valib_core::Scalar;
 
 mod diode_clipper_model_data;
@@ -51,10 +55,15 @@ impl<T: Copy> DiodeClipper<T> {
     }
 }
 
-impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
-    #[cfg_attr(not(test), inline)]
+impl<T: Scalar> RootEq for DiodeClipper<T> {
+    type Scalar = T;
+    type Dim = na::U1;
+
     #[replace_float_literals(T::from_f64(literal))]
-    fn eval(&self, input: &SVector<T, 1>) -> SVector<T, 1> {
+    fn eval(
+        &self,
+        input: VectorView<Self::Scalar, Self::Dim, impl Dim, impl Dim>,
+    ) -> OVector<Self::Scalar, Self::Dim> {
         let vout = input[0];
         let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
@@ -64,12 +73,14 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
         let expn = T::simd_exp(expin / self.num_diodes_fwd).simd_min(1e35);
         let expm = T::simd_exp(-expin / self.num_diodes_bwd).simd_min(1e35);
         let res = self.isat * (expn - expm) + 2. * vout - self.vin;
-        SVector::<_, 1>::new(res)
+        [res].into()
     }
 
-    #[cfg_attr(not(test), inline)]
     #[replace_float_literals(T::from_f64(literal))]
-    fn j_inv(&self, input: &SVector<T, 1>) -> Option<SMatrix<T, 1, 1>> {
+    fn j_inv(
+        &self,
+        input: VectorView<Self::Scalar, Self::Dim, impl Dim, impl Dim>,
+    ) -> Option<OMatrix<Self::Scalar, Self::Dim, Self::Dim>> {
         let vout = input[0];
         let v = T::simd_recip(self.n * self.vt);
         let expin = vout * v;
@@ -78,7 +89,7 @@ impl<T: Scalar> RootEq<T, 1> for DiodeClipper<T> {
         let res = v * self.isat * (expn / self.num_diodes_fwd + expm / self.num_diodes_bwd) + 2.;
         // Biasing to prevent divisions by zero, less accurate around zero
         let ret = 1e-6.select(res.simd_abs().simd_lt(1e-6), res).simd_recip();
-        Some(SMatrix::<_, 1, 1>::new(ret))
+        Some([ret].into())
     }
 }
 
@@ -170,7 +181,8 @@ where
             self.vin
                 .simd_clamp(-self.num_diodes_bwd, self.num_diodes_fwd),
         );
-        newton_rhapson_tol_max_iter(self, &mut value, self.sim_tol, self.max_iter);
+        NewtonRhapson::new(&*self, Some(self.sim_tol), NonZeroUsize::new(self.max_iter))
+            .run_in_place(vector_view_mut(&mut value));
         self.last_vout = value[0];
         [value[0]]
     }

@@ -6,7 +6,7 @@ use nih_plug_vizia::{
     widgets::param_base::ParamWidgetBase,
 };
 
-use crate::{editor::Data, filter::FilterParams, AbrasiveParams};
+use crate::{dsp::filter::FilterParams, editor::Data, AbrasiveParams};
 
 // use nih_plug::prelude::*;
 use super::components::knob::Knob;
@@ -27,7 +27,9 @@ impl BandSelector {
         get_param: impl 'static + Copy + Fn(&FilterParams) -> &EnumParam<E>,
     ) -> Handle<Self> {
         Self {
-            ctrl: ParamWidgetBase::new(cx, Data::params, move |p| get_param(&p.params[selected])),
+            ctrl: ParamWidgetBase::new(cx, Data::params, move |p: &Arc<AbrasiveParams>| {
+                get_param(&p.dsp_params.filters[selected])
+            }),
         }
         .build(cx, |cx| {
             let lens = BandSelector::ctrl.map(|ctrl| {
@@ -81,12 +83,9 @@ impl View for BandSelector {
 pub fn band_knobs(cx: &mut Context, selected: usize) {
     VStack::new(cx, move |cx| {
         BandSelector::new(cx, selected, |params| &params.ftype);
-        BandSelector::new(cx, selected, |params| &params.resclip);
         Binding::new(
             cx,
-            Data::params.map(move |p: &Arc<AbrasiveParams<{ crate::NUM_BANDS }>>| {
-                p.params[selected].clone()
-            }),
+            Data::params.map(move |p: &Arc<AbrasiveParams>| p.dsp_params.filters[selected].clone()),
             move |cx, fparams| {
                 labelled_node_float(cx, false, fparams, |params| &params.cutoff);
                 HStack::new(cx, move |cx| {
