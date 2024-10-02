@@ -104,20 +104,18 @@ impl<T: Scalar> DSPMeta for FilterMixer<T> {
 impl<T: Scalar> DSPProcess<4, 1> for FilterMixer<T> {
     #[replace_float_literals(T::from_f64(literal))]
     fn process(&mut self, [x, lp, bp, hp]: [Self::Sample; 4]) -> [Self::Sample; 1] {
+        let g = self.amp - 1.;
         let y = match self.filter_type {
             FilterType::Bypass => x,
             FilterType::Lowpass => lp,
             FilterType::Bandpass => bp,
             FilterType::Highpass => hp,
             FilterType::PeakSharp => lp - hp,
-            FilterType::PeakShelf => {
-                let g = self.amp - 1.;
-                x + bp * g
-            }
+            FilterType::PeakShelf => x + bp * g,
             FilterType::Notch => x - bp,
             FilterType::Allpass => x - 2. * bp,
-            FilterType::Lowshelf => x + lp * (self.amp - 1.),
-            FilterType::Highshelf => x + hp * (self.amp - 1.),
+            FilterType::Lowshelf => x + lp * g,
+            FilterType::Highshelf => x + hp * g,
         };
         [y]
     }
@@ -189,8 +187,9 @@ impl<T: Scalar> DSPProcess<1, 1> for FilterModule<T> {
         self.svf.set_cutoff(self.params.cutoff.value_as());
         self.svf.set_r(T::one() - self.params.q.value_as::<T>());
 
-        let x = self.input_clip.saturate(x);
-        let [lp, bp, hp] = self.svf.process([x]);
+        let x_sat = self.input_clip.saturate(x);
+        self.input_clip.update_state(x, x_sat);
+        let [lp, bp, hp] = self.svf.process([x_sat]);
         self.mixer.process([x, lp, bp, hp])
     }
 }
