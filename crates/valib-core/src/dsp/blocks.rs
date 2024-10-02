@@ -812,6 +812,12 @@ where
     }
 }
 
+impl<T: Scalar, const I: usize, const O: usize> DspAnalysis<I, O> for ModMatrix<T, I, O> {
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; O]; I] {
+        self.weights.map(Complex::from).into()
+    }
+}
+
 /// Parameter type for param changes within the [`Feedback`] processor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeedbackParams<FF, FB, const N: ParamId> {
