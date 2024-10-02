@@ -8,6 +8,7 @@ use realfft::num_traits::One;
 use std::sync::Arc;
 use valib::contrib::nih_plug::ValueAs;
 use valib::dsp::analysis::DspAnalysis;
+use valib::dsp::blocks::ModMatrix;
 use valib::dsp::{DSPMeta, DSPProcess};
 use valib::filters::svf::Svf;
 use valib::saturators::{bjt, Saturator};
@@ -16,13 +17,18 @@ use valib::Scalar;
 #[derive(Debug, Copy, Clone, Enum, Eq, PartialEq)]
 pub enum FilterType {
     Bypass,
+    #[name = "Low pass"]
     Lowpass,
+    #[name = "Band pass"]
     Bandpass,
+    #[name = "High pass"]
     Highpass,
+    #[name = "Low shelf"]
     Lowshelf,
+    #[name = "High shelf"]
     Highshelf,
-    PeakSharp,
-    PeakShelf,
+    #[name = "Band shelf"]
+    Band,
     Notch,
     Allpass,
 }
@@ -88,13 +94,46 @@ impl FilterParams {
 }
 
 pub struct FilterMixer<T> {
-    pub filter_type: FilterType,
-    pub amp: T,
+    mixer: ModMatrix<T, 4, 1>,
 }
 
-impl<T> FilterMixer<T> {
-    fn new(filter_type: FilterType, amp: T) -> Self {
-        Self { filter_type, amp }
+impl<T: Scalar> FilterMixer<T> {
+    pub fn new(filter_type: FilterType, amp: T) -> Self {
+        Self {
+            mixer: ModMatrix {
+                weights: Self::get_weights(filter_type, amp),
+            },
+        }
+    }
+
+    pub fn set_mixer(&mut self, filter_type: FilterType, amp: T) {
+        self.mixer.weights = Self::get_weights(filter_type, amp);
+    }
+
+    #[replace_float_literals(T::from_f64(literal))]
+    fn get_weights(filter_type: FilterType, amp: T) -> SMatrix<T, 1, 4> {
+        let inner = match filter_type {
+            FilterType::Bypass => [1.0, 0.0, 0.0, 0.0],
+            FilterType::Lowpass => [0.0, 1.0, 0.0, 0.0],
+            FilterType::Bandpass => [0.0, 0.0, 1.0, 0.0],
+            FilterType::Highpass => [0.0, 0.0, 0.0, 1.0],
+            FilterType::Lowshelf => {
+                // m^-4 = amp => m = amp^4
+                // m^-2 = (m^-4)^(1/2) = sqrt(m^-4) = sqrt(amp)
+                let mp2 = amp.simd_sqrt();
+                [0.0, amp, mp2, 1.0]
+            }
+            FilterType::Highshelf => {
+                // m^4 = amp
+                // m^2 = sqrt(amp)
+                let m2 = amp.simd_sqrt();
+                [0.0, 1., m2, amp]
+            }
+            FilterType::Band => [1.0, 0.0, amp - 1., 0.0],
+            FilterType::Notch => [1.0, 0.0, -1.0, 0.0],
+            FilterType::Allpass => [1.0, 0.0, -2.0, 0.0],
+        };
+        SMatrix::from(inner.map(|x| [x]))
     }
 }
 
@@ -104,47 +143,21 @@ impl<T: Scalar> DSPMeta for FilterMixer<T> {
 
 impl<T: Scalar> DSPProcess<4, 1> for FilterMixer<T> {
     #[replace_float_literals(T::from_f64(literal))]
-    fn process(&mut self, [x, lp, bp1, hp]: [Self::Sample; 4]) -> [Self::Sample; 1] {
-        let g = self.amp - 1.;
-        let y = match self.filter_type {
-            FilterType::Bypass => x,
-            FilterType::Lowpass => lp,
-            FilterType::Bandpass => bp1,
-            FilterType::Highpass => hp,
-            FilterType::PeakSharp => lp - hp,
-            FilterType::PeakShelf => x + bp1 * g,
-            FilterType::Notch => x - bp1,
-            FilterType::Allpass => x - 2. * bp1,
-            FilterType::Lowshelf => x + lp * g,
-            FilterType::Highshelf => x + hp * g,
-        };
-        [y]
+    fn process(&mut self, x: [Self::Sample; 4]) -> [Self::Sample; 1] {
+        self.mixer.process(x)
     }
 }
 
 impl<T: Scalar> DspAnalysis<4, 1> for FilterMixer<T> {
     #[replace_float_literals(Complex::from(T::from_f64(literal)))]
-    fn h_z(&self, _: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 4] {
-        let g = Complex::from(self.amp) - 1.;
-        let inner = match self.filter_type {
-            FilterType::Bypass => [1.0, 0.0, 0.0, 0.0],
-            FilterType::Lowpass => [0.0, 1.0, 0.0, 0.0],
-            FilterType::Bandpass => [0.0, 0.0, 1.0, 0.0],
-            FilterType::Highpass => [0.0, 0.0, 0.0, 1.0],
-            FilterType::Lowshelf => [1.0, g, 0.0, 0.0],
-            FilterType::Highshelf => [1.0, 0.0, 0.0, g],
-            FilterType::PeakSharp => [0.0, 1.0, 0.0, -1.0],
-            FilterType::PeakShelf => [1.0, 0.0, g, 0.0],
-            FilterType::Notch => [1.0, 0.0, -1.0, 1.0],
-            FilterType::Allpass => [1.0, 0.0, -2.0, 0.0],
-        };
-        inner.map(|x| [x])
+    fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 4] {
+        self.mixer.h_z(z)
     }
 }
 
 impl Default for FilterType {
     fn default() -> Self {
-        Self::PeakShelf
+        Self::Bypass
     }
 }
 
@@ -183,8 +196,9 @@ impl<T: Scalar> DSPMeta for FilterModule<T> {
 
 impl<T: Scalar> DSPProcess<1, 1> for FilterModule<T> {
     fn process(&mut self, [x]: [Self::Sample; 1]) -> [Self::Sample; 1] {
-        self.mixer.filter_type = self.params.ftype.value();
-        self.mixer.amp = self.scale * T::from_f64(self.params.amp.smoothed.next() as _);
+        let filter_type = self.params.ftype.value();
+        let amp = self.scale * T::from_f64(self.params.amp.smoothed.next() as _);
+        self.mixer.set_mixer(filter_type, amp);
         self.svf.set_cutoff(self.params.cutoff.value_as());
         let r = T::one() - self.params.q.value_as::<T>();
         self.svf.set_r(r);
@@ -226,7 +240,6 @@ impl<T: Scalar> FilterModule<T> {
     }
 
     pub fn use_param_values(&mut self, use_modulated: bool) {
-        self.mixer.filter_type = self.params.ftype.value();
         self.svf.set_cutoff(T::from_f64(if use_modulated {
             self.params.cutoff.modulated_plain_value() as _
         } else {
@@ -237,5 +250,13 @@ impl<T: Scalar> FilterModule<T> {
         } else {
             1.0 - self.params.q.unmodulated_plain_value() as f64
         }));
+
+        let filter_type = self.params.ftype.value();
+        let amp = T::from_f64(if use_modulated {
+            self.params.amp.modulated_plain_value() as f64
+        } else {
+            self.params.amp.unmodulated_plain_value() as f64
+        });
+        self.mixer.set_mixer(filter_type, amp);
     }
 }
