@@ -27,7 +27,7 @@ pub enum SvfParams {
 #[derive(Debug, Copy, Clone)]
 pub struct Svf<T, Mode = Linear> {
     s: [T; 2],
-    r: T,
+    rr: T,
     fc: T,
     g: T,
     g1: T,
@@ -74,7 +74,7 @@ impl<T: Scalar, S: Saturator<T>> DSPProcess<1, 3> for Svf<T, S> {
         let [s1, s2] = self.s;
 
         let bpp = self.saturator.saturate(s1);
-        let bpl = (self.r - 1.) * s1;
+        let bpl = (self.rr - 1.) * s1;
         let bp1 = 2. * (bpp + bpl);
         let hp = (x[0] - bp1 - s2) * self.d;
         self.saturator.update_state(s1, bpp);
@@ -101,7 +101,7 @@ impl<T: Scalar, S: Saturator<T>> DspAnalysis<1, 3> for Svf<T, S> {
         let x2 = z - Complex::one();
         let x3 = x2.powi(2) * 4.0;
         let x4 = x0 * x2 * omega_c;
-        let x5 = Complex::<T>::one() / (-x4 * 4.0 * self.r + x1 + x3);
+        let x5 = Complex::<T>::one() / (-x4 * 4.0 * self.rr + x1 + x3);
         [[x1 * x5, -x4 * x5 * 2.0, x3 * x5]]
     }
 }
@@ -112,7 +112,7 @@ impl<T: Scalar> Svf<T, Linear> {
     pub fn new(samplerate: T, fc: T, r: T) -> Self {
         let mut this = Self {
             s: [T::zero(); 2],
-            r,
+            rr: r,
             fc,
             g: T::zero(),
             g1: T::zero(),
@@ -127,16 +127,27 @@ impl<T: Scalar> Svf<T, Linear> {
 }
 
 impl<T: Scalar, C> Svf<T, C> {
+    /// Get the current cutoff
+    pub fn get_cutoff(&self) -> T {
+        self.fc
+    }
+
     /// Set the new filter cutoff frequency (in Hz).
     pub fn set_cutoff(&mut self, freq: T) {
         self.fc = freq;
         self.update_coefficients();
     }
 
-    /// Set the resonance amount (in 0..1 for stable filters, otherwise use bounded nonlinearities).
+    /// Get the current resonance parameter as `2*R`.
+    pub fn get_2r(&self) -> T {
+        self.rr
+    }
+
+    /// Set the resonance amount (in 0..1 for stable filters, otherwise use bounded nonlinearities),
+    /// and where 1 is no resonance, and 0 is self-oscillating.
     #[replace_float_literals(T::from_f64(literal))]
     pub fn set_r(&mut self, r: T) {
-        self.r = 2. * r;
+        self.rr = 2. * r;
         self.update_coefficients();
     }
 
@@ -144,8 +155,8 @@ impl<T: Scalar, C> Svf<T, C> {
     #[replace_float_literals(T::from_f64(literal))]
     fn update_coefficients(&mut self) {
         self.g = self.w_step * self.fc;
-        self.g1 = 2. * self.r + self.g;
-        self.d = (1. + 2. * self.r * self.g + self.g * self.g).simd_recip();
+        self.g1 = 2. * self.rr + self.g;
+        self.d = (1. + 2. * self.rr * self.g + self.g * self.g).simd_recip();
     }
 }
 
@@ -159,7 +170,7 @@ impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
     pub fn with_saturator<S2: Saturator<T>>(self, saturator: S2) -> Svf<T, S2> {
         let Self {
             s,
-            r,
+            rr,
             fc,
             g,
             g1,
@@ -170,7 +181,7 @@ impl<T: Scalar, S: Saturator<T>> Svf<T, S> {
         } = self;
         Svf {
             s,
-            r,
+            rr,
             fc,
             g,
             g1,

@@ -2,6 +2,7 @@ use nalgebra::{Complex, SMatrix};
 use nih_plug::formatters;
 use nih_plug::params::{EnumParam, FloatParam, Params};
 use nih_plug::prelude::*;
+use nih_plug::util::db_to_gain;
 use numeric_literals::replace_float_literals;
 use realfft::num_traits::One;
 use std::sync::Arc;
@@ -62,8 +63,8 @@ impl Default for FilterParams {
                 "Gain",
                 1.,
                 FloatRange::Skewed {
-                    min: 1e-2,
-                    max: 100.,
+                    min: db_to_gain(-40.),
+                    max: db_to_gain(40.),
                     factor: FloatRange::gain_skew_factor(-40., 40.),
                 },
             )
@@ -103,17 +104,17 @@ impl<T: Scalar> DSPMeta for FilterMixer<T> {
 
 impl<T: Scalar> DSPProcess<4, 1> for FilterMixer<T> {
     #[replace_float_literals(T::from_f64(literal))]
-    fn process(&mut self, [x, lp, bp, hp]: [Self::Sample; 4]) -> [Self::Sample; 1] {
+    fn process(&mut self, [x, lp, bp1, hp]: [Self::Sample; 4]) -> [Self::Sample; 1] {
         let g = self.amp - 1.;
         let y = match self.filter_type {
             FilterType::Bypass => x,
             FilterType::Lowpass => lp,
-            FilterType::Bandpass => bp,
+            FilterType::Bandpass => bp1,
             FilterType::Highpass => hp,
             FilterType::PeakSharp => lp - hp,
-            FilterType::PeakShelf => x + bp * g,
-            FilterType::Notch => x - bp,
-            FilterType::Allpass => x - 2. * bp,
+            FilterType::PeakShelf => x + bp1 * g,
+            FilterType::Notch => x - bp1,
+            FilterType::Allpass => x - 2. * bp1,
             FilterType::Lowshelf => x + lp * g,
             FilterType::Highshelf => x + hp * g,
         };
@@ -185,18 +186,21 @@ impl<T: Scalar> DSPProcess<1, 1> for FilterModule<T> {
         self.mixer.filter_type = self.params.ftype.value();
         self.mixer.amp = self.scale * T::from_f64(self.params.amp.smoothed.next() as _);
         self.svf.set_cutoff(self.params.cutoff.value_as());
-        self.svf.set_r(T::one() - self.params.q.value_as::<T>());
+        let r = T::one() - self.params.q.value_as::<T>();
+        self.svf.set_r(r);
 
         let x_sat = self.input_clip.saturate(x);
         self.input_clip.update_state(x, x_sat);
         let [lp, bp, hp] = self.svf.process([x_sat]);
-        self.mixer.process([x, lp, bp, hp])
+        let bp1 = (r + r) * bp;
+        self.mixer.process([x, lp, bp1, hp])
     }
 }
 
 impl<T: Scalar> DspAnalysis<1, 1> for FilterModule<T> {
     fn h_z(&self, z: Complex<Self::Sample>) -> [[Complex<Self::Sample>; 1]; 1] {
-        let h = SMatrix::<_, 3, 1>::from(self.svf.h_z(z));
+        let mut h = SMatrix::<_, 3, 1>::from(self.svf.h_z(z));
+        h[1] *= self.svf.get_2r();
         let h = h.insert_row(0, Complex::one());
         let y = SMatrix::<_, 1, 4>::from(self.mixer.h_z(z)) * h;
         [[y[0]]]
