@@ -7,7 +7,8 @@ use nalgebra::{
 };
 use num_traits::{AsPrimitive, Float, Zero};
 use numeric_literals::replace_float_literals;
-use simba::simd::SimdValue;
+use simba::simd::{SimdComplexField, SimdValue};
+use std::collections::VecDeque;
 
 /// Transmutes a slice into a slice of static arrays, putting the remainder of the slice not fitting
 /// as a separate slice.
@@ -202,6 +203,27 @@ pub fn semitone_to_ratio<T: Scalar>(semi: T) -> T {
     2.0.simd_powf(semi / 12.0)
 }
 
+/// Compute the semitone equivalent change in pitch that would have resulted by multiplying the
+/// input ratio to a frequency value.
+///
+/// # Arguments
+///
+/// * `ratio`: Frequency ratio (unitless)
+///
+/// returns: T
+///
+/// # Examples
+///
+/// ```
+/// use valib_core::util::ratio_to_semitone;
+/// assert_eq!(0., ratio_to_semitone(1.));
+/// assert_eq!(12., ratio_to_semitone(2.));
+/// assert_eq!(-12., ratio_to_semitone(0.5));
+/// ```
+pub fn ratio_to_semitone<T: Scalar>(ratio: T) -> T {
+    T::from_f64(12.) * ratio.simd_log2()
+}
+
 /// Create a new matrix referencing this one as storage. The resulting matrix will have the same
 /// shape and same strides as the input one.
 ///
@@ -264,3 +286,32 @@ pub fn vector_view_mut<T: Scalar, D: Dim, S: StorageMut<T, D>>(
 
 #[cfg(feature = "test-utils")]
 pub mod tests;
+
+#[derive(Debug, Clone)]
+pub struct Rms<T> {
+    data: VecDeque<T>,
+    summed_squared: T,
+}
+
+impl<T: Zero> Rms<T> {
+    pub fn new(size: usize) -> Self {
+        Self {
+            data: (0..size).map(|_| T::zero()).collect(),
+            summed_squared: T::zero(),
+        }
+    }
+}
+
+impl<T: Scalar> Rms<T> {
+    pub fn add_element(&mut self, value: T) -> T {
+        let v2 = value.simd_powi(2);
+        self.summed_squared -= self.data.pop_front().unwrap();
+        self.summed_squared += v2;
+        self.data.push_back(v2);
+        self.get_rms()
+    }
+
+    pub fn get_rms(&self) -> T {
+        self.summed_squared.simd_sqrt()
+    }
+}

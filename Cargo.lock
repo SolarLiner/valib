@@ -1612,6 +1612,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8c02a5121d4ea3eb16a80748c74f5549a5665e4c21333c6098f283870fbdea6"
 
 [[package]]
+name = "fastrand-contrib"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb6c045880cda8f657f4859baf534963ff0595e2dcce0de5f52dcdf3076c290b"
+dependencies = [
+ "fastrand 2.1.1",
+]
+
+[[package]]
 name = "fdeflate"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3598,6 +3607,19 @@ dependencies = [
  "rustix 0.38.37",
  "tracing",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "polysynth"
+version = "0.1.0"
+dependencies = [
+ "fastrand 2.1.1",
+ "fastrand-contrib",
+ "nih_plug",
+ "nih_plug_vizia",
+ "num-traits",
+ "numeric_literals",
+ "valib",
 ]
 
 [[package]]

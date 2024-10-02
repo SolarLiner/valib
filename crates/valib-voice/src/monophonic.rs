@@ -4,6 +4,9 @@
 
 use crate::{NoteData, Voice, VoiceManager};
 use num_traits::zero;
+use numeric_literals::replace_float_literals;
+use std::fmt;
+use std::fmt::Formatter;
 use valib_core::dsp::buffer::{AudioBufferMut, AudioBufferRef};
 use valib_core::dsp::{DSPMeta, DSPProcess, DSPProcessBlock};
 use valib_core::util::lerp;
@@ -15,13 +18,31 @@ pub struct Monophonic<V: Voice> {
     pub pitch_bend_min_st: V::Sample,
     /// Maximum pitch bend amount (semitones)
     pub pitch_bend_max_st: V::Sample,
-    create_voice: Box<dyn Fn(f32, NoteData<V::Sample>) -> V>,
+    create_voice: Box<dyn 'static + Send + Sync + Fn(f32, NoteData<V::Sample>) -> V>,
     voice: Option<V>,
     base_frequency: V::Sample,
-    pitch_bend_st: V::Sample,
+    modulation_st: V::Sample,
     released: bool,
     legato: bool,
     samplerate: f32,
+}
+
+impl<V: Voice + fmt::Debug> fmt::Debug for Monophonic<V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Monophonic")
+            .field(
+                "pitch_bend_st",
+                &(self.pitch_bend_min_st..self.pitch_bend_max_st),
+            )
+            .field("create_voice", &"Box<dyn Fn(f32, NoteData<V::Sample>) -> V")
+            .field("voice", &self.voice)
+            .field("base_frequency", &self.base_frequency)
+            .field("pitch_bend", &self.modulation_st)
+            .field("released", &self.released)
+            .field("legato", &self.legato)
+            .field("samplerate", &self.samplerate)
+            .finish()
+    }
 }
 
 impl<V: Voice> DSPMeta for Monophonic<V> {
@@ -55,7 +76,7 @@ impl<V: Voice> Monophonic<V> {
     /// returns: Monophonic<V>
     pub fn new(
         samplerate: f32,
-        create_voice: impl Fn(f32, NoteData<V::Sample>) -> V + 'static,
+        create_voice: impl 'static + Send + Sync + Fn(f32, NoteData<V::Sample>) -> V,
         legato: bool,
     ) -> Self {
         Self {
@@ -65,7 +86,7 @@ impl<V: Voice> Monophonic<V> {
             voice: None,
             released: false,
             base_frequency: V::Sample::from_f64(440.),
-            pitch_bend_st: zero(),
+            modulation_st: zero(),
             legato,
             samplerate,
         }
@@ -80,9 +101,20 @@ impl<V: Voice> Monophonic<V> {
     pub fn set_legato(&mut self, legato: bool) {
         self.legato = legato;
     }
+
+    pub fn clean_voice_if_inactive(&mut self) {
+        self.voice.take_if(|v| !v.active());
+    }
+
+    #[replace_float_literals(V::Sample::from_f64(literal))]
+    fn pitch_bend_st(&self, amt: V::Sample) -> V::Sample {
+        let t = 0.5 * amt + 0.5;
+        lerp(t, self.pitch_bend_min_st, self.pitch_bend_max_st)
+    }
 }
 
-impl<V: Voice> VoiceManager<V> for Monophonic<V> {
+impl<V: Voice> VoiceManager for Monophonic<V> {
+    type Voice = V;
     type ID = ();
 
     fn capacity(&self) -> usize {
@@ -109,9 +141,9 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
         }
     }
 
-    fn note_on(&mut self, note_data: NoteData<V::Sample>) -> Self::ID {
+    fn note_on(&mut self, mut note_data: NoteData<V::Sample>) -> Self::ID {
         self.base_frequency = note_data.frequency;
-        self.pitch_bend_st = zero();
+        note_data.modulation_st = self.modulation_st;
         if let Some(voice) = &mut self.voice {
             *voice.note_data_mut() = note_data;
             if self.released || !self.legato {
@@ -122,9 +154,9 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
         }
     }
 
-    fn note_off(&mut self, _id: Self::ID) {
+    fn note_off(&mut self, _: Self::ID, release_velocity: f32) {
         if let Some(voice) = &mut self.voice {
-            voice.release();
+            voice.release(release_velocity);
         }
     }
 
@@ -137,11 +169,9 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
     }
 
     fn pitch_bend(&mut self, amount: f64) {
-        self.pitch_bend_st = lerp(
-            V::Sample::from_f64(0.5 + amount / 2.),
-            self.pitch_bend_min_st,
-            self.pitch_bend_max_st,
-        );
+        let mod_st = self.pitch_bend_st(V::Sample::from_f64(amount));
+        self.modulation_st = mod_st;
+        self.update_voice_pitchmod();
     }
 
     fn aftertouch(&mut self, amount: f64) {
@@ -155,8 +185,18 @@ impl<V: Voice> VoiceManager<V> for Monophonic<V> {
             voice.note_data_mut().pressure = V::Sample::from_f64(pressure as _);
         }
     }
+
     fn glide(&mut self, _: Self::ID, semitones: f32) {
-        self.pitch_bend_st = V::Sample::from_f64(semitones as _);
+        self.modulation_st = V::Sample::from_f64(semitones as _);
+        self.update_voice_pitchmod();
+    }
+}
+
+impl<V: Voice> Monophonic<V> {
+    fn update_voice_pitchmod(&mut self) {
+        if let Some(voice) = &mut self.voice {
+            voice.note_data_mut().modulation_st = self.modulation_st;
+        }
     }
 }
 

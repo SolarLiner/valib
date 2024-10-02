@@ -8,18 +8,30 @@ use valib_core::dsp::DSPProcess;
 use valib_core::Scalar;
 
 pub mod blit;
+pub mod polyblep;
 pub mod wavetable;
 
 /// Tracks normalized phase for a given frequency. Phase is smooth even when frequency changes, so
 /// it is suitable for driving oscillators.
 #[derive(Debug, Clone, Copy)]
 pub struct Phasor<T> {
+    samplerate: T,
+    frequency: T,
     phase: T,
     step: T,
 }
 
 impl<T: Scalar> DSPMeta for Phasor<T> {
     type Sample = T;
+
+    fn set_samplerate(&mut self, samplerate: f32) {
+        self.samplerate = T::from_f64(samplerate as _);
+        self.set_frequency(self.frequency);
+    }
+
+    fn reset(&mut self) {
+        self.phase = T::zero();
+    }
 }
 
 #[profiling::all_functions]
@@ -27,7 +39,7 @@ impl<T: Scalar> DSPProcess<0, 1> for Phasor<T> {
     fn process(&mut self, _: [Self::Sample; 0]) -> [Self::Sample; 1] {
         let p = self.phase;
         let new_phase = self.phase + self.step;
-        let gt = new_phase.simd_gt(T::one());
+        let gt = new_phase.simd_ge(T::one());
         self.phase = (new_phase - T::one()).select(gt, new_phase);
         [p]
     }
@@ -43,11 +55,30 @@ impl<T: Scalar> Phasor<T> {
     ///
     /// returns: Phasor<T>
     #[replace_float_literals(T::from_f64(literal))]
-    pub fn new(samplerate: T, freq: T) -> Self {
+    pub fn new(samplerate: T, frequency: T) -> Self {
         Self {
+            samplerate,
+            frequency,
             phase: 0.0,
-            step: freq / samplerate,
+            step: frequency / samplerate,
         }
+    }
+
+    pub fn phase(&self) -> T {
+        self.phase
+    }
+
+    pub fn set_phase(&mut self, phase: T) {
+        self.phase = phase.simd_fract();
+    }
+
+    pub fn with_phase(mut self, phase: T) -> Self {
+        self.set_phase(phase);
+        self
+    }
+
+    pub fn next_sample_resets(&self) -> T::SimdBool {
+        (self.phase + self.step).simd_ge(T::one())
     }
 
     /// Sets the frequency of this phasor. Phase is not reset, which means the phase remains
@@ -58,7 +89,7 @@ impl<T: Scalar> Phasor<T> {
     /// * `freq`: New frequency
     ///
     /// returns: ()
-    pub fn set_frequency(&mut self, samplerate: T, freq: T) {
-        self.step = freq / samplerate;
+    pub fn set_frequency(&mut self, freq: T) {
+        self.step = freq / self.samplerate;
     }
 }

@@ -1,6 +1,7 @@
 //! # Upsampled voices
 //!
 //! Provides upsampling for DSP process which are generators (0 input channels).
+use crate::{NoteData, Voice};
 use num_traits::zero;
 use valib_core::dsp::buffer::{AudioBufferBox, AudioBufferMut, AudioBufferRef};
 use valib_core::dsp::{DSPMeta, DSPProcessBlock};
@@ -13,6 +14,28 @@ pub struct UpsampledVoice<P: DSPMeta> {
     downsample_stages: Box<[ResampleStage<P::Sample, false>]>,
     ping_pong_buffer: PingPongBuffer<P::Sample>,
     num_active_stages: usize,
+}
+
+impl<P: Voice> Voice for UpsampledVoice<P> {
+    fn active(&self) -> bool {
+        self.inner.active()
+    }
+
+    fn note_data(&self) -> &NoteData<Self::Sample> {
+        self.inner.note_data()
+    }
+
+    fn note_data_mut(&mut self) -> &mut NoteData<Self::Sample> {
+        self.inner.note_data_mut()
+    }
+
+    fn release(&mut self, release_velocity: f32) {
+        self.inner.release(release_velocity);
+    }
+
+    fn reuse(&mut self) {
+        self.inner.reuse()
+    }
 }
 
 impl<P: DSPProcessBlock<0, 1>> DSPProcessBlock<0, 1> for UpsampledVoice<P> {
@@ -32,7 +55,7 @@ impl<P: DSPProcessBlock<0, 1>> DSPProcessBlock<0, 1> for UpsampledVoice<P> {
         let mut length = inner_len;
         for stage in &mut self.downsample_stages[..self.num_active_stages] {
             let (input, output) = self.ping_pong_buffer.get_io_buffers(..length);
-            stage.process_block(input, output);
+            stage.process_block(input, &mut output[..length / 2]);
             self.ping_pong_buffer.switch();
             length /= 2;
         }

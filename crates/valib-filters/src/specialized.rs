@@ -7,6 +7,7 @@ use valib_core::Scalar;
 use valib_saturators::Linear;
 
 /// Specialized filter that removes DC offsets by applying a 5 Hz biquad highpass filter
+#[derive(Debug, Copy, Clone)]
 pub struct DcBlocker<T>(Biquad<T, Linear>);
 
 impl<T> DcBlocker<T> {

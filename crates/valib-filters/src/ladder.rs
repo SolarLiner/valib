@@ -153,8 +153,7 @@ impl<T: Scalar, Topo: LadderTopology<T>> Ladder<T, Topo> {
     /// let transistor_ladder = Ladder::<_, Transistor<DiodeClipperModel<_>>>::new(48000.0, 440.0, 1.0);
     /// ```
     #[replace_float_literals(T::from_f64(literal))]
-    pub fn new(samplerate: impl Into<f64>, cutoff: T, resonance: T) -> Self {
-        let samplerate = T::from_f64(samplerate.into());
+    pub fn new(samplerate: T, cutoff: T, resonance: T) -> Self {
         let mut this = Self {
             inv_2fs: T::simd_recip(2.0 * samplerate),
             samplerate,
@@ -369,7 +368,7 @@ mod tests {
             bode: true,
             series: &[Series {
                 label: "Frequency response",
-                samplerate,
+                samplerate: samplerate as f32,
                 series: &responsef32,
                 color: &BLUE,
             }],
