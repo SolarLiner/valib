@@ -13,7 +13,7 @@ repository = "https://github.com/SolarLiner/valib"
 keywords = ["virtual-analog", "audio", "plugin", "va-modeling", "dsp"]
 
 [workspace.dependencies]
-nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", rev = "16c6c58f4d9f08c9c515c991c218bff235cff6e2" }
 nih_plug_vizia = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 num-complex = "0.4.6"
 num-traits = "0.2.18"
