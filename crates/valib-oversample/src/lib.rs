@@ -234,12 +234,12 @@ impl<T> Oversample<T> {
 
     /// Maximum block size supported at the current oversampling factor.
     pub fn max_block_size(&self) -> usize {
-        self.os_buffer.len() / usize::pow(2, self.num_stages_active as _)
+        self.os_buffer.len() / self.oversampling_amount()
     }
 
     /// Return the length of the oversampled buffer.
     pub fn get_os_len(&self, input_len: usize) -> usize {
-        input_len * usize::pow(2, self.num_stages_active as _)
+        input_len * self.oversampling_amount()
     }
 }
 
@@ -276,8 +276,17 @@ impl<T: Scalar> Oversample<T> {
 
     /// Returns the latency of the filter. This includes both upsampling and downsampling.
     pub fn latency(&self) -> usize {
-        let upsample_latency = self.upsample.iter().map(|p| p.latency()).sum::<usize>();
-        let downsample_latency = self.downsample.iter().map(|p| p.latency()).sum::<usize>();
+        let upsample_latency = self
+            .upsample
+            .iter()
+            .map(|p| p.latency())
+            .rev()
+            .fold(0.0, |acc, l| acc / 2.0 + l as f32) as usize;
+        let downsample_latency = self
+            .downsample
+            .iter()
+            .map(|p| p.latency())
+            .fold(0.0, |acc, l| acc / 2.0 + l as f32) as usize;
         2 * self.num_stages_active + upsample_latency + downsample_latency
     }
 
@@ -344,11 +353,11 @@ impl<T: Scalar> Oversample<T> {
 
         let os_len = self.get_os_len(out.len());
         let mut len = os_len;
-        for stage in &mut self.downsample {
+        for stage in &mut self.downsample[..self.num_stages_active] {
             self.os_buffer.switch();
             let (input, output) = self.os_buffer.get_io_buffers(..len);
-            stage.process_block(input, &mut output[..len / 2]);
             len /= 2;
+            stage.process_block(input, &mut output[..len]);
         }
         self.os_buffer.copy_into(out);
     }
@@ -404,7 +413,7 @@ impl<T: Scalar, P: DSPMeta<Sample = T>> DSPMeta for Oversampled<T, P> {
     }
 
     fn latency(&self) -> usize {
-        self.inner.latency()
+        self.oversampling.latency() + self.inner.latency() / self.os_factor()
     }
 
     fn reset(&mut self) {
