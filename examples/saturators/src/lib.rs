@@ -12,9 +12,9 @@ use crate::dsp::{create_dsp, DspInnerParams, DspParams, SaturatorType};
 
 mod dsp;
 
-const MAX_OVERSAMPLE: usize = 16;
+const MAX_OVERSAMPLE: usize = 64;
 
-const MAX_BLOCK_SIZE: usize = 512;
+const MAX_BLOCK_SIZE: usize = 64;
 
 #[derive(Debug, Params)]
 struct SaturatorsParams {
